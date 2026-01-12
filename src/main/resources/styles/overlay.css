@@ -1,0 +1,108 @@
+/* Lavis Overlay UI Styles */
+
+/* 根容器 */
+.root {
+    -fx-font-family: "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+}
+
+/* 文本区域 */
+.text-area {
+    -fx-background-color: transparent;
+    -fx-text-fill: #E0E0E0;
+    -fx-highlight-fill: #667eea;
+    -fx-highlight-text-fill: white;
+}
+
+.text-area .content {
+    -fx-background-color: rgba(0, 0, 0, 0.3);
+}
+
+.text-area:focused {
+    -fx-background-color: transparent;
+}
+
+/* 滚动条 */
+.scroll-pane {
+    -fx-background-color: transparent;
+    -fx-background: transparent;
+}
+
+.scroll-pane > .viewport {
+    -fx-background-color: transparent;
+}
+
+.scroll-bar {
+    -fx-background-color: transparent;
+}
+
+.scroll-bar .thumb {
+    -fx-background-color: rgba(255, 255, 255, 0.2);
+    -fx-background-radius: 4;
+}
+
+.scroll-bar .thumb:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.3);
+}
+
+.scroll-bar .track {
+    -fx-background-color: transparent;
+}
+
+.scroll-bar .increment-button,
+.scroll-bar .decrement-button {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+.scroll-bar .increment-arrow,
+.scroll-bar .decrement-arrow {
+    -fx-shape: "";
+    -fx-padding: 0;
+}
+
+/* 输入框 */
+.text-field {
+    -fx-background-color: rgba(255, 255, 255, 0.1);
+    -fx-text-fill: white;
+    -fx-prompt-text-fill: rgba(255, 255, 255, 0.5);
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 10;
+}
+
+.text-field:focused {
+    -fx-background-color: rgba(255, 255, 255, 0.15);
+    -fx-border-color: #667eea;
+    -fx-border-width: 1;
+}
+
+/* 按钮 */
+.button {
+    -fx-background-color: linear-gradient(to right, #667eea, #764ba2);
+    -fx-text-fill: white;
+    -fx-background-radius: 8;
+    -fx-padding: 8 16;
+    -fx-cursor: hand;
+}
+
+.button:hover {
+    -fx-background-color: linear-gradient(to right, #5a6fd6, #6a4190);
+}
+
+.button:pressed {
+    -fx-background-color: linear-gradient(to right, #4e5fc2, #5e377e);
+}
+
+/* 标签 */
+.label {
+    -fx-text-fill: white;
+}
+
+/* 工具提示 */
+.tooltip {
+    -fx-background-color: rgba(30, 30, 40, 0.95);
+    -fx-text-fill: white;
+    -fx-background-radius: 4;
+    -fx-padding: 8;
+}
+
