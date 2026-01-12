@@ -2,28 +2,17 @@ package com.lavis.cognitive;
 
 import com.lavis.action.AppleScriptExecutor;
 import com.lavis.action.RobotDriver;
-import com.lavis.perception.AXDumper;
-import com.lavis.perception.CoordinateMapper;
-import com.lavis.perception.CoordinateMapper.MappingResult;
 import com.lavis.perception.ScreenCapturer;
-import com.lavis.perception.UIElement;
 import dev.langchain4j.agent.tool.Tool;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
-import java.util.List;
 
 /**
  * M2 思考模块 - AI 可调用的工具集
  * 使用 LangChain4j @Tool 注解定义
- * 
- * 工具分类:
- * 1. 基于元素 ID 的精确操作 (推荐)
- * 2. 基于坐标的操作 (兜底)
- * 3. 键盘操作
- * 4. 系统操作
  */
 @Slf4j
 @Component
@@ -33,134 +22,6 @@ public class AgentTools {
     private final RobotDriver robotDriver;
     private final AppleScriptExecutor appleScriptExecutor;
     private final ScreenCapturer screenCapturer;
-    private final CoordinateMapper coordinateMapper;
-    private final AXDumper axDumper;
-    
-    // ==================== 基于元素 ID 的精确操作 (推荐) ====================
-
-    @Tool("点击指定 ID 的 UI 元素。这是最精确的点击方式，优先使用此方法。elementId 格式如 btn_0, txt_1, lnk_2 等。")
-    public String clickElement(String elementId) {
-        try {
-            MappingResult result = coordinateMapper.resolveById(elementId);
-            if (!result.found()) {
-                return String.format("错误: 未找到元素 %s，请检查 ID 或刷新元素列表", elementId);
-            }
-            
-            robotDriver.clickAtScreen(result.x(), result.y());
-            return String.format("已点击元素 %s (%s) 在坐标 (%d, %d)", 
-                elementId, result.elementName() != null ? result.elementName() : "无名称", 
-                result.x(), result.y());
-        } catch (Exception e) {
-            log.error("点击元素失败", e);
-            return "错误: " + e.getMessage();
-        }
-    }
-    
-    @Tool("通过名称或描述点击元素。name 是按钮文字或元素标签，如 '提交'、'确定'、'搜索' 等。")
-    public String clickElementByName(String name) {
-        try {
-            MappingResult result = coordinateMapper.resolveTarget(name);
-            if (!result.found()) {
-                return String.format("错误: 未找到名为 '%s' 的元素", name);
-            }
-            
-            robotDriver.clickAtScreen(result.x(), result.y());
-            return String.format("已点击元素 '%s' (ID: %s) 在坐标 (%d, %d)", 
-                name, result.elementId(), result.x(), result.y());
-        } catch (Exception e) {
-            log.error("通过名称点击元素失败", e);
-            return "错误: " + e.getMessage();
-        }
-    }
-    
-    @Tool("双击指定 ID 的 UI 元素。")
-    public String doubleClickElement(String elementId) {
-        try {
-            MappingResult result = coordinateMapper.resolveById(elementId);
-            if (!result.found()) {
-                return String.format("错误: 未找到元素 %s", elementId);
-            }
-            
-            robotDriver.doubleClickAtScreen(result.x(), result.y());
-            return String.format("已双击元素 %s 在坐标 (%d, %d)", elementId, result.x(), result.y());
-        } catch (Exception e) {
-            log.error("双击元素失败", e);
-            return "错误: " + e.getMessage();
-        }
-    }
-    
-    @Tool("右键点击指定 ID 的 UI 元素。")
-    public String rightClickElement(String elementId) {
-        try {
-            MappingResult result = coordinateMapper.resolveById(elementId);
-            if (!result.found()) {
-                return String.format("错误: 未找到元素 %s", elementId);
-            }
-            
-            robotDriver.rightClickAtScreen(result.x(), result.y());
-            return String.format("已右键点击元素 %s 在坐标 (%d, %d)", elementId, result.x(), result.y());
-        } catch (Exception e) {
-            log.error("右键点击元素失败", e);
-            return "错误: " + e.getMessage();
-        }
-    }
-    
-    @Tool("点击输入框并输入文本。先点击指定元素使其获得焦点，然后输入文本。适用于文本框、搜索框等。")
-    public String typeInElement(String elementId, String text) {
-        try {
-            MappingResult result = coordinateMapper.resolveById(elementId);
-            if (!result.found()) {
-                return String.format("错误: 未找到元素 %s", elementId);
-            }
-            
-            // 点击元素获得焦点
-            robotDriver.clickAtScreen(result.x(), result.y());
-            robotDriver.delay(150);  // 等待焦点切换
-            
-            // 输入文本
-            robotDriver.type(text);
-            
-            return String.format("已在元素 %s 中输入: %s", elementId, text);
-        } catch (Exception e) {
-            log.error("在元素中输入文本失败", e);
-            return "错误: " + e.getMessage();
-        }
-    }
-    
-    @Tool("刷新 UI 元素缓存。当界面发生变化后调用，以获取最新的可交互元素列表。")
-    public String refreshUIElements() {
-        try {
-            List<UIElement> elements = axDumper.quickScan();
-            return String.format("已刷新 UI 元素缓存，共 %d 个可交互元素", elements.size());
-        } catch (Exception e) {
-            log.error("刷新 UI 元素失败", e);
-            return "错误: " + e.getMessage();
-        }
-    }
-    
-    @Tool("获取当前屏幕上的所有可交互 UI 元素列表。返回 JSON 格式的元素信息。")
-    public String listUIElements() {
-        try {
-            List<UIElement> elements = axDumper.getLastScanResult();
-            if (elements.isEmpty()) {
-                // 如果没有缓存，执行一次扫描
-                elements = axDumper.quickScan();
-            }
-            
-            StringBuilder sb = new StringBuilder();
-            sb.append(String.format("共 %d 个可交互元素:\n", elements.size()));
-            for (UIElement e : elements) {
-                sb.append(String.format("  %s: %s \"%s\" at (%d,%d)\n", 
-                    e.getId(), e.getRole(), 
-                    e.getName() != null ? e.getName() : "",
-                    e.getX(), e.getY()));
-            }
-            return sb.toString();
-        } catch (Exception e) {
-            log.error("列出 UI 元素失败", e);
-            return "错误: " + e.getMessage();
-        }
-    }
 
     // ==================== 鼠标操作 ====================
 

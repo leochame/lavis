@@ -55,13 +55,7 @@ public class ReflectionLoop {
 
         try {
             // 使用专门的模型进行反思判断
-//            this.reflectionModel = GoogleAiGeminiChatModel.builder()
-//                    .apiKey(apiKey)
-//                    .modelName("gemini-2.0-flash")
-//                    .temperature(0.3) // 低温度保证稳定性
-//                    .build();
-            this.reflectionModel = OpenAiChatModel.builder()
-                    .baseUrl("https://docs.newapi.pro/v1/chat/completions")
+            this.reflectionModel = GoogleAiGeminiChatModel.builder()
                     .apiKey(apiKey)
                     .modelName("gemini-2.0-flash")
                     .temperature(0.3) // 低温度保证稳定性

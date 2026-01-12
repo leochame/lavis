@@ -2,9 +2,7 @@ package com.lavis.cognitive;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.lavis.perception.AXDumper;
 import com.lavis.perception.ScreenCapturer;
-import com.lavis.perception.UIElement;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.agent.tool.ToolSpecifications;
@@ -12,6 +10,7 @@ import dev.langchain4j.data.message.*;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.output.Response;
 import jakarta.annotation.PostConstruct;
@@ -27,12 +26,7 @@ import java.util.*;
 /**
  * M2 思考模块 - Agent 服务
  * 核心 AI 服务，整合 Gemini 模型与工具调用
- * 
- * 特性:
- * - 多模态支持 (截图 + 文本)
- * - UI 元素感知 (通过 AXDumper 获取结构化数据)
- * - 工具调用循环
- * - 智能坐标映射 (优先使用元素 ID)
+ * 支持多模态 + 工具调用
  */
 @Slf4j
 @Service
@@ -41,7 +35,6 @@ public class AgentService {
 
     private final AgentTools agentTools;
     private final ScreenCapturer screenCapturer;
-    private final AXDumper axDumper;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${gemini.api.key:}")
@@ -73,28 +66,23 @@ public class AgentService {
         - 键盘输入：文本输入、快捷键、特殊按键
         - 系统操作：打开/关闭应用、执行脚本、文件操作
         
-        ## 元素定位策略 (优先级从高到低)
-        1. **元素 ID 定位** (最精确): 当我提供 UI_ELEMENTS 列表时，优先使用元素 ID 调用工具
-           - 使用 `clickElement(id)` 而不是 `click(x, y)`
-           - 使用 `typeInElement(id, text)` 而不是先点击再输入
-        2. **名称定位**: 使用 `clickElementByName(name)` 通过按钮文字定位
-        3. **坐标定位** (兜底): 只有当元素列表中找不到目标时，才使用视觉估算坐标
+        ## 坐标系统
+        - 截图坐标系：左上角 (0,0)，右下角约 (768, 480)
+        - 你看到的截图已压缩，请根据 UI 元素的相对位置估算坐标
+        - 点击按钮时，瞄准按钮中心位置
         
         ## 执行规则
-        1. **先查表**: 检查 UI_ELEMENTS 列表，找到目标元素的 ID
-        2. **再执行**: 使用元素 ID 调用精确工具
-        3. **后验证**: 执行后说明结果
+        1. **先观察**: 仔细分析截图中的 UI 布局，识别所有可交互元素
+        2. **再规划**: 制定清晰的执行步骤
+        3. **后执行**: 调用工具执行操作，每次只执行一个动作
+        4. **要验证**: 执行后说明结果
         
         ## 重要提示
-        - **优先使用元素 ID**: 元素列表中的坐标是精确的，比视觉估算更准确
         - 当用户要求操作时，你必须调用相应的工具来执行
         - 不要只是描述要做什么，而是实际调用工具去做
         - 点击文本框后，等待一下再输入文本
         - 遇到弹窗/对话框，优先处理
         """;
-    
-    @Value("${agent.ui.scan.enabled:true}")
-    private boolean uiScanEnabled = true;
 
     @PostConstruct
     public void init() {
@@ -160,7 +148,6 @@ public class AgentService {
 
     /**
      * 发送带截图的消息 (多模态 + 工具调用)
-     * 同时提供截图和结构化 UI 元素列表，实现混合感知
      */
     public String chatWithScreenshot(String message) {
         if (chatModel == null) {
@@ -174,67 +161,14 @@ public class AgentService {
             String base64Image = screenCapturer.captureScreenAsBase64();
             log.info("📸 截图大小: {} KB", base64Image.length() * 3 / 4 / 1024);
             
-            // 获取 UI 元素 (混合感知模式)
-            String uiContext = "";
-            if (uiScanEnabled) {
-                uiContext = buildUIContext();
-            }
-            
-            // 构建增强的消息内容
-            String enhancedMessage = message;
-            if (!uiContext.isEmpty()) {
-                enhancedMessage = message + "\n\n" + uiContext;
-            }
-            
             // 构建多模态用户消息
             UserMessage userMessage = UserMessage.from(
-                TextContent.from(enhancedMessage),
+                TextContent.from(message),
                 ImageContent.from(base64Image, "image/jpeg")
             );
             
             return processWithTools(userMessage);
         });
-    }
-    
-    /**
-     * 构建 UI 上下文信息 (发送给 LLM)
-     */
-    private String buildUIContext() {
-        try {
-            // 获取窗口信息
-            AXDumper.WindowInfo windowInfo = axDumper.getActiveWindowInfo();
-            
-            // 快速扫描 UI 元素
-            List<UIElement> elements = axDumper.quickScan();
-            
-            if (elements.isEmpty()) {
-                log.debug("未扫描到 UI 元素");
-                return "";
-            }
-            
-            StringBuilder context = new StringBuilder();
-            context.append("## 当前窗口信息\n");
-            if (windowInfo != null) {
-                context.append(String.format("应用: %s, 窗口: %s\n", 
-                    windowInfo.appName(), windowInfo.windowTitle()));
-            }
-            
-            context.append("\n## UI_ELEMENTS (可交互元素列表)\n");
-            context.append("以下是当前屏幕上的可交互元素，请优先使用元素 ID 进行操作:\n");
-            context.append("```json\n");
-            context.append(axDumper.toJsonForLLM(elements));
-            context.append("\n```\n");
-            
-            // 添加简要说明
-            context.append("\n提示: 使用 clickElement(\"btn_0\") 比 click(x, y) 更精确。\n");
-            
-            log.info("📋 UI 上下文: {} 个元素", elements.size());
-            return context.toString();
-            
-        } catch (Exception e) {
-            log.warn("构建 UI 上下文失败: {}", e.getMessage());
-            return "";
-        }
     }
 
     /**
