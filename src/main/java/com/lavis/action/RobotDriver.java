@@ -55,60 +55,80 @@ public class RobotDriver {
     }
 
     /**
-     * 将 AI 返回的坐标转换为 Robot 使用的逻辑坐标
-     * 
-     * 【M3-2 增强】使用 ScreenCapturer 的安全坐标转换
+     * 将坐标转换为安全的逻辑屏幕坐标（带边界检查）
      * 
      * 【坐标系统说明】
-     * - AI 坐标：基于 768px 宽度的压缩图像坐标
-     * - 逻辑坐标：macOS 屏幕逻辑坐标（如 1440x900），Robot.mouseMove() 使用这个
+     * - 逻辑坐标：macOS 屏幕逻辑坐标（如 1440x900），AI 直接使用这个坐标
      * - 物理坐标：Retina 屏幕实际像素（如 2880x1800），仅截图内部使用
      * 
      * 安全特性：
      * - 越界保护：确保坐标在屏幕范围内
      * - 安全边距：避免触发 Hot Corners、菜单栏等
      * 
-     * @param aiX AI 输出的 X 坐标（0-768）
-     * @param aiY AI 输出的 Y 坐标
-     * @return Robot 使用的安全逻辑屏幕坐标
+     * @param x 逻辑屏幕坐标 X
+     * @param y 逻辑屏幕坐标 Y
+     * @return 安全的逻辑屏幕坐标
      */
-    public Point convertToRobotCoordinates(int aiX, int aiY) {
-        // 使用 ScreenCapturer 提供的安全转换方法
-        return screenCapturer.aiToLogicalSafe(aiX, aiY);
+    public Point convertToRobotCoordinates(int x, int y) {
+        return convertToRobotCoordinates(x, y, ScreenCapturer.SafeZoneConfig.DEFAULT);
     }
     
     /**
      * 使用自定义安全配置转换坐标
      */
-    public Point convertToRobotCoordinates(int aiX, int aiY, 
+    public Point convertToRobotCoordinates(int x, int y, 
                                            ScreenCapturer.SafeZoneConfig safeConfig) {
-        return screenCapturer.aiToLogicalSafe(aiX, aiY, safeConfig);
+        Dimension screenSize = screenCapturer.getScreenSize();
+        
+        // 安全边界
+        int minX = safeConfig.leftMargin;
+        int maxX = screenSize.width - safeConfig.rightMargin;
+        int minY = safeConfig.topMargin;
+        int maxY = screenSize.height - safeConfig.bottomMargin;
+        
+        // 钳位
+        int safeX = Math.max(minX, Math.min(x, maxX));
+        int safeY = Math.max(minY, Math.min(y, maxY));
+        
+        // 如果发生修正，记录日志
+        if (safeX != x || safeY != y) {
+            log.warn("🛡️ 坐标安全修正: ({},{}) -> ({},{}) [边界: {}-{}, {}-{}]",
+                    x, y, safeX, safeY, minX, maxX, minY, maxY);
+        }
+        
+        return new Point(safeX, safeY);
     }
     
     /**
-     * 检查 AI 坐标是否安全
+     * 检查坐标是否安全
      */
-    public boolean isCoordinateSafe(int aiX, int aiY) {
-        return screenCapturer.isAiCoordSafe(aiX, aiY);
+    public boolean isCoordinateSafe(int x, int y) {
+        Dimension screenSize = screenCapturer.getScreenSize();
+        ScreenCapturer.SafeZoneConfig config = ScreenCapturer.SafeZoneConfig.DEFAULT;
+        
+        return x >= config.leftMargin 
+            && x <= screenSize.width - config.rightMargin
+            && y >= config.topMargin 
+            && y <= screenSize.height - config.bottomMargin;
     }
 
     /**
-     * 移动鼠标到指定位置 (AI坐标)
+     * 移动鼠标到指定位置（逻辑屏幕坐标）
      * 
      * 【M3-1 增强】使用贝塞尔曲线 + 随机延迟实现拟人化移动
      * 
-     * @param aiX AI 坐标 X（0-768）
-     * @param aiY AI 坐标 Y
+     * @param x 逻辑屏幕坐标 X
+     * @param y 逻辑屏幕坐标 Y
      * @return 执行结果，包含是否成功和偏差信息
      */
-    public ExecutionResult moveTo(int aiX, int aiY) {
+    public ExecutionResult moveTo(int x, int y) {
         long startTime = System.currentTimeMillis();
 
         // 记录移动前位置
         Point beforePos = getMouseLocation();
 
-        // 转换坐标
-        Point targetPos = convertToRobotCoordinates(aiX, aiY);
+        // 转换为安全坐标（边界检查）
+        Point targetPos = convertToRobotCoordinates(x, y);
 
         if (humanLikeMode) {
             // 【增强】拟人化移动 - 使用增强的贝塞尔曲线
@@ -152,7 +172,7 @@ public class RobotDriver {
 
         ExecutionResult result = new ExecutionResult();
         result.setActionType("moveTo");
-        result.setRequestedAiCoord(new Point(aiX, aiY));
+        result.setRequestedAiCoord(new Point(x, y));
         result.setTargetLogicalCoord(targetPos);
         result.setActualLogicalCoord(afterPos);
         result.setDeviationX(deltaX);
@@ -166,8 +186,8 @@ public class RobotDriver {
             log.error(result.getMessage());
         } else {
             result.setSuccess(true);
-            result.setMessage(String.format("✅ 移动成功: AI(%d,%d)->逻辑(%d,%d)",
-                    aiX, aiY, afterPos.x, afterPos.y));
+            result.setMessage(String.format("✅ 移动成功: 目标(%d,%d)->实际(%d,%d)",
+                    x, y, afterPos.x, afterPos.y));
             log.info(result.getMessage());
         }
 
@@ -187,22 +207,23 @@ public class RobotDriver {
      */
     public void click() {
         robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
+        robot.delay(10);
         robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
         log.info("鼠标左键单击");
     }
 
     /**
-     * 移动并点击 (AI坐标)
+     * 移动并点击（逻辑屏幕坐标）
      * 
-     * @param aiX AI 坐标 X（0-768）
-     * @param aiY AI 坐标 Y
+     * @param x 逻辑屏幕坐标 X
+     * @param y 逻辑屏幕坐标 Y
      * @return 执行结果，包含是否成功和偏差信息
      */
-    public ExecutionResult clickAt(int aiX, int aiY) {
-        log.info("🖱️ 准备点击: AI坐标({},{})", aiX, aiY);
+    public ExecutionResult clickAt(int x, int y) {
+        log.info("🖱️ 准备点击: 坐标({},{})", x, y);
 
         // 先移动
-        ExecutionResult moveResult = moveTo(aiX, aiY);
+        ExecutionResult moveResult = moveTo(x, y);
         if (!moveResult.isSuccess()) {
             // 移动失败，记录但继续尝试点击
             log.warn("⚠️ 移动有偏差，但仍尝试点击");
@@ -217,7 +238,7 @@ public class RobotDriver {
         // 构建点击结果
         ExecutionResult result = new ExecutionResult();
         result.setActionType("click");
-        result.setRequestedAiCoord(new Point(aiX, aiY));
+        result.setRequestedAiCoord(new Point(x, y));
         result.setTargetLogicalCoord(moveResult.getTargetLogicalCoord());
         result.setActualLogicalCoord(actualPos);
         result.setDeviationX(moveResult.getDeviationX());
@@ -226,12 +247,11 @@ public class RobotDriver {
         result.setSuccess(moveResult.isSuccess());
 
         if (moveResult.isSuccess()) {
-            result.setMessage(String.format("✅ 点击成功: AI(%d,%d)->逻辑(%d,%d)",
-                    aiX, aiY, actualPos.x, actualPos.y));
+            result.setMessage(String.format("✅ 点击成功: 目标(%d,%d)->实际(%d,%d)",
+                    x, y, actualPos.x, actualPos.y));
         } else {
-            result.setMessage(String.format("⚠️ 点击完成但有偏差: AI(%d,%d) 目标(%d,%d) 实际(%d,%d) 偏差(%d,%d)",
-                    aiX, aiY,
-                    moveResult.getTargetLogicalCoord().x, moveResult.getTargetLogicalCoord().y,
+            result.setMessage(String.format("⚠️ 点击完成但有偏差: 目标(%d,%d) 实际(%d,%d) 偏差(%d,%d)",
+                    x, y,
                     actualPos.x, actualPos.y,
                     moveResult.getDeviationX(), moveResult.getDeviationY()));
         }
@@ -251,10 +271,10 @@ public class RobotDriver {
     }
 
     /**
-     * 移动并双击 (AI坐标)
+     * 移动并双击（逻辑屏幕坐标）
      */
-    public void doubleClickAt(int geminiX, int geminiY) {
-        moveTo(geminiX, geminiY);
+    public void doubleClickAt(int x, int y) {
+        moveTo(x, y);
         delay(50);
         doubleClick();
     }
@@ -269,16 +289,16 @@ public class RobotDriver {
     }
 
     /**
-     * 移动并右键点击 (AI坐标)
+     * 移动并右键点击（逻辑屏幕坐标）
      */
-    public void rightClickAt(int geminiX, int geminiY) {
-        moveTo(geminiX, geminiY);
+    public void rightClickAt(int x, int y) {
+        moveTo(x, y);
         delay(50);
         rightClick();
     }
 
     /**
-     * 拖拽操作
+     * 拖拽操作（逻辑屏幕坐标）
      * 
      * 【M3-1 增强】使用基于轨迹的平滑拖拽，解决断触问题：
      * 1. 先移动到起点并稳定
@@ -291,7 +311,7 @@ public class RobotDriver {
      */
     public ExecutionResult drag(int fromX, int fromY, int toX, int toY) {
         long startTime = System.currentTimeMillis();
-        log.info("🎯 开始拖拽: AI({},{}) -> AI({},{})", fromX, fromY, toX, toY);
+        log.info("🎯 开始拖拽: ({},{}) -> ({},{})", fromX, fromY, toX, toY);
         
         // 1. 先移动到起点
         ExecutionResult moveResult = moveTo(fromX, fromY);
@@ -302,7 +322,7 @@ public class RobotDriver {
         // 稳定等待
         delay(80);
         
-        // 获取转换后的坐标
+        // 获取安全坐标
         Point startPos = convertToRobotCoordinates(fromX, fromY);
         Point targetPos = convertToRobotCoordinates(toX, toY);
         
@@ -367,11 +387,11 @@ public class RobotDriver {
         int absDev = Math.abs(result.getDeviationX()) + Math.abs(result.getDeviationY());
         if (absDev > MAX_ALLOWED_DEVIATION * 2) {
             result.setSuccess(false);
-            result.setMessage(String.format("⚠️ 拖拽完成但有较大偏差: (%d,%d)->(%d,%d) 偏差:(%d,%d)",
+            result.setMessage(String.format("⚠️ 拖拽完成但有较大偏差: 从(%d,%d)到(%d,%d) 偏差:(%d,%d)",
                     fromX, fromY, toX, toY, result.getDeviationX(), result.getDeviationY()));
         } else {
             result.setSuccess(true);
-            result.setMessage(String.format("✅ 拖拽成功: (%d,%d)->(%d,%d)", fromX, fromY, toX, toY));
+            result.setMessage(String.format("✅ 拖拽成功: 从(%d,%d)到(%d,%d)", fromX, fromY, toX, toY));
         }
         
         log.info("🎯 {}", result.getMessage());

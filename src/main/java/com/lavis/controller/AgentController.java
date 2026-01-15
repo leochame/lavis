@@ -1,7 +1,8 @@
 package com.lavis.controller;
 
 import com.lavis.cognitive.AgentService;
-import com.lavis.cognitive.ReflectionLoop;
+import com.lavis.cognitive.computeruse.ComputerUseAgent;
+import com.lavis.cognitive.orchestrator.TaskOrchestrator;
 import com.lavis.perception.ScreenCapturer;
 import com.lavis.ui.JavaFXInitializer;
 import com.lavis.ui.OverlayWindow;
@@ -19,6 +20,8 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 /**
  * Agent REST API 控制器
  * 提供 HTTP 接口与 Agent 交互
+ * 
+ * 【架构升级】统一使用 TaskOrchestrator 作为任务执行入口
  */
 @Slf4j
 @RestController
@@ -27,9 +30,9 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 public class AgentController {
 
     private final AgentService agentService;
-    private final ReflectionLoop reflectionLoop;
     private final ScreenCapturer screenCapturer;
     private final JavaFXInitializer javaFXInitializer;
+    private final ComputerUseAgent computerUseAgent;
     
     // 任务历史记录 (最多保留 50 条)
     private final Deque<TaskRecord> taskHistory = new ConcurrentLinkedDeque<>();
@@ -118,7 +121,10 @@ public class AgentController {
     }
 
     /**
-     * 执行自动化任务 (带反思循环)
+     * 执行自动化任务
+     * 
+     * 【架构升级】统一使用 TaskOrchestrator 执行，实现 M-E-R 闭环
+     * 这个接口现在等同于 /execute-plan，保留是为了向后兼容
      */
     @PostMapping("/execute")
     public ResponseEntity<Map<String, Object>> executeTask(@RequestBody Map<String, String> request) {
@@ -130,15 +136,14 @@ public class AgentController {
         log.info("🚀 收到执行任务请求: {}", task);
         
         javaFXInitializer.updateState(OverlayWindow.AgentState.EXECUTING);
-        javaFXInitializer.setThinkingText("执行任务中...");
+        javaFXInitializer.setThinkingText("规划任务中...");
         javaFXInitializer.addLog("🎯 任务: " + task);
 
         long startTime = System.currentTimeMillis();
         try {
-            ReflectionLoop.ReflectionResult result = reflectionLoop.executeWithReflection(
-                task,
-                javaFXInitializer::addLog
-            );
+            // 【统一入口】使用 TaskOrchestrator 执行任务
+            TaskOrchestrator orchestrator = agentService.getTaskOrchestrator();
+            TaskOrchestrator.OrchestratorResult result = orchestrator.executeGoal(task);
             long duration = System.currentTimeMillis() - startTime;
             
             javaFXInitializer.updateState(result.isSuccess() ? 
@@ -150,9 +155,21 @@ public class AgentController {
             Map<String, Object> response = new HashMap<>();
             response.put("success", result.isSuccess());
             response.put("message", result.getMessage());
-            response.put("iterations", result.getIterations());
-            response.put("actionHistory", result.getActionHistory());
+            response.put("partial", result.isPartial());
             response.put("duration_ms", duration);
+            
+            // 添加计划详情
+            if (result.getPlan() != null) {
+                response.put("plan_summary", result.getPlan().generateSummary());
+                response.put("total_steps", result.getPlan().getSteps().size());
+                response.put("progress_percent", result.getPlan().getProgressPercent());
+            }
+            
+            // 添加 GlobalContext 信息
+            if (orchestrator.getGlobalContext() != null) {
+                response.put("execution_summary", orchestrator.getGlobalContext().getExecutionSummary());
+            }
+            
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("执行任务失败", e);
@@ -235,6 +252,104 @@ public class AgentController {
         javaFXInitializer.addLog("🗑️ 历史记录已清空");
         return ResponseEntity.ok(Map.of("status", "历史记录已清空"));
     }
+    
+    /**
+     * 【新架构】使用 Plan-Execute 模式执行复杂任务
+     * 
+     * 这是双层大脑架构的 API：
+     * - Planner 负责拆解任务为步骤
+     * - Executor 逐步执行（独立上下文，自我修正）
+     */
+    @PostMapping("/execute-plan")
+    public ResponseEntity<Map<String, Object>> executePlanTask(@RequestBody Map<String, String> request) {
+        String goal = request.get("goal");
+        if (goal == null || goal.isBlank()) {
+            goal = request.get("task");
+        }
+        if (goal == null || goal.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "目标描述不能为空"));
+        }
+
+        log.info("🚀 [Plan-Execute] 收到任务请求: {}", goal);
+        
+        javaFXInitializer.updateState(OverlayWindow.AgentState.EXECUTING);
+        javaFXInitializer.setThinkingText("规划任务中...");
+        javaFXInitializer.addLog("🎯 [Plan-Execute] 目标: " + goal);
+
+        long startTime = System.currentTimeMillis();
+        try {
+            String result = agentService.executePlanTask(goal);
+            long duration = System.currentTimeMillis() - startTime;
+            
+            boolean success = result.startsWith("✅");
+            javaFXInitializer.updateState(success ? 
+                OverlayWindow.AgentState.SUCCESS : OverlayWindow.AgentState.ERROR);
+            javaFXInitializer.setThinkingText("");
+            javaFXInitializer.addLog(success ? "✅ 任务完成" : "⚠️ 任务部分完成或失败");
+            
+            addToHistory("plan-execute", goal, result, success, duration);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", success);
+            response.put("result", result);
+            response.put("duration_ms", duration);
+            
+            // 获取计划详情
+            var orchestrator = agentService.getTaskOrchestrator();
+            if (orchestrator != null && orchestrator.getCurrentPlan() != null) {
+                response.put("plan_summary", orchestrator.getCurrentPlan().generateSummary());
+                response.put("execution_summary", orchestrator.getExecutionSummary());
+            }
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Plan-Execute 任务失败", e);
+            javaFXInitializer.updateState(OverlayWindow.AgentState.ERROR);
+            javaFXInitializer.setThinkingText("");
+            addToHistory("plan-execute", goal, e.getMessage(), false, System.currentTimeMillis() - startTime);
+            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    /**
+     * 重置调度器状态
+     */
+    @PostMapping("/orchestrator/reset")
+    public ResponseEntity<Map<String, String>> resetOrchestrator() {
+        var orchestrator = agentService.getTaskOrchestrator();
+        if (orchestrator != null) {
+            orchestrator.reset();
+        }
+        javaFXInitializer.addLog("🔄 调度器已重置");
+        return ResponseEntity.ok(Map.of("status", "调度器已重置"));
+    }
+    
+    /**
+     * 获取调度器状态
+     */
+    @GetMapping("/orchestrator/status")
+    public ResponseEntity<Map<String, Object>> getOrchestratorStatus() {
+        var orchestrator = agentService.getTaskOrchestrator();
+        Map<String, Object> status = new HashMap<>();
+        
+        if (orchestrator != null) {
+            status.put("state", orchestrator.getState().name());
+            status.put("summary", orchestrator.getExecutionSummary());
+            
+            if (orchestrator.getCurrentPlan() != null) {
+                var plan = orchestrator.getCurrentPlan();
+                status.put("plan_id", plan.getPlanId());
+                status.put("goal", plan.getUserGoal());
+                status.put("total_steps", plan.getSteps().size());
+                status.put("progress_percent", plan.getProgressPercent());
+                status.put("plan_status", plan.getStatus().name());
+            }
+        } else {
+            status.put("state", "NOT_INITIALIZED");
+        }
+        
+        return ResponseEntity.ok(status);
+    }
 
     /**
      * 显示 Overlay UI
@@ -252,6 +367,80 @@ public class AgentController {
     public ResponseEntity<Map<String, String>> hideUI() {
         javaFXInitializer.hideOverlay();
         return ResponseEntity.ok(Map.of("status", "UI已隐藏"));
+    }
+    
+    // ==================== Gemini Computer Use API ====================
+    
+    /**
+     * 使用 Gemini Computer Use 模式执行任务
+     * 
+     * 这是基于 Google Gemini Computer Use API 的实现：
+     * - 使用预定义的 Computer Use 操作（click_at, type_text_at, scroll_document 等）
+     * - 坐标使用归一化范围（0-1000）
+     * - 支持 safety_decision 安全确认机制
+     * 
+     * @see <a href="https://ai.google.dev/gemini-api/docs/computer-use">Gemini Computer Use</a>
+     */
+    @PostMapping("/computer-use")
+    public ResponseEntity<Map<String, Object>> executeComputerUseTask(@RequestBody Map<String, Object> request) {
+        String task = (String) request.get("task");
+        if (task == null || task.isBlank()) {
+            task = (String) request.get("query");
+        }
+        if (task == null || task.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "任务描述不能为空"));
+        }
+        
+        @SuppressWarnings("unchecked")
+        List<String> excludedFunctions = request.containsKey("excluded_functions") 
+                ? (List<String>) request.get("excluded_functions") 
+                : List.of();
+        
+        log.info("🖥️ [Computer Use] 收到任务请求: {}", task);
+        
+        javaFXInitializer.updateState(OverlayWindow.AgentState.EXECUTING);
+        javaFXInitializer.setThinkingText("Computer Use 执行中...");
+        javaFXInitializer.addLog("🖥️ [Computer Use] 任务: " + task);
+        
+        long startTime = System.currentTimeMillis();
+        try {
+            ComputerUseAgent.AgentResult result = computerUseAgent.executeTask(task, excludedFunctions);
+            long duration = System.currentTimeMillis() - startTime;
+            
+            javaFXInitializer.updateState(result.isSuccess() ? 
+                    OverlayWindow.AgentState.SUCCESS : 
+                    (result.isCancelled() ? OverlayWindow.AgentState.IDLE : OverlayWindow.AgentState.ERROR));
+            javaFXInitializer.setThinkingText("");
+            
+            addToHistory("computer-use", task, 
+                    result.isSuccess() ? result.getReasoning() : result.getErrorMessage(), 
+                    result.isSuccess(), duration);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", result.isSuccess());
+            response.put("cancelled", result.isCancelled());
+            response.put("reasoning", result.getReasoning());
+            response.put("error", result.getErrorMessage());
+            response.put("duration_ms", duration);
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Computer Use 任务失败", e);
+            javaFXInitializer.updateState(OverlayWindow.AgentState.ERROR);
+            javaFXInitializer.setThinkingText("");
+            addToHistory("computer-use", task, e.getMessage(), false, System.currentTimeMillis() - startTime);
+            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    /**
+     * 中断 Computer Use 执行
+     */
+    @PostMapping("/computer-use/interrupt")
+    public ResponseEntity<Map<String, String>> interruptComputerUse() {
+        computerUseAgent.interrupt();
+        javaFXInitializer.addLog("⚠️ Computer Use 执行已中断");
+        return ResponseEntity.ok(Map.of("status", "Computer Use 执行已中断"));
     }
 
     /**
