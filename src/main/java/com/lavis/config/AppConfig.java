@@ -1,5 +1,6 @@
 package com.lavis.config;
 
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.cors.CorsConfiguration;
@@ -12,6 +13,7 @@ import java.util.Arrays;
  * 应用配置类
  */
 @Configuration
+@ConfigurationPropertiesScan("com.lavis.config.llm")
 public class AppConfig {
 
     /**

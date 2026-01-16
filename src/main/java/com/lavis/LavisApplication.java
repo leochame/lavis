@@ -1,6 +1,7 @@
 package com.lavis;
 
 import com.lavis.cognitive.AgentService;
+import com.lavis.cognitive.orchestrator.TaskOrchestrator;
 import com.lavis.ui.JavaFXInitializer;
 import com.lavis.ui.OverlayWindow;
 import jakarta.annotation.PostConstruct;
@@ -28,6 +29,7 @@ public class LavisApplication {
 
     private final JavaFXInitializer javaFXInitializer;
     private final AgentService agentService;
+    private final TaskOrchestrator taskOrchestrator;
 
     public static void main(String[] args) {
         // 设置 JavaFX 相关系统属性
@@ -68,6 +70,12 @@ public class LavisApplication {
             // 设置用户输入回调
             javaFXInitializer.setUserInputCallback(this::handleUserInput);
             
+            // 设置模式切换回调
+            OverlayWindow overlayWindow = javaFXInitializer.getOverlayWindow();
+            if (overlayWindow != null) {
+                overlayWindow.setOnModeChange(this::handleModeChange);
+            }
+            
             // 显示 UI
             javaFXInitializer.showOverlay();
             javaFXInitializer.addLog("Lavis 已启动，等待指令...");
@@ -81,26 +89,52 @@ public class LavisApplication {
     private void handleUserInput(String input) {
         log.info("收到用户输入: {}", input);
         
+        // 获取当前模式
+        OverlayWindow overlayWindow = javaFXInitializer.getOverlayWindow();
+        boolean isTaskMode = overlayWindow != null && overlayWindow.isTaskMode();
+        
         // 异步处理用户输入
         new Thread(() -> {
             try {
-                javaFXInitializer.updateState(OverlayWindow.AgentState.THINKING);
-                javaFXInitializer.setThinkingText("正在处理...");
-                javaFXInitializer.addLog("用户: " + input);
-                
-                // 调用 Agent 处理
-                String response = agentService.chatWithScreenshot(input);
-                
-                javaFXInitializer.updateState(OverlayWindow.AgentState.IDLE);
-                javaFXInitializer.setThinkingText("");
-                javaFXInitializer.addLog("Lavis: " + response);
+                if (isTaskMode) {
+                    // 慢系统：使用 TaskOrchestrator
+                    javaFXInitializer.updateState(OverlayWindow.AgentState.EXECUTING);
+                    javaFXInitializer.setThinkingText("规划任务中...");
+                    javaFXInitializer.addLog("🎯 任务: " + input);
+                    
+                    TaskOrchestrator.OrchestratorResult result = taskOrchestrator.executeGoal(input);
+                    
+                    javaFXInitializer.updateState(result.isSuccess() ?
+                            OverlayWindow.AgentState.SUCCESS : OverlayWindow.AgentState.ERROR);
+                    javaFXInitializer.setThinkingText("");
+                    javaFXInitializer.addLog("✅ 结果: " + result.getMessage());
+                    
+                    if (result.getPlan() != null) {
+                        javaFXInitializer.addLog("📋 计划: " + result.getPlan().generateSummary());
+                    }
+                } else {
+                    // 快系统：使用 chatWithScreenshot
+                    javaFXInitializer.updateState(OverlayWindow.AgentState.THINKING);
+                    javaFXInitializer.setThinkingText("分析屏幕...");
+                    javaFXInitializer.addLog("👤 用户: " + input);
+                    
+                    String response = agentService.chatWithScreenshot(input);
+                    
+                    javaFXInitializer.updateState(OverlayWindow.AgentState.IDLE);
+                    javaFXInitializer.setThinkingText("");
+                    javaFXInitializer.addLog("🤖 Lavis: " + response);
+                }
                 
             } catch (Exception e) {
                 log.error("处理用户输入失败", e);
                 javaFXInitializer.updateState(OverlayWindow.AgentState.ERROR);
-                javaFXInitializer.addLog("错误: " + e.getMessage());
+                javaFXInitializer.addLog("❌ 错误: " + e.getMessage());
             }
         }, "UserInput-Handler").start();
+    }
+    
+    private void handleModeChange(boolean isTaskMode) {
+        log.info("模式切换: {}", isTaskMode ? "慢系统(任务模式)" : "快系统(对话模式)");
     }
 
     private void printStartupInfo() {
@@ -110,9 +144,10 @@ public class LavisApplication {
         log.info("├─────────────────────────────────────────┤");
         log.info("│  REST API: http://localhost:8080        │");
         log.info("│  状态:     GET  /api/agent/status       │");
-        log.info("│  对话:     POST /api/agent/chat         │");
-        log.info("│  截图对话: POST /api/agent/chat-with-screenshot │");
-        log.info("│  执行任务: POST /api/agent/execute      │");
+        log.info("│  快系统:   POST /api/agent/chat         │");
+        log.info("│  慢系统:   POST /api/agent/task         │");
+        log.info("│  停止:     POST /api/agent/stop         │");
+        log.info("│  重置:     POST /api/agent/reset        │");
         log.info("│  截图:     GET  /api/agent/screenshot   │");
         log.info("├─────────────────────────────────────────┤");
         log.info("│  模型: " + agentService.getModelInfo());
@@ -120,8 +155,8 @@ public class LavisApplication {
         log.info("");
         
         if (!agentService.isAvailable()) {
-            log.warn("⚠️  Agent 未可用！请检查 GEMINI_API_KEY 环境变量");
-            log.warn("    设置方法: export GEMINI_API_KEY=your_api_key");
+            log.warn("⚠️  Agent 未可用！请检查配置");
+            log.warn("    检查 application.properties 中的 app.llm.models.* 配置");
         }
     }
 }
