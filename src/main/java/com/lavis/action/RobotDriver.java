@@ -42,7 +42,7 @@ public class RobotDriver {
     private double mouseSpeedFactor = 3.5;
     
     // 基础步间延迟 (毫秒) - 【优化】大幅减少步间延迟
-    private static final int BASE_STEP_DELAY_MS = 0;
+    private static final int BASE_STEP_DELAY_MS = 2;
     
     // 拖拽操作的额外延迟 - 【优化】减少拖拽延迟
     private static final int DRAG_STEP_DELAY_MS = 1;
@@ -133,8 +133,11 @@ public class RobotDriver {
         if (humanLikeMode) {
             // 【增强】拟人化移动 - 使用增强的贝塞尔曲线
             double distance = beforePos.distance(targetPos);
-            int steps = BezierMouseUtils.calculateRecommendedSteps(distance, mouseSpeedFactor);
-            
+            // 如果距离很长，减少步数或延迟，避免移动耗时过长
+            double dynamicSpeedFactor = distance > 500 ? mouseSpeedFactor * 1.5 : mouseSpeedFactor;
+
+            int steps = BezierMouseUtils.calculateRecommendedSteps(distance, dynamicSpeedFactor);
+
             java.util.List<Point> path = BezierMouseUtils.generatePath(
                     beforePos, targetPos, steps,
                     BezierMouseUtils.EasingType.HUMAN_LIKE, true);
@@ -146,13 +149,12 @@ public class RobotDriver {
                 
                 // 【增强】随机延迟，模拟人类速度变化
                 int stepDelay = BezierMouseUtils.generateStepDelay(i, path.size(), BASE_STEP_DELAY_MS);
-                if (stepDelay > 0) {
-                    robot.delay(stepDelay);
-                }
+                robot.delay(Math.max(1, stepDelay));
             }
             
             // 确保最后精准落在目标点
             robot.mouseMove(targetPos.x, targetPos.y);
+            robot.delay(30);
         } else {
             // 机械瞬间移动
             robot.mouseMove(targetPos.x, targetPos.y);

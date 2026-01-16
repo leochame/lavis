@@ -51,6 +51,8 @@ public class OverlayWindow {
     private Button sendButton;
     
     private Consumer<String> onUserInput;
+    private Consumer<Boolean> onModeChange; // Boolean.TRUE = 慢系统(task), Boolean.FALSE = 快系统(chat)
+    private boolean isTaskMode = false; // false = chat (快系统), true = task (慢系统)
     private final List<String> logHistory = new ArrayList<>();
     private final List<String> inputHistory = new ArrayList<>();
     private int historyIndex = -1;
@@ -204,12 +206,15 @@ public class OverlayWindow {
         // 输入区域
         HBox inputArea = createInputArea();
         
+        // 模式切换区域
+        HBox modeArea = createModeArea();
+        
         // 底部提示
         Label hint = new Label("⌘+Enter 发送 | ⌘+K 清空 | ↑↓ 历史");
         hint.setFont(Font.font("SF Pro Display", 10));
         hint.setTextFill(Color.gray(0.4));
         
-        container.getChildren().addAll(titleBar, statusArea, logContainer, inputArea, hint);
+        container.getChildren().addAll(titleBar, statusArea, logContainer, modeArea, inputArea, hint);
         
         return container;
     }
@@ -381,6 +386,99 @@ public class OverlayWindow {
     }
 
     /**
+     * 创建模式切换区域
+     */
+    private HBox createModeArea() {
+        HBox modeArea = new HBox(8);
+        modeArea.setAlignment(Pos.CENTER);
+        modeArea.setPadding(new Insets(4, 0, 0, 0));
+        
+        Label modeLabel = new Label("模式:");
+        modeLabel.setFont(Font.font("SF Pro Display", 10));
+        modeLabel.setTextFill(Color.gray(0.5));
+        
+        // 快系统按钮
+        ToggleButton chatBtn = new ToggleButton("💬 快系统");
+        chatBtn.setSelected(!isTaskMode);
+        chatBtn.setFont(Font.font("SF Pro Display", 10));
+        chatBtn.setStyle("""
+            -fx-background-color: rgba(59, 130, 246, 0.3);
+            -fx-text-fill: #93C5FD;
+            -fx-background-radius: 6;
+            -fx-padding: 4 8;
+            -fx-cursor: hand;
+            """);
+        
+        // 慢系统按钮
+        ToggleButton taskBtn = new ToggleButton("🚀 慢系统");
+        taskBtn.setSelected(isTaskMode);
+        taskBtn.setFont(Font.font("SF Pro Display", 10));
+        taskBtn.setStyle("""
+            -fx-background-color: rgba(139, 92, 246, 0.3);
+            -fx-text-fill: #C4B5FD;
+            -fx-background-radius: 6;
+            -fx-padding: 4 8;
+            -fx-cursor: hand;
+            """);
+        
+        // 创建 ToggleGroup 确保只能选一个
+        ToggleGroup modeGroup = new ToggleGroup();
+        chatBtn.setToggleGroup(modeGroup);
+        taskBtn.setToggleGroup(modeGroup);
+        
+        // 选中样式
+        Runnable updateStyles = () -> {
+            if (chatBtn.isSelected()) {
+                chatBtn.setStyle("""
+                    -fx-background-color: rgba(59, 130, 246, 0.6);
+                    -fx-text-fill: white;
+                    -fx-background-radius: 6;
+                    -fx-padding: 4 8;
+                    -fx-cursor: hand;
+                    """);
+                taskBtn.setStyle("""
+                    -fx-background-color: rgba(139, 92, 246, 0.3);
+                    -fx-text-fill: #C4B5FD;
+                    -fx-background-radius: 6;
+                    -fx-padding: 4 8;
+                    -fx-cursor: hand;
+                    """);
+                isTaskMode = false;
+            } else {
+                taskBtn.setStyle("""
+                    -fx-background-color: rgba(139, 92, 246, 0.6);
+                    -fx-text-fill: white;
+                    -fx-background-radius: 6;
+                    -fx-padding: 4 8;
+                    -fx-cursor: hand;
+                    """);
+                chatBtn.setStyle("""
+                    -fx-background-color: rgba(59, 130, 246, 0.3);
+                    -fx-text-fill: #93C5FD;
+                    -fx-background-radius: 6;
+                    -fx-padding: 4 8;
+                    -fx-cursor: hand;
+                    """);
+                isTaskMode = true;
+            }
+            
+            if (onModeChange != null) {
+                onModeChange.accept(Boolean.valueOf(isTaskMode));
+            }
+            
+            updateInputPlaceholder();
+            addLog(isTaskMode ? "🚀 切换到慢系统（任务模式）" : "💬 切换到快系统（对话模式）");
+        };
+        
+        chatBtn.setOnAction(e -> updateStyles.run());
+        taskBtn.setOnAction(e -> updateStyles.run());
+        
+        modeArea.getChildren().addAll(modeLabel, chatBtn, taskBtn);
+        
+        return modeArea;
+    }
+    
+    /**
      * 创建输入区域
      */
     private HBox createInputArea() {
@@ -389,7 +487,7 @@ public class OverlayWindow {
         inputArea.setPadding(new Insets(8, 0, 0, 0));
         
         inputField = new TextField();
-        inputField.setPromptText("输入指令... (支持自然语言)");
+        updateInputPlaceholder();
         inputField.setFont(Font.font("SF Pro Display", 13));
         inputField.setStyle("""
             -fx-background-color: rgba(55, 65, 81, 0.6);
@@ -643,6 +741,32 @@ public class OverlayWindow {
      */
     public void setOnUserInput(Consumer<String> callback) {
         this.onUserInput = callback;
+    }
+    
+    /**
+     * 设置模式切换回调
+     */
+    public void setOnModeChange(Consumer<Boolean> callback) {
+        this.onModeChange = callback;
+    }
+    
+    /**
+     * 获取当前模式
+     * @return true = 慢系统(task), false = 快系统(chat)
+     */
+    public boolean isTaskMode() {
+        return isTaskMode;
+    }
+    
+    /**
+     * 更新输入框占位符
+     */
+    private void updateInputPlaceholder() {
+        if (isTaskMode) {
+            inputField.setPromptText("输入任务目标... (复杂任务，多步操作)");
+        } else {
+            inputField.setPromptText("输入指令... (快速问答，单步操作)");
+        }
     }
 
     private Timeline pulseAnimation;
