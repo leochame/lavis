@@ -10,9 +10,11 @@ const __dirname = dirname(__filename);
 const execAsync = promisify(exec);
 let mainWindow = null;
 let tray = null;
-const isDev = process.env.NODE_ENV === 'development';
+// In development mode when running electron:dev
+const isDev = !app.isPackaged || process.env.NODE_ENV === 'development';
 const BACKEND_PORT = 8080;
 const BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
+
 function createWindow() {
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width, height } = primaryDisplay.workAreaSize;
@@ -20,6 +22,9 @@ function createWindow() {
     const CAPSULE_SIZE = 80;
     const CHAT_WIDTH = 400;
     const CHAT_HEIGHT = 600;
+    
+    console.log('Creating window...', { isDev, width, height });
+    
     mainWindow = new BrowserWindow({
         width: CAPSULE_SIZE,
         height: CAPSULE_SIZE,
@@ -31,6 +36,7 @@ function createWindow() {
         skipTaskbar: true, // Don't show in taskbar
         resizable: false,
         hasShadow: false, // No shadow for floating effect
+        show: true, // Show window immediately
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
@@ -41,20 +47,38 @@ function createWindow() {
             visualEffectState: 'active',
         }),
     });
-    // Load the app
-    if (isDev) {
-        mainWindow.loadURL('http://localhost:5173');
-        mainWindow.webContents.openDevTools();
-    }
-    else {
-        mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
-    }
-    // Ensure window is visible after load
-    mainWindow.webContents.once('did-finish-load', () => {
-        mainWindow?.show();
-    });
+    
     // Show window immediately
     mainWindow.show();
+    mainWindow.focus();
+    
+    // Load the app
+    if (isDev) {
+        console.log('Loading dev URL: http://localhost:5173');
+        mainWindow.loadURL('http://localhost:5173').catch(err => {
+            console.error('Failed to load URL:', err);
+        });
+        // Open DevTools after a short delay to ensure window is ready
+        setTimeout(() => {
+            mainWindow?.webContents.openDevTools();
+        }, 1000);
+    }
+    else {
+        console.log('Loading production file');
+        mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    }
+    
+    // Ensure window is visible after load
+    mainWindow.webContents.once('did-finish-load', () => {
+        console.log('Window loaded, ensuring visibility');
+        mainWindow?.show();
+        mainWindow?.focus();
+    });
+    
+    // Handle load errors
+    mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+        console.error('Failed to load:', errorCode, errorDescription);
+    });
     // Hide on close (don't quit)
     mainWindow.on('close', (e) => {
         e.preventDefault();
@@ -168,9 +192,11 @@ ipcMain.on('window-resize-chat', () => {
 });
 // App lifecycle
 app.whenReady().then(() => {
+    console.log('App is ready, creating window...');
     createWindow();
     createTray();
     registerGlobalShortcuts();
+    console.log('Window created, tray created, shortcuts registered');
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
             createWindow();
