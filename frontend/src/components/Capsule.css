@@ -1,0 +1,92 @@
+.capsule {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  z-index: 9999;
+  -webkit-app-region: no-drag;
+}
+
+.capsule:hover {
+  transform: scale(1.1);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+}
+
+.capsule__core {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+/* States */
+.capsule--idle .capsule__core {
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+}
+
+.capsule--thinking .capsule__core {
+  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+}
+
+.capsule--executing .capsule__core {
+  background: linear-gradient(135deg, #10b981, #3b82f6);
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
+  animation: rotate 2s linear infinite;
+}
+
+.capsule--error .capsule__core {
+  background: linear-gradient(135deg, #ef4444, #f97316);
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+  animation: pulse 0.5s ease-in-out infinite;
+}
+
+/* Animations */
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.8;
+  }
+}
+
+.capsule--breathing .capsule__core {
+  animation: breathe 2s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.85;
+  }
+}
