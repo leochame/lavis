@@ -45,14 +45,13 @@ public class MicroExecutorService {
     private final ScreenCapturer screenCapturer;
     private final ToolExecutionService toolExecutionService;
     private final List<ToolSpecification> reflectionToolSpecs;
-    private final ReflectionTools reflectionTools;
     // 在类成员变量区域添加
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // LLM 模型（由外部注入或配置）
     private ChatLanguageModel chatModel;
 
-    @Value("${executor.max.corrections:5}")
+    @Value("${executor.max.corrections:2}")
     private int maxCorrections = 5;
 
     @Value("${executor.action.timeout.seconds:30}")
@@ -141,11 +140,10 @@ public class MicroExecutorService {
     }
 
     public MicroExecutorService(ScreenCapturer screenCapturer, ToolExecutionService toolExecutionService,
-            List<ToolSpecification> reflectionToolSpecs, ReflectionTools reflectionTools) {
+            List<ToolSpecification> reflectionToolSpecs) {
         this.screenCapturer = screenCapturer;
         this.toolExecutionService = toolExecutionService;
         this.reflectionToolSpecs = reflectionToolSpecs;
-        this.reflectionTools = reflectionTools;
     }
 
     /**
@@ -278,13 +276,13 @@ public class MicroExecutorService {
 
                 lastActionResult = actionResults.toString();
 
-                // ========== Reflection: 等待-重新截图-强制反思 ==========
+                // ========== Reflection: 等待-重新截图-简化反思 ==========
 
                 // 等待 UI 响应
                 log.info("⏳ 等待 UI 响应 {}ms...", toolWaitMs);
                 Thread.sleep(toolWaitMs);
 
-                // 【关键】重新截图并强制反思
+                // 【关键】重新截图并进行反思
                 String newScreenshot = screenCapturer.captureScreenWithCursorAsBase64();
 
                 // 构建反思提示
@@ -299,58 +297,38 @@ public class MicroExecutorService {
                 AiMessage reflectionAi = reflectionResponse.content();
                 localContext.add(reflectionAi);
 
-                // 解析反思结果
-                String reflectionText = reflectionAi.text();
-                ReflectionTools.ReflectionResult reflectionResult = null;
+                // ========== 简化的反思逻辑 ==========
+                // 判断标准：如果 LLM 调用了 completeMilestone 工具 → 任务成功
+                //          其他情况（无工具调用或其他工具）→ 继续下一轮循环
 
                 if (reflectionAi.hasToolExecutionRequests()) {
-                    // 执行模型选择的反思工具（本地执行即可，无需通过 ToolExecutionService）
                     ToolExecutionRequest req = reflectionAi.toolExecutionRequests().get(0);
 
-                    if (req.name().equals("completeMilestone")) {
-                        // 解析参数 (简化逻辑，实际可用 ObjectMapper)
-                        String summary = extractArg(req, "summary"); // 需实现简单的参数提取
-                        reflectionResult = reflectionTools.completeMilestone(summary);
-
-                    } else if (req.name().equals("reflectSituation")) {
-                        String obs = extractArg(req, "observation");
-                        String statusStr = extractArg(req, "status");
-                        String next = extractArg(req, "nextStep");
-
-                        ReflectionTools.Status status = ReflectionTools.Status.valueOf(statusStr);
-                        reflectionResult = reflectionTools.reflectSituation(obs, status, next);
-                    }
-                }
-                if (reflectionResult == null) {
-                    log.warn("⚠️ 模型未调用反思工具，默认继续");
-                    reflectionResult = new ReflectionTools.ReflectionResult(
-                            ReflectionTools.Decision.CONTINUE, "模型未响应结构化反思", null);
-                }
-                // 根据工具返回的明确状态进行流控
-                switch (reflectionResult.getDecision()) {
-                    case SUCCESS -> {
-                        step.markSuccess(reflectionResult.getMessage());
-                        log.info("✅ 里程碑 {} 达成", step.getId());
+                    if ("completeMilestone".equals(req.name())) {
+                        // ✅ LLM 调用了 completeMilestone，视为任务成功
+                        String summary = extractArg(req, "summary");
+                        String successMessage = summary != null ? summary : "任务已完成";
+                        
+                        step.markSuccess(successMessage);
+                        log.info("✅ 里程碑 {} 达成: {}", step.getId(), successMessage);
+                        
                         if (globalContext != null) {
-                            globalContext.updateFromExecution(reflectionResult.getMessage(), lastActionSummary, true);
+                            globalContext.updateFromExecution(successMessage, lastActionSummary, true);
                         }
-                        return ExecutionResult.success(reflectionResult.getMessage(), attemptedStrategies);
+                        return ExecutionResult.success(successMessage, attemptedStrategies);
+                    } else {
+                        // 调用了其他工具（理论上不存在），继续下一轮
+                        log.warn("⚠️ 反思阶段调用了未知工具: {}，继续循环", req.name());
+                        lastScreenState = "调用了非预期工具: " + req.name();
                     }
-                    case CONTINUE -> {
-                        lastScreenState = "继续执行: " + reflectionResult.getMessage();
-                        if (globalContext != null)
-                            globalContext.addActionSummary(lastActionSummary, "继续", true);
-                    }
-                    case RETRY -> {
-                        lastScreenState = "需要修正: " + reflectionResult.getMessage();
-                        // 记录建议供下一次 Prompt 使用
-                        lastActionSummary += " [建议: " + reflectionResult.getSuggestion() + "]";
-                        if (globalContext != null)
-                            globalContext.addActionSummary(lastActionSummary, "需要修正", false);
-                    }
-                    case FAIL -> {
-                        lastScreenState = "无法解决: " + reflectionResult.getMessage();
-                        // 这里可以选择直接 return failed，或者让循环继续直到超时
+                } else {
+                    // LLM 输出了文本分析但未调用工具，视为任务未完成，继续下一轮
+                    String reflectionText = reflectionAi.text();
+                    log.info("📝 反思分析（继续执行）: {}", truncate(reflectionText, 100));
+                    lastScreenState = "继续执行: " + truncate(reflectionText, 50);
+                    
+                    if (globalContext != null) {
+                        globalContext.addActionSummary(lastActionSummary, "继续", true);
                     }
                 }
 
@@ -379,28 +357,74 @@ public class MicroExecutorService {
     }
 
     /**
-     * 反思决策类型
+     * 构建反思阶段的 Prompt（简化版）
+     * 
+     * 简化逻辑：
+     * - 如果任务完成 → 调用 completeMilestone 工具
+     * - 如果任务未完成 → 直接输出文本分析（不调用工具）
      */
-    private enum ReflectionDecision {
-        SUCCESS, // 任务完成
-        CONTINUE, // 继续执行
-        RETRY, // 需要修正重试
-        FAIL // 无法解决
-    }
-
     private String buildToolBasedReflectionPrompt(PlanStep step, String lastActionResult) {
+        String definitionOfDone = step.getDefinitionOfDone() != null 
+                ? step.getDefinitionOfDone() 
+                : "无明确标准，请根据任务描述自行判断";
+        
         return String.format("""
-                            ## 强制指令 (Critical Instruction)
-                                    你现在处于【反思阶段】，**禁止输出任何自然语言文本**。
-                                    你**必须**且**只能**调用以下工具之一：
-                                   \s
-                                    1. `completeMilestone`: 任务完成。
-                                    2. `reflectSituation`: 任务未完成。
-                                    **如果你不调用工具，系统将崩溃。不要解释你的决定，直接调用工具。**
+                ## 🛑 反思检查点
+                
+                你刚刚执行了操作：
+                ```
+                %s
+                ```
+                
+                **现在请仔细观察最新的屏幕截图**，判断任务是否已完成。
+                
+                ---
+                
+                ## 📋 任务信息
+                - **当前里程碑**: %s
+                - **完成标准 (Definition of Done)**: %s
+                
+                ---
+                
+                ## ✅ 视觉成功标志
+                判断任务成功，你应该在截图中看到：
+                - 目标状态已经达成（如打开了正确的应用、进入了正确的页面）
+                - 出现成功提示（如 "Success"、"已完成"、绿色勾号）
+                - URL/标题栏显示预期内容
+                - 原来需要操作的元素已消失或状态已改变
+                
+                ---
+                
+                ## ❌ 未完成的标志
+                遇到以下情况，**不要**判断为成功：
+                - 界面没有任何变化
+                - 出现 "Error"、"Failed"、"失败" 等错误文字
+                - 界面停留在 "Loading..."（加载中）
+                - 点击位置偏离目标
+                - 弹出了意外的对话框
+                
+                ---
+                
+                ## 🔧 响应指令
+                
+                **请根据以下规则响应：**
+                
+                ### 如果任务【已完成】：
+                调用 `completeMilestone` 工具，`summary` 参数描述你在截图中看到的成功证据。
+                
+                ### 如果任务【未完成】：
+                **不要调用任何工具**，直接输出文本分析：
+                1. 当前屏幕状态是什么？
+                2. 距离完成还差什么？
+                3. 下一步应该做什么？
+                
+                ---
+                
+                请做出判断。
                 """,
                 lastActionResult,
                 step.getDescription(),
-                step.getDefinitionOfDone() != null ? step.getDefinitionOfDone() : "无明确标准，请自行判断");
+                definitionOfDone);
     }
 
     /**

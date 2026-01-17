@@ -1,0 +1,501 @@
+# Lavis Agent Architecture v2.0
+
+## Overview
+
+Lavis is a headless desktop AI agent system that perceives the screen, reasons about it, and executes actions autonomously. The architecture follows a modern frontend-backend separation pattern.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Desktop Environment                      │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────────┐    │
+│  │              Electron Frontend (UI Layer)          │    │
+│  │  ┌──────────┐  ┌──────────┐  ┌───────────┐│    │
+│  │  │ Capsule  │  │ ChatPanel│  │TaskPanel   ││    │
+│  │  │ (Status)  │  │(MD/Code)│  │(Progress)  ││    │
+│  │  └──────────┘  └──────────┘  └───────────┘│    │
+│  │         React + TypeScript + Vite                │    │
+│  └──────────────────────────────────────────────────────────┘    │
+│                    ↓ REST/HTTP                                 │
+│  ┌──────────────────────────────────────────────────────────┐    │
+│  │         Spring Boot Backend (The Brain)            │    │
+│  │  ┌──────────┐  ┌──────────┐  ┌───────────┐│    │
+│  │  │Perception│  │ Cognitive │  │    Action   ││    │
+│  │  │  Screen   │  │  Agent    │  │   Robot    ││    │
+│  │  │Capturer  │  │Service   │  │   Driver   ││    │
+│  │  └──────────┘  └──────────┘  └───────────┘│    │
+│  │         Java 21 + Spring Boot 3.5.9              │    │
+│  └──────────────────────────────────────────────────────────┘    │
+│                    ↓ AWT Robot                              │
+│  ┌──────────────────────────────────────────────────────────┐    │
+│  │                 macOS Desktop                      │    │
+│  │  Mouse Click | Keyboard Input | Screen Read            │    │
+│  └──────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+## Technology Stack
+
+### Backend (Java)
+| Component | Technology | Purpose |
+|-----------|-------------|---------|
+| **Framework** | Spring Boot 3.5.9 | REST API, dependency injection |
+| **Language** | Java 21 | Core runtime |
+| **Build** | Maven | Package management |
+| **LLM** | LangChain4j 0.35.0 | Multi-model LLM integration |
+| **Supported Models** | OpenAI, Gemini, Custom | Vision + Text capabilities |
+| **Action** | AWT Robot | Mouse/keyboard control |
+| **Perception** | AWT Robot + OCR | Screen capture |
+
+### Frontend (TypeScript)
+| Component | Technology | Purpose |
+|-----------|-------------|---------|
+| **Framework** | React 19 | Component library |
+| **Runtime** | Electron 40 | Desktop app shell |
+| **Build** | Vite 7 | Fast dev server & bundler |
+| **Language** | TypeScript 5.9 | Type safety |
+| **Styling** | CSS Modules | Scoped styles |
+| **HTTP** | Axios | API client |
+| **Markdown** | react-markdown + syntax-highlighter | Rich text rendering |
+
+## Architecture Layers
+
+### 1. Perception Layer (Backend)
+
+**Purpose:** Convert physical screen state into digital representations
+
+```
+ScreenCapturer (Java)
+├── captureScreenAsBase64() → PNG (base64)
+├── getScreenSize() → Dimension
+└── Screenshot compression to 768px width
+```
+
+**Key Files:**
+- `src/main/java/com/lavis/perception/ScreenCapturer.java`
+
+### 2. Cognitive Layer (Backend)
+
+**Purpose:** Process perception, reason about goals, generate action plans
+
+```
+AgentService
+├── chatWithScreenshot(message) → Fast System
+├── resetConversation()
+├── isAvailable()
+└── getTaskOrchestrator()
+
+TaskOrchestrator
+├── executeGoal(goal) → OrchestratorResult
+├── getState() → State enum
+├── getCurrentPlan() → TaskPlan
+├── reset()
+└── getExecutionSummary()
+
+Planner (LLM Chain)
+├── analyzeGoal(goal) → TaskPlan
+├── refinePlan(plan, feedback) → TaskPlan
+└── generateSteps(plan) → PlanStep[]
+
+Executor
+├── executePlan(plan) → ExecutionResult
+├── executeStep(step) → ActionResult
+└── handleErrors(error) → Correction
+
+LlmFactory
+├── createOpenAI(model, key)
+├── createGemini(model, key)
+└── createCustom(config)
+```
+
+**Key Files:**
+- `src/main/java/com/lavis/cognitive/AgentService.java`
+- `src/main/java/com/lavis/cognitive/orchestrator/`
+- `src/main/java/com/lavis/cognitive/llm/LlmFactory.java`
+
+### 3. Action Layer (Backend)
+
+**Purpose:** Execute physical actions on the desktop
+
+```
+RobotDriver
+├── click(x, y, button) → ClickResult
+├── type(text) → TypeResult
+├── press(key) → PressResult
+├── moveSmooth(x, y, duration) → MoveResult
+└── getLastResult() → ExecutionResult
+
+BezierMouseUtils
+├── bezierCurve() → Point[]
+├── easingFunctions → EasingType[]
+└── humanLikeDuration(distance) → ms
+```
+
+**Key Files:**
+- `src/main/java/com/lavis/action/RobotDriver.java`
+- `src/main/java/com/lavis/action/BezierMouseUtils.java`
+
+### 4. UI Layer (Frontend)
+
+**Purpose:** Display agent state, capture user input, show progress
+
+```
+React Components
+├── App (Main container, heartbeat)
+├── Capsule (Floating status indicator)
+├── ChatPanel (Chat interface, MD rendering)
+└── TaskPanel (Progress, steps, stop button)
+
+API Layer
+├── AgentApi (Axios client)
+│   ├── chat(message)
+│   ├── executeTask(goal)
+│   ├── stop()
+│   ├── reset()
+│   ├── getStatus()
+│   ├── getScreenshot(thumbnail?)
+│   └── getHistory()
+└── Adaptive heartbeat polling (2000ms → 5000ms)
+
+Electron Process
+├── main.ts (Window, tray, shortcuts)
+├── preload.ts (IPC bridge)
+└── electron-builder.json (Packaging)
+```
+
+**Key Files:**
+- `frontend/src/App.tsx`
+- `frontend/src/components/*.tsx`
+- `frontend/src/api/agentApi.ts`
+- `frontend/electron/main.ts`
+
+## REST API Endpoints
+
+| Method | Endpoint | Request | Response | Purpose |
+|--------|----------|----------|----------|---------|
+| POST | `/api/agent/chat` | `{ message: string }` | `{ success, response, duration_ms }` | Fast system Q&A |
+| POST | `/api/agent/task` | `{ goal: string }` | `{ success, message, plan_summary, steps_total, execution_summary }` | Slow system task |
+| GET | `/api/agent/status` | - | `{ available, model, orchestrator_state, current_plan_progress }` | System state |
+| POST | `/api/agent/stop` | - | `{ status: string }` | Emergency stop |
+| POST | `/api/agent/reset` | - | `{ status: string }` | Reset state |
+| GET | `/api/agent/screenshot` | - | `{ success, image: base64, size }` | Screen capture |
+| GET | `/api/agent/history` | - | `TaskRecord[]` | Task history |
+| DELETE | `/api/agent/history` | - | - | Clear history |
+
+## State Machine
+
+### Agent States
+
+```
+IDLE → THINKING → EXECUTING → SUCCESS/ERROR
+  ↑        ↓           ↓
+  └──────────────────────┘
+
+IDLE:     Agent ready, waiting for input
+THINKING:  Analyzing screen, generating plan
+EXECUTING:  Performing actions, updating progress
+SUCCESS:    Task completed successfully
+ERROR:      Task failed, needs intervention
+```
+
+### Orchestrator States
+
+| State | Description | UI Indication |
+|-------|-------------|----------------|
+| `PLANNING` | LLM generating task steps | Purple breathing capsule |
+| `EXECUTING` | Robot performing actions | Green spinning capsule, progress bar |
+| `REFLECTING` | Analyzing results, planning corrections | Purple breathing capsule |
+| `IDLE` | No active task | Blue static capsule |
+| `ERROR` | Backend unavailable | Red pulsing capsule |
+
+## Data Flow
+
+### 1. Fast System (Chat) Flow
+
+```
+User Input (Chat)
+    ↓
+ChatPanel → AgentApi.chat()
+    ↓
+HTTP POST /api/agent/chat
+    ↓
+AgentService.chatWithScreenshot()
+    ↓
+ScreenCapturer.captureScreenAsBase64()
+    ↓
+LLM (OpenAI/Gemini) → Response
+    ↓
+AgentApi → ChatPanel
+    ↓
+ReactMarkdown Render → Display
+```
+
+### 2. Slow System (Task) Flow
+
+```
+User Goal (Task)
+    ↓
+TaskPanel → AgentApi.executeTask()
+    ↓
+HTTP POST /api/agent/task
+    ↓
+TaskOrchestrator.executeGoal()
+    ↓
+Planner.generatePlan() → TaskPlan
+    ↓
+Loop: PlanStep execution
+    ↓
+Executor.executeStep()
+    ↓
+RobotDriver.click()/type()/move()
+    ↓
+ScreenCapturer.captureScreenAsBase64()
+    ↓
+LLM.analyzeObservation() → ActionResult
+    ↓
+Executor.handleErrors() → Correction or Continue
+    ↓
+OrchestratorResult → TaskPanel
+    ↓
+Update Progress + Steps UI
+```
+
+### 3. Heartbeat Flow
+
+```
+App Mount
+    ↓
+agentApi.startHeartbeat(callback, 2000ms)
+    ↓
+SetInterval → checkStatus()
+    ↓
+HTTP GET /api/agent/status
+    ↓
+Compare to lastStatus
+    ↓
+If changed → callback(newStatus)
+    ↓
+App.setState() → UI Updates
+    ↓
+Capsule color, TaskPanel visibility
+    ↓
+On 5 consecutive errors → Slow polling (5000ms)
+```
+
+## File Structure
+
+```
+lavis/
+├── src/main/java/com/lavis/
+│   ├── LavisApplication.java          # Spring Boot main
+│   ├── config/                       # Spring configuration
+│   ├── controller/
+│   │   └── AgentController.java      # REST endpoints
+│   ├── cognitive/                     # AI logic
+│   │   ├── AgentService.java
+│   │   ├── orchestrator/
+│   │   │   ├── TaskOrchestrator.java
+│   │   │   ├── Planner.java
+│   │   │   └── Executor.java
+│   │   ├── llm/
+│   │   │   └── LlmFactory.java
+│   │   └── tools/
+│   ├── action/                        # Physical actions
+│   │   ├── RobotDriver.java
+│   │   └── BezierMouseUtils.java
+│   ├── perception/                    # Screen capture
+│   │   └── ScreenCapturer.java
+│   └── model/                        # Data models
+├── frontend/                         # Electron + React
+│   ├── electron/
+│   │   ├── main.ts                   # Electron main process
+│   │   └── preload.ts                # IPC bridge
+│   ├── src/
+│   │   ├── api/
+│   │   │   └── agentApi.ts            # API client
+│   │   ├── components/
+│   │   │   ├── Capsule.tsx
+│   │   │   ├── ChatPanel.tsx
+│   │   │   ├── TaskPanel.tsx
+│   │   │   └── *.css
+│   │   ├── types/
+│   │   │   └── agent.ts
+│   │   ├── App.tsx
+│   │   └── App.css
+│   ├── build/                         # Build resources
+│   ├── electron-builder.json             # Packaging config
+│   └── package.json
+├── pom.xml                          # Maven config
+└── application.properties               # Spring config
+```
+
+## Performance Optimizations
+
+### Backend
+- **Screenshot compression:** Downscale to 768px width
+- **Human-like mouse movement:** Bezier curves + easing
+- **Concurrent execution:** Separate threads for UI vs tasks
+
+### Frontend
+- **Adaptive heartbeat:** 2000ms → 5000ms on errors
+- **Lazy status updates:** Only callback on actual changes
+- **Thumbnail screenshots:** `?thumbnail=true` param for preview
+- **Error-based throttling:** 5 consecutive errors triggers slower polling
+
+## Development Workflow
+
+### Backend Development
+```bash
+# Install dependencies
+mvn clean install
+
+# Run with Spring Boot
+mvn spring-boot:run
+
+# Run with custom port
+mvn spring-boot:run -Dserver.port=8081
+
+# Package JAR
+mvn clean package
+```
+
+### Frontend Development
+```bash
+# Install dependencies
+cd frontend && npm install
+
+# Start Vite dev server
+npm run dev
+
+# Start Electron (with hot reload)
+npm run electron:dev
+
+# Build for production
+npm run build
+
+# Package Electron app
+npm run electron:build
+```
+
+### Testing
+```bash
+# Test backend
+curl http://localhost:8080/api/agent/status
+
+# Test chat
+curl -X POST http://localhost:8080/api/agent/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What do you see?"}'
+
+# Test task
+curl -X POST http://localhost:8080/api/agent/task \
+  -H "Content-Type: application/json" \
+  -d '{"goal": "Open calculator"}'
+```
+
+## Configuration
+
+### Backend (application.properties)
+```properties
+# Server
+server.port=8080
+
+# LLM Models
+app.llm.models.openai.api-key=${OPENAI_API_KEY}
+app.llm.models.gemini.api-key=${GEMINI_API_KEY}
+app.llm.models.custom.endpoint=${CUSTOM_ENDPOINT}
+
+# Agent Settings
+app.agent.screenshot.width=768
+app.agent.mouse.human-like=true
+app.agent.retry.max-attempts=3
+```
+
+### Frontend (Environment Variables)
+```bash
+# Backend URL (defaults to localhost:8080)
+BACKEND_URL=http://localhost:8080
+
+# Electron settings
+ELECTRON_IS_DEV=true
+```
+
+## Deployment
+
+### Package for Distribution
+```bash
+# Build backend
+mvn clean package
+
+# Build frontend and package Electron
+cd frontend && npm run electron:build
+
+# Output: frontend/dist-electron/
+#   - Lavis-0.1.0-mac.dmg (macOS)
+#   - Lavis-0.1.0-mac-arm64.dmg (macOS ARM)
+#   - Lavis Setup 0.1.0.exe (Windows)
+#   - Lavis-0.1.0.AppImage (Linux)
+```
+
+### One-Click Distribution (Future)
+1. Embed Spring Boot JAR in Electron app
+2. Auto-start backend on app launch
+3. Dynamic port assignment to avoid conflicts
+
+## Security Considerations
+
+### Backend
+- **API Key storage:** Environment variables only
+- **Input validation:** All user inputs sanitized
+- **Privilege isolation:** Agent requires explicit user authorization
+
+### Frontend
+- **Context isolation:** Node integration disabled
+- **Content Security:** CSP headers (future)
+- **IPC validation:** Only whitelisted channels
+
+## Future Enhancements
+
+### Phase 5: Advanced Features
+- [ ] WebSocket for real-time state streaming
+- [ ] Voice input (Web Speech API)
+- [ ] Click highlight overlay in Electron
+- [ ] Multi-screen support
+- [ ] Task templates / shortcuts
+- [ ] History search
+- [ ] Export/import task plans
+
+### Phase 6: Intelligence
+- [ ] Tool use: File operations, browser control
+- [ ] Self-correction threshold tuning
+- [ ] Plan optimization caching
+- [ ] Multi-agent collaboration
+- [ ] Reinforcement learning from user feedback
+
+## Troubleshooting
+
+### Common Issues
+
+**Backend not starting**
+- Check Java version: `java -version` (requires 21+)
+- Check port availability: `lsof -i :8080`
+- Verify API keys in `application.properties`
+
+**Frontend not connecting**
+- Verify backend is running: `curl http://localhost:8080/api/agent/status`
+- Check CORS settings in Spring Boot
+- Try dynamic port detection: `agentApi.detectBackendPort()`
+
+**Electron window blank**
+- Check console for errors: DevTools (Cmd+Option+I)
+- Verify Vite dev server is running: `npm run dev`
+- Check preload script is compiled to JS
+
+**Mouse/keyboard not working**
+- Check macOS permissions (Accessibility)
+- Grant assistive device access in System Settings
+- Verify AWT Robot is available
+
+## License
+
+Copyright © 2025 Lavis. All rights reserved.

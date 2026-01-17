@@ -1,0 +1,26 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.app {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+/* Transparent background for Electron */
+body {
+  background: transparent;
+  overflow: hidden;
+  -webkit-app-region: no-drag;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}

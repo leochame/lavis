@@ -3,8 +3,6 @@ package com.lavis.controller;
 import com.lavis.cognitive.AgentService;
 import com.lavis.cognitive.orchestrator.TaskOrchestrator;
 import com.lavis.perception.ScreenCapturer;
-import com.lavis.ui.JavaFXInitializer;
-import com.lavis.ui.OverlayWindow;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -17,11 +15,12 @@ import java.util.*;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
 /**
- * Agent REST API 控制器 (精简版)
- * * 核心架构：
- * 1. 快系统 (/chat): 基于视觉的即时问答与单步操作
- * 2. 慢系统 (/task): 基于 Plan-Execute 的复杂任务编排
- * 3. 系统控制: 状态、重置、停止、截图
+ * Agent REST API Controller
+ *
+ * Core architecture:
+ * 1. Fast System (/chat): Vision-based instant Q&A and single-step operations
+ * 2. Slow System (/task): Plan-Execute based complex task orchestration
+ * 3. System Control: Status, reset, stop, screenshot
  */
 @Slf4j
 @RestController
@@ -31,43 +30,33 @@ public class AgentController {
 
     private final AgentService agentService;
     private final ScreenCapturer screenCapturer;
-    private final JavaFXInitializer javaFXInitializer;
 
-    // 任务历史记录
+    // Task history
     private final Deque<TaskRecord> taskHistory = new ConcurrentLinkedDeque<>();
     private static final int MAX_HISTORY_SIZE = 50;
 
     // ==========================================
-    // 核心接口 (Core APIs)
+    // Core APIs
     // ==========================================
 
     /**
-     * 1. 智能对话 (快系统)
-     * 适用于：视觉问答、单步指令、轻量级交互
-     * 底层：Text + Screenshot -> Agent -> Response
+     * 1. Chat (Fast System)
+     * For: Visual Q&A, single-step commands, lightweight interactions
+     * Underlying: Text + Screenshot -> Agent -> Response
      */
     @PostMapping("/chat")
     public ResponseEntity<Map<String, Object>> chat(@RequestBody Map<String, String> request) {
         String message = request.get("message");
         if (message == null || message.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "消息不能为空"));
+            return ResponseEntity.badRequest().body(Map.of("error", "Message cannot be empty"));
         }
 
-        log.info("💬 [Chat] 收到消息: {}", message);
-
-        javaFXInitializer.updateState(OverlayWindow.AgentState.THINKING);
-        javaFXInitializer.setThinkingText("分析屏幕...");
-        javaFXInitializer.addLog("👤 " + message);
+        log.info("💬 [Chat] Received message: {}", message);
 
         long startTime = System.currentTimeMillis();
         try {
-            // 默认总是带截图，提供最强的感知能力
             String response = agentService.chatWithScreenshot(message);
             long duration = System.currentTimeMillis() - startTime;
-
-            javaFXInitializer.updateState(OverlayWindow.AgentState.IDLE);
-            javaFXInitializer.setThinkingText("");
-            javaFXInitializer.addLog("🤖 " + truncate(response, 100));
 
             addToHistory("chat", message, response, true, duration);
 
@@ -82,36 +71,27 @@ public class AgentController {
     }
 
     /**
-     * 2. 自动化任务 (慢系统)
-     * 适用于：复杂流程、多步操作、需要自我修正的任务
-     * 底层：TaskOrchestrator (Planner -> Executor -> Reflector)
+     * 2. Execute Task (Slow System)
+     * For: Complex workflows, multi-step operations, tasks requiring self-correction
+     * Underlying: TaskOrchestrator (Planner -> Executor -> Reflector)
      */
     @PostMapping("/task")
     public ResponseEntity<Map<String, Object>> executeTask(@RequestBody Map<String, String> request) {
         String goal = request.get("goal");
-        // 兼容旧参数名 "task"
+        // Support legacy parameter name "task"
         if (goal == null || goal.isBlank()) goal = request.get("task");
 
         if (goal == null || goal.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "任务目标不能为空"));
+            return ResponseEntity.badRequest().body(Map.of("error", "Task goal cannot be empty"));
         }
 
-        log.info("🚀 [Task] 收到任务: {}", goal);
-
-        javaFXInitializer.updateState(OverlayWindow.AgentState.EXECUTING);
-        javaFXInitializer.setThinkingText("规划任务中...");
-        javaFXInitializer.addLog("🎯 目标: " + goal);
+        log.info("🚀 [Task] Received task: {}", goal);
 
         long startTime = System.currentTimeMillis();
         try {
-            // 统一使用 TaskOrchestrator
             TaskOrchestrator orchestrator = agentService.getTaskOrchestrator();
             TaskOrchestrator.OrchestratorResult result = orchestrator.executeGoal(goal);
             long duration = System.currentTimeMillis() - startTime;
-
-            javaFXInitializer.updateState(result.isSuccess() ?
-                    OverlayWindow.AgentState.SUCCESS : OverlayWindow.AgentState.ERROR);
-            javaFXInitializer.setThinkingText("");
 
             addToHistory("task", goal, result.getMessage(), result.isSuccess(), duration);
 
@@ -120,7 +100,7 @@ public class AgentController {
             response.put("message", result.getMessage());
             response.put("duration_ms", duration);
 
-            // 附加执行细节
+            // Attach execution details
             if (result.getPlan() != null) {
                 response.put("plan_summary", result.getPlan().generateSummary());
                 response.put("steps_total", result.getPlan().getSteps().size());
@@ -134,60 +114,54 @@ public class AgentController {
     }
 
     // ==========================================
-    // 系统控制 (System Control)
+    // System Control
     // ==========================================
 
     /**
-     * 紧急停止
+     * Emergency stop
      */
     @PostMapping("/stop")
     public ResponseEntity<Map<String, String>> stop() {
-        // 停止编排器
         var orchestrator = agentService.getTaskOrchestrator();
         if (orchestrator != null) {
-            // TODO: 需要在 Orchestrator 中实现 interrupt() 方法
+            // TODO: Implement interrupt() method in Orchestrator
             // orchestrator.interrupt();
         }
 
-        // 视觉状态重置
-        javaFXInitializer.updateState(OverlayWindow.AgentState.IDLE);
-        javaFXInitializer.setThinkingText("");
-        javaFXInitializer.addLog("🛑 用户触发紧急停止");
-
-        return ResponseEntity.ok(Map.of("status", "已发送停止指令"));
+        log.info("🛑 Emergency stop triggered by user");
+        return ResponseEntity.ok(Map.of("status", "Stop command sent"));
     }
 
     /**
-     * 全局重置 (记忆、编排器、历史)
+     * Global reset (memory, orchestrator, history)
      */
     @PostMapping("/reset")
     public ResponseEntity<Map<String, String>> reset() {
-        // 1. 重置对话记忆
+        // 1. Reset conversation memory
         agentService.resetConversation();
 
-        // 2. 重置编排器状态
+        // 2. Reset orchestrator state
         var orchestrator = agentService.getTaskOrchestrator();
         if (orchestrator != null) {
             orchestrator.reset();
         }
 
-        javaFXInitializer.addLog("🔄 系统状态已完全重置");
-        return ResponseEntity.ok(Map.of("status", "系统已重置"));
+        log.info("🔄 System state fully reset");
+        return ResponseEntity.ok(Map.of("status", "System reset"));
     }
 
     /**
-     * 获取系统全状态
+     * Get full system status
      */
     @GetMapping("/status")
     public ResponseEntity<Map<String, Object>> getStatus() {
         Map<String, Object> status = new HashMap<>();
 
-        // 基础服务状态
+        // Basic service status
         status.put("available", agentService.isAvailable());
         status.put("model", agentService.getModelInfo());
-        status.put("ui_active", javaFXInitializer.isInitialized());
 
-        // 编排器状态
+        // Orchestrator state
         var orchestrator = agentService.getTaskOrchestrator();
         if (orchestrator != null) {
             status.put("orchestrator_state", orchestrator.getState());
@@ -200,11 +174,11 @@ public class AgentController {
     }
 
     // ==========================================
-    // 辅助工具 (Utilities)
+    // Utilities
     // ==========================================
 
     /**
-     * 屏幕截图 (调试用)
+     * Screen capture (for debugging)
      */
     @GetMapping("/screenshot")
     public ResponseEntity<Map<String, Object>> getScreenshot() {
@@ -231,22 +205,12 @@ public class AgentController {
         return ResponseEntity.ok().build();
     }
 
-    @PostMapping("/ui/show")
-    public void showUI() { javaFXInitializer.showOverlay(); }
-
-    @PostMapping("/ui/hide")
-    public void hideUI() { javaFXInitializer.hideOverlay(); }
-
     // ==========================================
-    // 私有辅助方法
+    // Private helper methods
     // ==========================================
 
     private ResponseEntity<Map<String, Object>> handleError(String type, String input, long startTime, Exception e) {
-        log.error("{} 执行失败", type, e);
-        javaFXInitializer.updateState(OverlayWindow.AgentState.ERROR);
-        javaFXInitializer.setThinkingText("");
-        javaFXInitializer.addLog("❌ 错误: " + e.getMessage());
-
+        log.error("{} execution failed", type, e);
         addToHistory(type, input, e.getMessage(), false, System.currentTimeMillis() - startTime);
         return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
     }
@@ -265,11 +229,6 @@ public class AgentController {
         if (taskHistory.size() > MAX_HISTORY_SIZE) {
             taskHistory.removeLast();
         }
-    }
-
-    private String truncate(String str, int maxLen) {
-        if (str == null) return "";
-        return str.length() > maxLen ? str.substring(0, maxLen) + "..." : str;
     }
 
     public record TaskRecord(

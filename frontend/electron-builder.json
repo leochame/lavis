@@ -1,0 +1,66 @@
+{
+  "appId": "com.lavis.desktop",
+  "productName": "Lavis",
+  "copyright": "Copyright © 2025 Lavis",
+  "directories": {
+    "output": "dist-electron",
+    "buildResources": "build"
+  },
+  "files": [
+    "dist/**/*",
+    "electron/**/*"
+  ],
+  "extraMetadata": {
+    "main": "electron/main.js"
+  },
+  "mac": {
+    "category": "public.app-category.productivity",
+    "icon": "build/icon.icns",
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["x64", "arm64"]
+      },
+      {
+        "target": "zip",
+        "arch": ["x64", "arm64"]
+      }
+    ],
+    "entitlements": {
+      "com.apple.security.cs.allow-unsigned-executable-memory": true
+    }
+  },
+  "win": {
+    "icon": "build/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      },
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      }
+    ]
+  },
+  "linux": {
+    "icon": "build/icon.png",
+    "category": "Utility",
+    "target": [
+      {
+        "target": "AppImage",
+        "arch": ["x64"]
+      },
+      {
+        "target": "deb",
+        "arch": ["x64"]
+      }
+    ]
+  },
+  "publish": null,
+  "npmRebuild": false,
+  "asarUnpack": [
+    "**/node_modules/**"
+  ],
+  "compression": "maximum"
+}

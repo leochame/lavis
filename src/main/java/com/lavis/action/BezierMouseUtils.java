@@ -298,14 +298,14 @@ public class BezierMouseUtils {
      * @return 推荐步数
      */
     public static int calculateRecommendedSteps(double distance, double speed) {
-        // 基础：每 5 像素一步
-        int baseSteps = (int) (distance / 5);
-        
+        //每 15 像素一步
+        int baseSteps = (int) (distance / 15);
+
         // 应用速度因子
         int steps = (int) (baseSteps / speed);
         
         // 限制范围
-        return Math.max(10, Math.min(steps, 200));
+        return Math.max(3, Math.min(steps, 200));
     }
     
     /**

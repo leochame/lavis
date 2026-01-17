@@ -184,9 +184,17 @@ public class ToolExecutionService {
         } else if (type == String.class) {
             return node.asText();
         }
+        // === 新增：处理 int[] 数组 ===
+        else if (type == int[].class && node.isArray()) {
+            int[] arr = new int[node.size()];
+            for (int i = 0; i < node.size(); i++) {
+                arr[i] = node.get(i).asInt();
+            }
+            return arr;
+        }
+
         return node.asText();
     }
-
     /**
      * 获取基本类型的默认值
      */

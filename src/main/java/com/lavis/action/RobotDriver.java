@@ -39,10 +39,10 @@ public class RobotDriver {
 
     // 鼠标移动速度因子 (1.0 = 正常，2.0 = 快速，0.5 = 慢速)
     // 【优化】提高默认速度，减少拖沓感
-    private double mouseSpeedFactor = 3.5;
+    private double mouseSpeedFactor = 5.0;
     
     // 基础步间延迟 (毫秒) - 【优化】大幅减少步间延迟
-    private static final int BASE_STEP_DELAY_MS = 2;
+    private static final int BASE_STEP_DELAY_MS = 1;
     
     // 拖拽操作的额外延迟 - 【优化】减少拖拽延迟
     private static final int DRAG_STEP_DELAY_MS = 1;
@@ -399,16 +399,6 @@ public class RobotDriver {
         log.info("🎯 {}", result.getMessage());
         return result;
     }
-
-    /**
-     * 设置鼠标移动速度因子
-     * @param factor 速度因子 (1.0 = 正常，2.0 = 快速，0.5 = 慢速)
-     */
-    public void setMouseSpeedFactor(double factor) {
-        this.mouseSpeedFactor = Math.max(0.2, Math.min(factor, 5.0));
-        log.info("🖱️ 鼠标速度因子设置为: {}", this.mouseSpeedFactor);
-    }
-    
     /**
      * 设置是否启用拟人化移动
      */
