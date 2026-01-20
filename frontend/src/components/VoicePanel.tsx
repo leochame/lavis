@@ -147,7 +147,7 @@ export function VoicePanel({
           <div className="voice-panel__audio-player">
             <audio
               ref={audioRef}
-              src={`data:audio/mp3;base64,${agentAudio}`}
+              src={`data:${agentAudio.startsWith('UklGR') || agentAudio.startsWith('Ukl') ? 'audio/wav' : 'audio/mp3'};base64,${agentAudio}`}
               controls
               autoPlay
             />

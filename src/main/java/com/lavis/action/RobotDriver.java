@@ -70,21 +70,21 @@ public class RobotDriver {
      * @return 安全的逻辑屏幕坐标
      */
     public Point convertToRobotCoordinates(int x, int y) {
-        return convertToRobotCoordinates(x, y, ScreenCapturer.SafeZoneConfig.DEFAULT);
+        return convertToRobotCoordinates(x, y, ScreenCapturer.SafeZone.DEFAULT);
     }
     
     /**
      * 使用自定义安全配置转换坐标
      */
     public Point convertToRobotCoordinates(int x, int y, 
-                                           ScreenCapturer.SafeZoneConfig safeConfig) {
+                                           ScreenCapturer.SafeZone safeZone) {
         Dimension screenSize = screenCapturer.getScreenSize();
         
         // 安全边界
-        int minX = safeConfig.leftMargin;
-        int maxX = screenSize.width - safeConfig.rightMargin;
-        int minY = safeConfig.topMargin;
-        int maxY = screenSize.height - safeConfig.bottomMargin;
+        int minX = safeZone.left;
+        int maxX = screenSize.width - safeZone.right;
+        int minY = safeZone.top;
+        int maxY = screenSize.height - safeZone.bottom;
         
         // 钳位
         int safeX = Math.max(minX, Math.min(x, maxX));
@@ -104,12 +104,12 @@ public class RobotDriver {
      */
     public boolean isCoordinateSafe(int x, int y) {
         Dimension screenSize = screenCapturer.getScreenSize();
-        ScreenCapturer.SafeZoneConfig config = ScreenCapturer.SafeZoneConfig.DEFAULT;
+        ScreenCapturer.SafeZone zone = ScreenCapturer.SafeZone.DEFAULT;
         
-        return x >= config.leftMargin 
-            && x <= screenSize.width - config.rightMargin
-            && y >= config.topMargin 
-            && y <= screenSize.height - config.bottomMargin;
+        return x >= zone.left 
+            && x <= screenSize.width - zone.right
+            && y >= zone.top 
+            && y <= screenSize.height - zone.bottom;
     }
 
     /**

@@ -5,11 +5,12 @@ import { useState, useRef, useCallback } from 'react';
  *
  * 使用 MediaRecorder API 进行录音，支持智能静音检测（VAD）
  *
- * 核心算法：
- * 1. 5秒保护期：录音开始的前5秒强制录音，不停止
- * 2. 动态静音截断：5秒后如果静音超过3秒则停止录音
- * 3. 最大录音时长：60秒自动停止
- * 4. 全程静音检测：低能量音频自动丢弃
+ * 核心算法（唤醒后语音输入）：
+ * 1. 初始超时：唤醒后有 3 秒窗口期等待语音输入
+ * 2. 动态延长：每次检测到语音，延长 1 秒超时
+ * 3. 自动结束：超时无语音输入则自动停止
+ * 4. 最大录音时长：60秒自动停止
+ * 5. 全程静音检测：低能量音频自动丢弃
  */
 export interface UseVoiceRecorderReturn {
   isRecording: boolean;
@@ -73,11 +74,11 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       const duration = (Date.now() - startTimeRef.current) / 1000;
       
-      // 强制最少录音 1 秒
-      if (duration < 1.0) {
-        console.log(`⏳ Recording too short (${duration.toFixed(2)}s), waiting for minimum 1s...`);
-        // 延迟停止，确保至少 1 秒
-        const remainingTime = (1.0 - duration) * 1000;
+      // 强制最少录音 0.5 秒
+      if (duration < 0.5) {
+        console.log(`⏳ Recording too short (${duration.toFixed(2)}s), waiting for minimum 0.5s...`);
+        // 延迟停止，确保至少 0.5 秒
+        const remainingTime = (0.5 - duration) * 1000;
         setTimeout(() => {
           if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
             mediaRecorderRef.current.stop();
@@ -92,7 +93,7 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
       releaseStream();
-      console.log(`Recording stopped (${duration.toFixed(2)}s)`);
+      console.log(`🛑 Recording stopped (${duration.toFixed(2)}s)`);
     }
   }, [releaseStream]);
 
@@ -108,13 +109,18 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     source.connect(analyser);
 
     const silenceThreshold = 0.02; // 静音阈值
-    const minRecordingTime = 5000; // 最小录音保护期（5秒）
-    const maxSilenceTime = 3000; // 最大静音时长（3秒）
+    const initialTimeout = 3000; // 初始超时时间（3秒）
+    const extensionTime = 1000; // 每次语音输入延长时间（1秒）
     const maxRecordingTime = 60000; // 最大录音时长（60秒）
+    const minRecordingTime = 500; // 最小录音时长（0.5秒，确保有效录音）
 
-    let silenceStartTime: number | null = null;
+    let timeoutDeadline = startTimeRef.current + initialTimeout; // 超时截止时间
     let totalAudioEnergy = 0; // 记录总音频能量用于全程静音检测
     let samplesCount = 0;
+    let hasVoiceInput = false; // 是否检测到过语音输入
+    let lastVoiceTime = 0; // 上次检测到语音的时间（用于防止频繁延长）
+
+    console.log(`⏱️ Voice timeout initialized: ${initialTimeout}ms, deadline: ${new Date(timeoutDeadline).toLocaleTimeString()}`);
 
     // 实时检测（每 100ms 检测一次）
     const checkInterval = setInterval(() => {
@@ -136,37 +142,38 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
         return;
       }
 
-      // 最小录音保护期：5秒内强制录音，不停止
-      if (recordingDuration < minRecordingTime) {
-        // 保护期内忽略截断逻辑，重置静音计时
-        silenceStartTime = null;
-        return;
+      // 检测到语音输入
+      if (!isSilence) {
+        hasVoiceInput = true;
+        
+        // 每次检测到语音，延长超时时间（防抖：至少间隔 500ms 才延长）
+        if (currentTime - lastVoiceTime > 500) {
+          const newDeadline = currentTime + extensionTime;
+          // 只有当新的截止时间更晚时才延长
+          if (newDeadline > timeoutDeadline) {
+            timeoutDeadline = newDeadline;
+            console.log(`🗣️ Voice detected! Extending timeout by ${extensionTime}ms, new deadline: +${((timeoutDeadline - startTimeRef.current) / 1000).toFixed(1)}s`);
+          }
+          lastVoiceTime = currentTime;
+        }
       }
 
-      // 5秒后：检测静音时长
-      if (isSilence) {
-        if (!silenceStartTime) {
-          silenceStartTime = currentTime;
-          console.log('⏸️ Silence detected, starting silence timer...');
+      // 检查是否超时
+      const remainingTime = timeoutDeadline - currentTime;
+      if (remainingTime <= 0 && recordingDuration >= minRecordingTime) {
+        if (hasVoiceInput) {
+          console.log(`🛑 Timeout reached after voice input, stopping recording... (duration: ${(recordingDuration / 1000).toFixed(1)}s)`);
+        } else {
+          console.log(`🛑 No voice input within ${initialTimeout}ms, stopping recording...`);
         }
-
-        const silenceDuration = currentTime - silenceStartTime;
-        if (silenceDuration >= maxSilenceTime) {
-          console.log(`🛑 Silence for ${silenceDuration}ms, stopping recording...`);
-          stopRecording();
-          clearInterval(checkInterval);
-        }
-      } else {
-        // 检测到语音，重置静音计时
-        if (silenceStartTime) {
-          console.log('🗣️ Voice detected, resetting silence timer');
-        }
-        silenceStartTime = null;
+        stopRecording();
+        clearInterval(checkInterval);
+        return;
       }
 
       // 实时音频级别日志（每秒一次）
       if (samplesCount % 10 === 0) {
-        console.log(`🎤 Audio level: ${level.toFixed(4)} | Duration: ${(recordingDuration / 1000).toFixed(1)}s | Silence: ${silenceStartTime ? ((currentTime - silenceStartTime) / 1000).toFixed(1) + 's' : '0s'}`);
+        console.log(`🎤 Audio level: ${level.toFixed(4)} | Duration: ${(recordingDuration / 1000).toFixed(1)}s | Timeout in: ${(remainingTime / 1000).toFixed(1)}s`);
       }
     }, 100);
 
@@ -225,9 +232,9 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
         const duration = (Date.now() - startTimeRef.current) / 1000;
         console.log(`📼 Recording completed: ${duration.toFixed(2)}s`);
 
-        // 检查是否过短（< 1秒）
-        if (duration < 1.0) {
-          console.warn('⚠️ Recording too short (< 1.0s), discarding...');
+        // 检查是否过短（< 0.5秒）
+        if (duration < 0.5) {
+          console.warn('⚠️ Recording too short (< 0.5s), discarding...');
           setIsTooShort(true);
           setAudioBlob(null);
           setAudioDuration(0);
@@ -254,7 +261,7 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       mediaRecorder.start(500);
       startTimeRef.current = Date.now();
       setIsRecording(true);
-      console.log('Recording started (5s protection period)');
+      console.log('🎤 Recording started (3s initial timeout, +1s per voice input)');
 
       // 启动静音检测
       const cleanupDetection = checkSilence();

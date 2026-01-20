@@ -196,13 +196,20 @@ export function useGlobalVoice(isAppStarted: boolean): UseGlobalVoiceReturn {
   }, [updateState]);
 
   // 播放 Agent 音频
+  // 支持 WAV (DashScope SDK) 和 MP3 (OpenAI compatible) 格式
   const playAgentAudio = useCallback((base64Audio: string) => {
     if (!audioRef.current) {
       audioRef.current = new Audio();
     }
     
     const audio = audioRef.current;
-    audio.src = `data:audio/mp3;base64,${base64Audio}`;
+    
+    // 检测音频格式 (WAV 文件以 "UklGR" 开头，MP3 以 "//uQ" 或其他开头)
+    const isWav = base64Audio.startsWith('UklGR') || base64Audio.startsWith('Ukl');
+    const mimeType = isWav ? 'audio/wav' : 'audio/mp3';
+    
+    audio.src = `data:${mimeType};base64,${base64Audio}`;
+    console.log(`🔊 Playing audio (format: ${mimeType})`);
     
     audio.onended = () => {
       updateState('idle');
