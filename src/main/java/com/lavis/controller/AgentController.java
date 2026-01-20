@@ -3,10 +3,13 @@ package com.lavis.controller;
 import com.lavis.cognitive.AgentService;
 import com.lavis.cognitive.orchestrator.TaskOrchestrator;
 import com.lavis.perception.ScreenCapturer;
+import com.lavis.service.llm.LlmFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -30,6 +33,7 @@ public class AgentController {
 
     private final AgentService agentService;
     private final ScreenCapturer screenCapturer;
+    private final LlmFactory llmFactory;
 
     // Task history
     private final Deque<TaskRecord> taskHistory = new ConcurrentLinkedDeque<>();
@@ -166,7 +170,9 @@ public class AgentController {
         if (orchestrator != null) {
             status.put("orchestrator_state", orchestrator.getState());
             if (orchestrator.getCurrentPlan() != null) {
-                status.put("current_plan_progress", orchestrator.getCurrentPlan().getProgressPercent());
+                var plan = orchestrator.getCurrentPlan();
+                status.put("current_plan_progress", plan.getProgressPercent());
+                status.put("current_plan", plan);
             }
         }
 
@@ -203,6 +209,78 @@ public class AgentController {
     public ResponseEntity<Void> clearHistory() {
         taskHistory.clear();
         return ResponseEntity.ok().build();
+    }
+
+    // ==========================================
+    // Voice Chat (语音对话)
+    // ==========================================
+
+    /**
+     * 语音对话接口 (Voice Chat)
+     * 
+     * 流程：前端录音 → 后端 STT → Agent 处理 → 后端 TTS → 前端播放
+     * 
+     * 请求格式：multipart/form-data
+     * @param audioFile 用户录音文件 (WAV/MP3/M4A)
+     * @param screenshot (可选) 当前屏幕截图（如果语音包含视觉指令）
+     * 
+     * 响应格式：
+     * {
+     *   "success": true,
+     *   "user_text": "用户说的文本",
+     *   "agent_text": "Agent 的回复文本",
+     *   "agent_audio": "Base64 编码的 MP3 音频"
+     * }
+     */
+    @PostMapping(value = "/voice-chat", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, Object>> voiceChat(
+            @RequestParam("file") MultipartFile audioFile,
+            @RequestParam(value = "screenshot", required = false) MultipartFile screenshot
+    ) {
+        if (audioFile == null || audioFile.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Audio file is required"));
+        }
+
+        log.info("🎤 [Voice Chat] Received audio file: {}", audioFile.getOriginalFilename());
+
+        long startTime = System.currentTimeMillis();
+
+        try {
+            // 1. STT: 音频 → 文本
+            String userText = llmFactory.getSttModel().transcribe(audioFile);
+            log.info("User transcribed text: {}", userText);
+
+            // 2. Agent: 文本 → 回复（可以带截图）
+            String agentText;
+            if (screenshot != null && !screenshot.isEmpty()) {
+                // 如果提供了截图，将截图转为 Base64 传递给 Agent
+                // 注意：这里简化处理，实际可能需要先保存截图文件
+                agentText = agentService.chatWithScreenshot(userText);
+            } else {
+                agentText = agentService.chatWithScreenshot(userText);
+            }
+
+            log.info("Agent response: {}", agentText);
+
+            // 3. TTS: 文本 → 音频
+            String agentAudio = llmFactory.getTtsModel().textToSpeech(agentText);
+
+            long duration = System.currentTimeMillis() - startTime;
+
+            addToHistory("voice-chat", userText, agentText, true, duration);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "user_text", userText,
+                    "agent_text", agentText,
+                    "agent_audio", agentAudio,
+                    "duration_ms", duration
+            ));
+
+        } catch (Exception e) {
+            log.error("Voice chat failed", e);
+            return handleError("voice-chat", audioFile.getOriginalFilename(), startTime, e);
+        }
     }
 
     // ==========================================

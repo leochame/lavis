@@ -1,6 +1,8 @@
 package com.lavis.perception;
 
+import com.lavis.websocket.WorkflowEventService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import javax.imageio.ImageIO;
@@ -15,6 +17,7 @@ import java.util.Base64;
  * M1 感知模块 - 屏幕截图器
  * 负责高频截取屏幕，支持 Retina 缩放压缩
  * 支持在截图上绘制鼠标位置和点击标记，便于 AI 反思
+ * 支持截图时隐藏前端窗口（透视功能）
  */
 @Slf4j
 @Component
@@ -23,6 +26,13 @@ public class ScreenCapturer {
     private final Robot robot;
     private final double scaleX;
     private final double scaleY;
+    
+    // 工作流事件服务（用于通知前端隐藏/显示窗口）
+    @Autowired(required = false)
+    private WorkflowEventService workflowEventService;
+    
+    // 截图前隐藏窗口的等待时间（毫秒）
+    private static final int WINDOW_HIDE_DELAY_MS = 100;
     
     // 目标压缩宽度 (从 2880px 压缩至 768px 以减少 token 消耗)
     // 768px 足够 AI 识别 UI 元素，同时大幅减少 API 成本
@@ -82,14 +92,39 @@ public class ScreenCapturer {
      * 而不是逻辑尺寸（如 1440x900）
      */
     public BufferedImage captureScreen() {
-        Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
-        Rectangle screenRect = new Rectangle(screenSize);
-        BufferedImage capture = robot.createScreenCapture(screenRect);
-        
-        log.debug("截取屏幕: 物理像素 {}x{}, 逻辑尺寸 {}x{}", 
-                capture.getWidth(), capture.getHeight(),
-                screenSize.width, screenSize.height);
-        return capture;
+        return captureScreen(false);
+    }
+    
+    /**
+     * 截取全屏并返回原始图像（支持透视模式）
+     * @param transparent 是否启用透视模式（隐藏前端窗口后再截图）
+     */
+    public BufferedImage captureScreen(boolean transparent) {
+        try {
+            // 如果启用透视模式，先通知前端隐藏窗口
+            if (transparent && workflowEventService != null) {
+                workflowEventService.requestHideWindow();
+                Thread.sleep(WINDOW_HIDE_DELAY_MS);
+            }
+            
+            Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
+            Rectangle screenRect = new Rectangle(screenSize);
+            BufferedImage capture = robot.createScreenCapture(screenRect);
+            
+            log.debug("截取屏幕: 物理像素 {}x{}, 逻辑尺寸 {}x{}", 
+                    capture.getWidth(), capture.getHeight(),
+                    screenSize.width, screenSize.height);
+            
+            return capture;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("截图被中断", e);
+        } finally {
+            // 截图完成后，通知前端显示窗口
+            if (transparent && workflowEventService != null) {
+                workflowEventService.requestShowWindow();
+            }
+        }
     }
 
     /**
@@ -223,7 +258,15 @@ public class ScreenCapturer {
      * - 图像压缩：为了减少 token 消耗，图像被压缩到 768px 宽度，但坐标系统仍使用逻辑屏幕坐标
      */
     public String captureScreenWithCursorAsBase64() throws IOException {
-        BufferedImage original = captureScreen();
+        return captureScreenWithCursorAsBase64(true); // 默认启用透视模式
+    }
+    
+    /**
+     * 截取屏幕并返回 Base64（支持透视模式）
+     * @param transparent 是否启用透视模式（隐藏前端窗口后再截图）
+     */
+    public String captureScreenWithCursorAsBase64(boolean transparent) throws IOException {
+        BufferedImage original = captureScreen(transparent);
         Dimension logicalSize = getScreenSize();  // 逻辑屏幕尺寸
         
         // 先压缩图像（仅用于减少 token 消耗，不影响坐标系统）

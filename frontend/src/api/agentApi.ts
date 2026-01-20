@@ -79,7 +79,7 @@ class AgentApi {
         this.lastStatus = newStatus;
         this.consecutiveErrors = 0; // Reset error counter on success
       }
-    } catch (error) {
+    } catch {
       this.heartbeatCallback?.(null);
       this.consecutiveErrors++;
     }
@@ -148,6 +148,35 @@ class AgentApi {
       }
     }
     throw new Error('No backend server found on common ports');
+  }
+
+  // Voice Chat API
+  async voiceChat(audioFile: File, screenshot?: File): Promise<{
+    success: boolean;
+    user_text: string;
+    agent_text: string;
+    agent_audio: string;
+    duration_ms: number;
+  }> {
+    const formData = new FormData();
+    formData.append('file', audioFile);
+    if (screenshot) {
+      formData.append('screenshot', screenshot);
+    }
+
+    const response = await this.client.post<{
+      success: boolean;
+      user_text: string;
+      agent_text: string;
+      agent_audio: string;
+      duration_ms: number;
+    }>('/voice-chat', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    return response.data;
   }
 }
 

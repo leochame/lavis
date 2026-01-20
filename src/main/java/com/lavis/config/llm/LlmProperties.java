@@ -45,6 +45,16 @@ public class LlmProperties {
      * 当调用方未指定模型时使用
      */
     private String defaultModel = "default";
+
+    /**
+     * 默认 STT 模型别名
+     */
+    private String defaultSttModel = "whisper";
+
+    /**
+     * 默认 TTS 模型别名
+     */
+    private String defaultTtsModel = "tts";
     
     /**
      * 获取指定别名的模型配置

@@ -6,9 +6,11 @@ import com.lavis.cognitive.model.PlanStep;
 import com.lavis.cognitive.model.TaskPlan;
 import com.lavis.cognitive.planner.PlannerService;
 import com.lavis.service.llm.LlmFactory;
+import com.lavis.websocket.WorkflowEventService;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -40,6 +42,10 @@ public class TaskOrchestrator {
     private final PlannerService plannerService;
     private final MicroExecutorService microExecutorService;
     private final LlmFactory llmFactory;
+    
+    // WebSocket 事件服务（用于向前端推送工作流状态）
+    @Autowired(required = false)
+    private WorkflowEventService workflowEventService;
 
     /** Planner 使用的模型别名 */
     @Value("${planner.model.alias:}")
@@ -137,6 +143,11 @@ public class TaskOrchestrator {
             }
 
             log.info("📋 计划生成完成，共 {} 个步骤", currentPlan.getSteps().size());
+            
+            // 【WebSocket】通知前端计划已创建
+            if (workflowEventService != null) {
+                workflowEventService.onPlanCreated(currentPlan);
+            }
 
             // 2. 执行阶段
             state = OrchestratorState.EXECUTING;
@@ -158,6 +169,11 @@ public class TaskOrchestrator {
 
                 // 【新增】更新 GlobalContext - 开始新里程碑
                 globalContext.startMilestone(currentStep);
+                
+                // 【WebSocket】通知前端步骤开始
+                if (workflowEventService != null) {
+                    workflowEventService.onStepStarted(currentPlan, currentStep);
+                }
 
                 // 执行单个步骤（通过 MicroExecutor，注入 GlobalContext）
                 MicroExecutorService.ExecutionResult stepResult = microExecutorService.executeStep(currentStep,
@@ -176,6 +192,11 @@ public class TaskOrchestrator {
                     state = OrchestratorState.STEP_SUCCESS;
                     consecutiveFailures = 0;
                     log.info("✅ 里程碑 {} 达成: {}", currentStep.getId(), stepResult.getMessage());
+                    
+                    // 【WebSocket】通知前端步骤完成
+                    if (workflowEventService != null) {
+                        workflowEventService.onStepCompleted(currentPlan, currentStep);
+                    }
 
                     if (!currentPlan.moveToNextStep()) {
                         // 所有步骤完成
@@ -188,6 +209,11 @@ public class TaskOrchestrator {
                     consecutiveFailures++;
 
                     log.warn("❌ 里程碑 {} 执行失败: {}", currentStep.getId(), stepResult.getMessage());
+                    
+                    // 【WebSocket】通知前端步骤失败
+                    if (workflowEventService != null) {
+                        workflowEventService.onStepFailed(currentPlan, currentStep, stepResult.getMessage());
+                    }
 
                     // 输出验尸报告反馈
                     log.warn("📋 Executor 反馈:\n{}", stepResult.generatePlannerFeedback());
@@ -261,6 +287,11 @@ public class TaskOrchestrator {
             if (currentPlan.isCompleted()) {
                 state = OrchestratorState.COMPLETED;
                 currentPlan.markCompleted();
+                
+                // 【WebSocket】通知前端计划完成
+                if (workflowEventService != null) {
+                    workflowEventService.onPlanCompleted(currentPlan);
+                }
 
                 log.info("✅ 目标执行完成！耗时 {}ms", executionTimeMs);
                 log.info("📊 GlobalContext 摘要:\n{}", globalContext.getExecutionSummary());
@@ -271,6 +302,11 @@ public class TaskOrchestrator {
             } else if (currentPlan.hasFailed()) {
                 state = OrchestratorState.FAILED;
                 currentPlan.markFailed("部分步骤执行失败");
+                
+                // 【WebSocket】通知前端计划失败
+                if (workflowEventService != null) {
+                    workflowEventService.onPlanFailed(currentPlan, "部分步骤执行失败");
+                }
 
                 return OrchestratorResult.partial(
                         String.format("任务部分完成：%d/%d 步骤成功",

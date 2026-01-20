@@ -1,8 +1,27 @@
+export interface PlanStep {
+  id: number;
+  description: string;
+  type: string;
+  status: 'PENDING' | 'IN_PROGRESS' | 'SUCCESS' | 'FAILED' | 'SKIPPED';
+  resultSummary?: string;
+  definitionOfDone?: string;
+  complexity?: number;
+}
+
+export interface TaskPlan {
+  planId: string;
+  userGoal: string;
+  steps: PlanStep[];
+  currentStepIndex: number;
+  status: 'CREATED' | 'EXECUTING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+}
+
 export interface AgentStatus {
   available: boolean;
   model: string;
   orchestrator_state?: string;
   current_plan_progress?: number;
+  current_plan?: TaskPlan;
 }
 
 export interface ChatRequest {
