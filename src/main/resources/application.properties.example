@@ -1,6 +1,13 @@
 # ====================================
 # Lavis - macOS AI Agent Configuration
 # ====================================
+# 
+# 使用说明：
+# 1. 复制此文件为 application.properties
+# 2. 填写你的 API Key 和配置信息
+# 3. application.properties 已在 .gitignore 中，不会被提交到仓库
+#
+# ====================================
 
 spring.application.name=lavis
 
@@ -14,7 +21,7 @@ app.llm.default-tts-model=tts
 
 app.llm.models.modela.provider=OPENAI
 app.llm.models.modela.base-url=https://dashscope.aliyuncs.com/compatible-mode/v1
-app.llm.models.modela.api-key=${MODELA_API_KEY:sk-21ffaa31cbef417aab95112551b79825}
+app.llm.models.modela.api-key=${MODELA_API_KEY:your-modela-api-key-here}
 app.llm.models.modela.model-name=qwen3-omni-flash
 app.llm.models.modela.temperature=0.4
 app.llm.models.modela.timeout-seconds=180
@@ -29,7 +36,7 @@ app.llm.models.modelb.max-retries=3
 
 app.llm.models.modelc.provider=OPENAI
 app.llm.models.modelc.base-url=https://dashscope.aliyuncs.com/compatible-mode/v1
-app.llm.models.modelc.api-key=${MODELC_API_KEY:sk-06f9fbf310994a279d3a5025278fb363}
+app.llm.models.modelc.api-key=${MODELC_API_KEY:your-modelc-api-key-here}
 app.llm.models.modelc.model-name=qwen3-omni-flash-realtime-2025-12-01
 app.llm.models.modelc.temperature=0.4
 app.llm.models.modelc.timeout-seconds=60
@@ -42,7 +49,7 @@ app.llm.models.modelc.max-retries=3
 # 设置环境变量 OPENAI_API_KEY 或直接填写 API Key
 app.llm.models.whisper.type=STT
 app.llm.models.whisper.provider=OPENAI
-app.llm.models.whisper.api-key=${WHISPER_API_KEY:sk-06f9fbf310994a279d3a5025278fb363}
+app.llm.models.whisper.api-key=${WHISPER_API_KEY:your-whisper-api-key-here}
 app.llm.models.whisper.model-name=qwen3-asr-flash
 app.llm.models.whisper.timeout-seconds=60
 
@@ -51,7 +58,7 @@ app.llm.models.whisper.timeout-seconds=60
 # ====================================
 app.llm.models.tts.type=TTS
 app.llm.models.tts.provider=OPENAI
-app.llm.models.tts.api-key=${TTS_API_KEY:sk-06f9fbf310994a279d3a5025278fb363}
+app.llm.models.tts.api-key=${TTS_API_KEY:your-tts-api-key-here}
 app.llm.models.tts.model-name=qwen3-tts-flash
 app.llm.models.tts.voice=Cherry
 app.llm.models.tts.format=mp3

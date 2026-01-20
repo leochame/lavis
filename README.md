@@ -41,15 +41,36 @@ Lavis 是一个运行在 macOS 上的 AI 智能体 (类似 "Jarvis")，能够通
 
 ### 配置 API Key
 
+**方式一：使用环境变量（推荐）**
+
 ```bash
-export GEMINI_API_KEY=your_api_key_here
+export MODELA_API_KEY=your_modela_api_key
+export MODELC_API_KEY=your_modelc_api_key
+export WHISPER_API_KEY=your_whisper_api_key
+export TTS_API_KEY=your_tts_api_key
+export GEMINI_KEY=your_gemini_api_key
 ```
 
-或在 `application.properties` 中配置:
+**方式二：使用 application.properties**
 
+1. 复制配置模板：
+```bash
+cp src/main/resources/application.properties.example src/main/resources/application.properties
+```
+
+2. 编辑 `src/main/resources/application.properties`，填写你的 API Key：
 ```properties
-gemini.api.key=your_api_key_here
+app.llm.models.modela.api-key=your_modela_api_key
+app.llm.models.modelc.api-key=your_modelc_api_key
+app.llm.models.whisper.api-key=your_whisper_api_key
+app.llm.models.tts.api-key=your_tts_api_key
+app.llm.models.modelb.api-key=your_gemini_api_key
 ```
+
+**⚠️ 重要提示：**
+- `application.properties` 文件已在 `.gitignore` 中，不会被提交到仓库
+- 如果使用环境变量，`application.properties` 中的 `${ENV_VAR:default-value}` 格式会优先使用环境变量
+- 建议使用环境变量方式，更安全且便于部署
 
 ### 运行
 
