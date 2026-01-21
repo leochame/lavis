@@ -6,8 +6,8 @@ import { useState, useRef, useCallback } from 'react';
  * 使用 MediaRecorder API 进行录音，支持智能静音检测（VAD）
  *
  * 核心算法（唤醒后语音输入）：
- * 1. 初始超时：唤醒后有 3 秒窗口期等待语音输入
- * 2. 动态延长：每次检测到语音，延长 1 秒超时
+ * 1. 初始超时：唤醒后有 5 秒窗口期等待语音输入
+ * 2. 动态延长：每次检测到语音，延长 2.5 秒超时
  * 3. 自动结束：超时无语音输入则自动停止
  * 4. 最大录音时长：60秒自动停止
  * 5. 全程静音检测：低能量音频自动丢弃
@@ -47,8 +47,9 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
   const analyzeAudioLevel = useCallback((analyser: AnalyserNode) => {
     if (!mediaRecorderRef.current) return 0;
 
+    // 使用时域数据计算 RMS；返回值范围约 -1.0 ~ 1.0
     const dataArray = new Float32Array(analyser.fftSize);
-    analyser.getFloatFrequencyData(dataArray);
+    analyser.getFloatTimeDomainData(dataArray);
 
     // 计算音频能量（RMS）
     let sum = 0;
@@ -109,8 +110,8 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     source.connect(analyser);
 
     const silenceThreshold = 0.02; // 静音阈值
-    const initialTimeout = 3000; // 初始超时时间（3秒）
-    const extensionTime = 1000; // 每次语音输入延长时间（1秒）
+    const initialTimeout = 5000; // 初始超时时间（5秒）
+    const extensionTime = 2500; // 每次语音输入延长时间（2.5秒）
     const maxRecordingTime = 60000; // 最大录音时长（60秒）
     const minRecordingTime = 500; // 最小录音时长（0.5秒，确保有效录音）
 
@@ -261,7 +262,7 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       mediaRecorder.start(500);
       startTimeRef.current = Date.now();
       setIsRecording(true);
-      console.log('🎤 Recording started (3s initial timeout, +1s per voice input)');
+      console.log('🎤 Recording started (5s initial timeout, +2.5s per voice input)');
 
       // 启动静音检测
       const cleanupDetection = checkSilence();
