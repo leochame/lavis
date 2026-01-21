@@ -22,7 +22,9 @@ class AgentApi {
 
     this.client = axios.create({
       baseURL: `http://localhost:${this.backendPort}/api/agent`,
-      timeout: 30000,
+      // 关键修改 1: 将默认超时时间设置为 0 (无限制)
+      // 这解决了 "前端超时不再存在" 的需求，允许长时间运行的 Agent 任务
+      timeout: 0,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -30,7 +32,10 @@ class AgentApi {
 
     // Request interceptor for logging
     this.client.interceptors.request.use((config) => {
-      console.log(`[API] ${config.method?.toUpperCase()} ${config.url}`, config.data);
+      // 仅在非轮询请求时打印日志，避免控制台刷屏
+      if (!config.url?.includes('status')) {
+        console.log(`[API] ${config.method?.toUpperCase()} ${config.url}`, config.data);
+      }
       return config;
     });
 
@@ -38,12 +43,19 @@ class AgentApi {
     this.client.interceptors.response.use(
       (response) => response,
       (error) => {
+        // 忽略被取消的请求造成的错误
+        if (axios.isCancel(error)) {
+          return Promise.reject(error);
+        }
+        
         console.error('[API] Error:', error.message);
         this.consecutiveErrors++;
         if (this.consecutiveErrors >= 5) {
-          // After 5 consecutive errors, reduce polling frequency
+          // 连续失败5次后，降低心跳频率，减轻浏览器和服务器负担
           this.stopHeartbeat();
-          this.startHeartbeat(this.heartbeatCallback!, 5000); // Poll every 5s instead of 1s
+          if (this.heartbeatCallback) {
+            this.startHeartbeat(this.heartbeatCallback, 5000); 
+          }
         }
         return Promise.reject(error);
       }
@@ -55,7 +67,6 @@ class AgentApi {
     this.heartbeatCallback = callback;
     this.checkStatus(); // Initial check
 
-    // Adaptive polling: start fast, slow down if no changes
     this.heartbeatInterval = window.setInterval(async () => {
       await this.checkStatus();
     }, intervalMs);
@@ -70,16 +81,20 @@ class AgentApi {
 
   private async checkStatus(): Promise<void> {
     try {
-      const response = await this.getStatus();
+      // 关键修改 2: 心跳检测需要快速失败，不能受全局 timeout: 0 的影响
+      // 如果 5秒 内没有返回状态，认为此时服务不可用
+      const response = await this.client.get<AgentStatus>('/status', { timeout: 5000 });
       const newStatus = response.data;
 
-      // Only callback if status actually changed
+      // Only callback if status actually changed (deep comparison)
       if (JSON.stringify(newStatus) !== JSON.stringify(this.lastStatus)) {
         this.heartbeatCallback?.(newStatus);
         this.lastStatus = newStatus;
         this.consecutiveErrors = 0; // Reset error counter on success
       }
     } catch {
+      // 心跳失败时，不传递 null，而是保持上一次的状态或传递错误标识，
+      // 这里为了兼容性保持传递 null，但在 UI 层可以做更平滑的处理
       this.heartbeatCallback?.(null);
       this.consecutiveErrors++;
     }
@@ -87,11 +102,13 @@ class AgentApi {
 
   // Core APIs
   async chat(request: ChatRequest): Promise<ChatResponse> {
+    // chat 接口可能会运行很久，使用默认的 timeout: 0
     const response = await this.client.post<ChatResponse>('/chat', request);
     return response.data;
   }
 
   async executeTask(request: TaskRequest): Promise<TaskResponse> {
+    // task 接口可能会运行很久，使用默认的 timeout: 0
     const response = await this.client.post<TaskResponse>('/task', request);
     return response.data;
   }
@@ -108,14 +125,14 @@ class AgentApi {
   }
 
   async getStatus(): Promise<{ data: AgentStatus }> {
-    return this.client.get<AgentStatus>('/status');
+    return this.client.get<AgentStatus>('/status', { timeout: 5000 });
   }
 
   // Utilities
   async getScreenshot(thumbnail: boolean = true): Promise<ScreenshotResponse> {
-    // Add thumbnail query param for low-quality screenshots
     const response = await this.client.get<ScreenshotResponse>('/screenshot', {
       params: thumbnail ? { thumbnail: 'true' } : undefined,
+      timeout: 10000, // 截图给予 10s 超时
     });
     return response.data;
   }
@@ -136,7 +153,7 @@ class AgentApi {
       try {
         const testClient = axios.create({
           baseURL: `http://localhost:${port}/api/agent`,
-          timeout: 1000,
+          timeout: 2000, // 检测端口时需要快速超时
         });
         await testClient.get('/status');
         this.backendPort = port;
@@ -174,6 +191,7 @@ class AgentApi {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      // 语音处理也可能较慢，使用默认 timeout: 0
     });
 
     return response.data;

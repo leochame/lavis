@@ -8,6 +8,7 @@ import dev.langchain4j.agent.tool.Tool;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.awt.Point;
 import java.io.IOException;
 
 /**
@@ -33,11 +34,30 @@ public class AgentTools {
 
     // ==================== 鼠标操作 (反馈语调更加中性) ====================
 
+    /**
+     * 将 Gemini 归一化坐标 (0-1000) 转为 macOS AWT Robot 使用的逻辑屏幕坐标 (points)。
+     * 说明：
+     * - 屏幕截图叠加网格/模型输出使用 Gemini 坐标系 (0-1000)；
+     * - Java 9+ macOS 下 AWT Robot 使用逻辑坐标，不是物理像素；
+     * - 因此这里需要做“坐标系转换”，而不是乘以 Retina 缩放因子。
+     */
+    private Point toLogicalPoint(int[] geminiCoords) {
+        if (geminiCoords == null || geminiCoords.length < 2) return null;
+        // 使用 ScreenCapturer 内置转换（含边界/安全区处理）
+        Point logical = screenCapturer.toLogicalSafe(geminiCoords[0], geminiCoords[1]);
+        log.info("🎯 坐标校准: Gemini[{}, {}] -> 逻辑坐标[{}, {}]",
+                geminiCoords[0], geminiCoords[1], logical.x, logical.y);
+        return logical;
+    }
+
     public String moveMouse(@P("坐标位置数组 [x, y]") int[] coords) {
         if (coords == null || coords.length < 2) return "❌ 错误: 坐标无效";
         try {
-            robotDriver.moveTo(coords[0], coords[1]);
-            return "鼠标已移动到 (" + coords[0] + ", " + coords[1] + ")";
+            Point logical = toLogicalPoint(coords);
+            if (logical == null) return "❌ 错误: 坐标无效";
+            robotDriver.moveTo(logical.x, logical.y);
+            return String.format("鼠标已移动到 逻辑坐标(%d, %d)（输入Gemini:%d,%d）",
+                    logical.x, logical.y, coords[0], coords[1]);
         } catch (Exception e) {
             return "❌ 移动失败: " + e.getMessage();
         }
@@ -47,10 +67,14 @@ public class AgentTools {
     public String click(@P("坐标位置数组 [x, y]") int[] coords) {
         if (coords == null || coords.length < 2) return "❌ 错误: 坐标无效";
         try {
-            robotDriver.clickAt(coords[0], coords[1]);
-            screenCapturer.recordClickPosition(coords[0], coords[1]);
+            Point logical = toLogicalPoint(coords);
+            if (logical == null) return "❌ 错误: 坐标无效";
+            robotDriver.clickAt(logical.x, logical.y);
+            // 记录逻辑坐标（截图侧会再转回 Gemini 做标注）
+            screenCapturer.recordClickPosition(logical.x, logical.y);
             // 关键修改：不再仅仅说"成功"，而是提示动作已完成，暗示需要验证
-            return String.format("🖱️ 已在 (%d, %d) 执行点击。请等待下一次截图以验证UI是否响应。", coords[0], coords[1]);
+            return String.format("🖱️ 已在 逻辑坐标(%d, %d) 执行点击（输入Gemini:%d,%d）。请等待下一次截图以验证UI是否响应。",
+                    logical.x, logical.y, coords[0], coords[1]);
         } catch (Exception e) {
             log.error("点击失败", e);
             return "❌ 点击操作执行异常: " + e.getMessage();
@@ -61,9 +85,12 @@ public class AgentTools {
     public String doubleClick(@P("坐标位置数组 [x, y]") int[] coords) {
         if (coords == null || coords.length < 2) return "❌ 错误: 坐标无效";
         try {
-            robotDriver.doubleClickAt(coords[0], coords[1]);
-            screenCapturer.recordClickPosition(coords[0], coords[1]);
-            return String.format("🖱️ 已在 (%d, %d) 执行双击。请检查屏幕变化。", coords[0], coords[1]);
+            Point logical = toLogicalPoint(coords);
+            if (logical == null) return "❌ 错误: 坐标无效";
+            robotDriver.doubleClickAt(logical.x, logical.y);
+            screenCapturer.recordClickPosition(logical.x, logical.y);
+            return String.format("🖱️ 已在 逻辑坐标(%d, %d) 执行双击（输入Gemini:%d,%d）。请检查屏幕变化。",
+                    logical.x, logical.y, coords[0], coords[1]);
         } catch (Exception e) {
             return "❌ 双击异常: " + e.getMessage();
         }
@@ -73,9 +100,12 @@ public class AgentTools {
     public String rightClick(@P("坐标位置数组 [x, y]") int[] coords) {
         if (coords == null || coords.length < 2) return "❌ 错误: 坐标无效";
         try {
-            robotDriver.rightClickAt(coords[0], coords[1]);
-            screenCapturer.recordClickPosition(coords[0], coords[1]);
-            return String.format("🖱️ 已在 (%d, %d) 执行右键点击。请寻找上下文菜单。", coords[0], coords[1]);
+            Point logical = toLogicalPoint(coords);
+            if (logical == null) return "❌ 错误: 坐标无效";
+            robotDriver.rightClickAt(logical.x, logical.y);
+            screenCapturer.recordClickPosition(logical.x, logical.y);
+            return String.format("🖱️ 已在 逻辑坐标(%d, %d) 执行右键点击（输入Gemini:%d,%d）。请寻找上下文菜单。",
+                    logical.x, logical.y, coords[0], coords[1]);
         } catch (Exception e) {
             return "❌ 右键点击异常: " + e.getMessage();
         }
@@ -84,7 +114,11 @@ public class AgentTools {
     @Tool("拖拽操作。")
     public String drag(@P("起始位置 [x, y]") int[] from, @P("目标位置 [x, y]") int[] to) {
         try {
-            robotDriver.drag(from[0], from[1], to[0], to[1]);
+            if (from == null || from.length < 2 || to == null || to.length < 2) return "❌ 错误: 坐标无效";
+            Point fromLogical = toLogicalPoint(from);
+            Point toLogical = toLogicalPoint(to);
+            if (fromLogical == null || toLogical == null) return "❌ 错误: 坐标无效";
+            robotDriver.drag(fromLogical.x, fromLogical.y, toLogical.x, toLogical.y);
             return "已执行拖拽操作。请确认对象位置是否改变。";
         } catch (Exception e) {
             return "❌ 拖拽异常: " + e.getMessage();
@@ -357,9 +391,15 @@ public class AgentTools {
         if (coords == null || coords.length < 2) return "❌ 错误: 坐标无效";
         try {
             java.awt.Dimension screenSize = screenCapturer.getScreenSize();
-            boolean inRange = coords[0] >= 0 && coords[0] <= screenSize.width &&
-                    coords[1] >= 0 && coords[1] <= screenSize.height;
-            return inRange ? "✅ 坐标有效" : "⚠️ 坐标超出屏幕范围！";
+            Point logical = toLogicalPoint(coords);
+            if (logical == null) return "❌ 错误: 坐标无效";
+            boolean inRange = logical.x >= 0 && logical.x < screenSize.width &&
+                    logical.y >= 0 && logical.y < screenSize.height;
+            return inRange
+                    ? String.format("✅ 坐标有效：逻辑(%d,%d) in %dx%d（输入Gemini:%d,%d）",
+                    logical.x, logical.y, screenSize.width, screenSize.height, coords[0], coords[1])
+                    : String.format("⚠️ 坐标超出屏幕范围：逻辑(%d,%d) vs %dx%d（输入Gemini:%d,%d）",
+                    logical.x, logical.y, screenSize.width, screenSize.height, coords[0], coords[1]);
         } catch (Exception e) {
             return "❌ 验证失败: " + e.getMessage();
         }
