@@ -40,8 +40,8 @@
 
   z-index: 9999;
 
-  /* 整个胶囊可拖拽 */
-  -webkit-app-region: drag;
+  /* 不使用系统拖拽，使用自定义 IPC 拖拽 */
+  -webkit-app-region: no-drag;
   user-select: none;
 }
 
@@ -78,7 +78,7 @@
     0 0 20px rgba(0, 212, 255, 0.5),
     0 0 40px rgba(0, 212, 255, 0.2);
 
-  /* 核心区域不可拖拽，用于响应点击 */
+  /* 核心区域用于响应点击 */
   -webkit-app-region: no-drag;
   cursor: pointer;
 

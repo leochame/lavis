@@ -29,6 +29,12 @@ electron_1.contextBridge.exposeInMainWorld('electron', {
         openExternalUrl: (url) => electron_1.ipcRenderer.invoke('platform:open-external', { url }),
         checkMicrophonePermission: () => electron_1.ipcRenderer.invoke('platform:check-mic'),
         registerGlobalShortcut: (accelerator, action) => electron_1.ipcRenderer.invoke('platform:register-shortcut', { accelerator, action }),
+        // 拖拽相关 API
+        dragStart: (mouseX, mouseY) => electron_1.ipcRenderer.invoke('platform:drag-start', { mouseX, mouseY }),
+        dragMove: (mouseX, mouseY) => electron_1.ipcRenderer.invoke('platform:drag-move', { mouseX, mouseY }),
+        dragEnd: () => electron_1.ipcRenderer.invoke('platform:drag-end'),
+        getWindowPosition: () => electron_1.ipcRenderer.invoke('platform:get-window-position'),
+        setWindowPosition: (x, y, animate) => electron_1.ipcRenderer.invoke('platform:set-window-position', { x, y, animate }),
     },
     backend: {
         request: (method, endpoint, data, port) => electron_1.ipcRenderer.invoke('backend:request', { method, endpoint, data, port }),

@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import type { AgentStatus } from '../types/agent';
 import type { VoiceState } from '../hooks/useGlobalVoice';
 import { useUIStore } from '../store/uiStore';
@@ -40,7 +40,11 @@ export function Capsule({
 }: CapsuleProps) {
   // 获取 TTS 播放状态
   const isTtsPlaying = useUIStore((s) => s.isTtsPlaying);
-  
+
+  // 拖拽状态
+  const isDraggingRef = useRef(false);
+  const hasDraggedRef = useRef(false); // 用于区分点击和拖拽
+
   // Debug: log state changes
   useEffect(() => {
     console.log('Capsule state:', { voiceState, isWakeWordListening, isRecorderReady, isTtsPlaying });
@@ -72,9 +76,55 @@ export function Capsule({
 
   // 呼吸动画：待机模式监听唤醒词时启用
   const isBreathing = capsuleState === 'idle' && isWakeWordListening;
-  
+
   // TTS 播放时显示声波纹路（覆盖 speaking 状态）
   const showVoiceRings = (capsuleState === 'listening' || capsuleState === 'speaking') || isTtsPlaying;
+
+  /**
+   * 拖拽处理 - 使用 IPC 实现丝滑拖拽
+   */
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    // 只响应左键
+    if (e.button !== 0) return;
+
+    // 如果点击的是核心区域，不启动拖拽
+    if ((e.target as HTMLElement).classList.contains('capsule__core')) {
+      return;
+    }
+
+    e.preventDefault();
+    isDraggingRef.current = true;
+    hasDraggedRef.current = false;
+
+    // 使用屏幕坐标
+    const startX = e.screenX;
+    const startY = e.screenY;
+
+    // 通知主进程开始拖拽
+    window.electron?.platform?.dragStart(startX, startY);
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+
+      hasDraggedRef.current = true;
+
+      // 使用屏幕坐标
+      window.electron?.platform?.dragMove(moveEvent.screenX, moveEvent.screenY);
+    };
+
+    const handleMouseUp = () => {
+      if (isDraggingRef.current) {
+        isDraggingRef.current = false;
+        window.electron?.platform?.dragEnd();
+      }
+
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, []);
 
   /**
    * 单击处理 - 根据设计规范：唤醒/暂停语音聆听
@@ -83,6 +133,13 @@ export function Capsule({
   const handleCoreClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+
+    // 如果刚刚拖拽过，不触发点击
+    if (hasDraggedRef.current) {
+      hasDraggedRef.current = false;
+      return;
+    }
+
     console.log('Capsule core clicked, state:', capsuleState);
 
     // 如果在待机状态且有录音功能，开始录音
@@ -139,6 +196,7 @@ export function Capsule({
   return (
     <div
       className={`capsule capsule--${capsuleState} ${isBreathing ? 'capsule--breathing' : ''}`}
+      onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
       title={getTooltip()}

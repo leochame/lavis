@@ -30,6 +30,12 @@ contextBridge.exposeInMainWorld('electron', {
     checkMicrophonePermission: () => ipcRenderer.invoke('platform:check-mic'),
     registerGlobalShortcut: (accelerator: string, action: 'toggle-window') =>
       ipcRenderer.invoke('platform:register-shortcut', { accelerator, action }),
+    // 拖拽相关 API
+    dragStart: (mouseX: number, mouseY: number) => ipcRenderer.invoke('platform:drag-start', { mouseX, mouseY }),
+    dragMove: (mouseX: number, mouseY: number) => ipcRenderer.invoke('platform:drag-move', { mouseX, mouseY }),
+    dragEnd: () => ipcRenderer.invoke('platform:drag-end'),
+    getWindowPosition: () => ipcRenderer.invoke('platform:get-window-position'),
+    setWindowPosition: (x: number, y: number, animate?: boolean) => ipcRenderer.invoke('platform:set-window-position', { x, y, animate }),
   },
   backend: {
     request: (method: 'GET' | 'POST' | 'PUT' | 'DELETE', endpoint: string, data?: unknown, port?: number) =>
@@ -60,6 +66,12 @@ declare global {
         openExternalUrl: (url: string) => void;
         checkMicrophonePermission: () => Promise<boolean>;
         registerGlobalShortcut?: (accelerator: string, action: 'toggle-window') => Promise<boolean>;
+        // 拖拽相关 API
+        dragStart: (mouseX: number, mouseY: number) => Promise<void>;
+        dragMove: (mouseX: number, mouseY: number) => Promise<void>;
+        dragEnd: () => Promise<void>;
+        getWindowPosition: () => Promise<{ x: number; y: number }>;
+        setWindowPosition: (x: number, y: number, animate?: boolean) => Promise<void>;
       };
       backend: {
         request: (method: 'GET' | 'POST' | 'PUT' | 'DELETE', endpoint: string, data?: unknown, port?: number) => Promise<{ status: number; data: unknown }>;

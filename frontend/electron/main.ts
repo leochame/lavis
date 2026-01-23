@@ -35,11 +35,20 @@ const WINDOW_BOUNDS: Record<'idle' | 'listening' | 'expanded' | 'capsule' | 'cha
 };
 
 // 边缘吸附配置
-const SNAP_THRESHOLD = 50; // 吸附阈值 (px)
+const SNAP_THRESHOLD = 30; // 吸附阈值 (px)
+const SNAP_MAGNETIC_RANGE = 80; // 磁性吸附范围 (px)
 let currentMode: 'capsule' | 'chat' | 'idle' | 'listening' | 'expanded' = 'capsule';
 let isSnappedToEdge = false;
 let snapPosition: 'left' | 'right' | 'top' | 'bottom' | null = null;
 let isHalfHidden = false; // 是否处于半隐藏状态
+
+// 拖拽状态
+let isDragging = false;
+let dragStartPos = { x: 0, y: 0 };
+let windowStartPos = { x: 0, y: 0 };
+
+// 置顶定时器 - 定期确保窗口置顶
+let alwaysOnTopInterval: NodeJS.Timeout | null = null;
 
 /**
  * 检查并请求麦克风权限 (macOS)
@@ -96,6 +105,8 @@ function createWindow() {
     autoHideMenuBar: true,
     // 圆形窗口需要这些设置
     hasShadow: false, // 透明窗口禁用系统阴影，由 CSS 控制
+    // macOS: 设置窗口级别为悬浮面板
+    type: isMac ? 'panel' : undefined,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -106,10 +117,6 @@ function createWindow() {
       // 默认禁用 DevTools，只有在显式开启环境变量时才允许
       devTools: allowDevTools,
     },
-    // macOS 特定配置 - 不使用 vibrancy，避免影响透明度
-    ...(isMac ? {
-      titleBarStyle: 'customButtonsOnHover' as const,
-    } : {}),
   };
 
   const vibrancy = (windowOptions as { vibrancy?: string }).vibrancy ?? 'none';
@@ -117,6 +124,12 @@ function createWindow() {
 
   mainWindow = new BrowserWindow(windowOptions);
   currentMode = 'capsule'; // 初始为胶囊模式
+
+  // 强制设置置顶 - 使用最高级别
+  enforceAlwaysOnTop();
+
+  // 启动置顶保持定时器（每 500ms 检查一次）
+  startAlwaysOnTopEnforcer();
 
   // 移除默认菜单，避免出现浏览器菜单栏
   Menu.setApplicationMenu(null);
@@ -160,97 +173,110 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    stopAlwaysOnTopEnforcer();
   });
 
-  // 设置边缘吸附
-  setupEdgeSnapping();
-
-  // IMPORTANT:
-  // 之前这里启用了 setIgnoreMouseEvents(true)，会导致渲染进程完全收不到鼠标事件，
-  // 从而无法点击"开始/麦克风按钮"，唤醒词也永远不会被启用（isStarted 依赖用户点击）。
-  // 如需"透明区域穿透"，应改为按模式通过 IPC 动态开启，而不是全局开启。
+  // 监听窗口失去焦点时重新置顶
+  mainWindow.on('blur', () => {
+    if (currentMode === 'capsule' && mainWindow) {
+      enforceAlwaysOnTop();
+    }
+  });
 }
 
 /**
- * 边缘吸附算法
- * 当窗口释放时，如果距离屏幕边缘小于阈值，自动吸附到边缘
+ * 强制设置窗口置顶
  */
-function setupEdgeSnapping() {
+function enforceAlwaysOnTop() {
   if (!mainWindow) return;
 
-  let hideTimeout: NodeJS.Timeout | null = null;
+  // 胶囊模式始终置顶
+  if (currentMode === 'capsule' || currentMode === 'idle' || currentMode === 'listening') {
+    // macOS 使用 'screen-saver' 级别，Windows 使用 'pop-up-menu'
+    const level = isMac ? 'screen-saver' : 'pop-up-menu';
+    mainWindow.setAlwaysOnTop(true, level);
 
-  mainWindow.on('moved', () => {
-    if (currentMode !== 'capsule' || !mainWindow) return;
-
-    // 如果正在半隐藏状态，取消隐藏计时器
-    if (hideTimeout) {
-      clearTimeout(hideTimeout);
-      hideTimeout = null;
+    // macOS 额外设置：确保在所有桌面可见
+    if (isMac) {
+      mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     }
+  }
+}
 
-    const [x, y] = mainWindow.getPosition();
-    const [width, height] = mainWindow.getSize();
-    const display = screen.getDisplayNearestPoint({ x, y });
-    const { workArea } = display;
+/**
+ * 启动置顶保持定时器
+ */
+function startAlwaysOnTopEnforcer() {
+  if (alwaysOnTopInterval) return;
 
-    let newX = x;
-    let newY = y;
-    let snapped = false;
-    let position: typeof snapPosition = null;
+  alwaysOnTopInterval = setInterval(() => {
+    if (mainWindow && (currentMode === 'capsule' || currentMode === 'idle' || currentMode === 'listening')) {
+      if (!mainWindow.isAlwaysOnTop()) {
+        console.log('📌 Re-enforcing alwaysOnTop');
+        enforceAlwaysOnTop();
+      }
+    }
+  }, 500);
+}
 
-    // 检查左边缘
+/**
+ * 停止置顶保持定时器
+ */
+function stopAlwaysOnTopEnforcer() {
+  if (alwaysOnTopInterval) {
+    clearInterval(alwaysOnTopInterval);
+    alwaysOnTopInterval = null;
+  }
+}
+
+/**
+ * 计算磁性吸附位置
+ * 在拖拽过程中实时计算，提供丝滑的吸附体验
+ */
+function calculateSnapPosition(x: number, y: number, width: number, height: number): { x: number; y: number; snapped: boolean; edge: typeof snapPosition } {
+  const display = screen.getDisplayNearestPoint({ x: x + width / 2, y: y + height / 2 });
+  const { workArea } = display;
+
+  let newX = x;
+  let newY = y;
+  let snapped = false;
+  let edge: typeof snapPosition = null;
+
+  // 检查左边缘
+  if (x < workArea.x + SNAP_MAGNETIC_RANGE) {
     if (x < workArea.x + SNAP_THRESHOLD) {
       newX = workArea.x;
       snapped = true;
-      position = 'left';
+      edge = 'left';
     }
-    // 检查右边缘
-    else if (x + width > workArea.x + workArea.width - SNAP_THRESHOLD) {
+  }
+  // 检查右边缘
+  else if (x + width > workArea.x + workArea.width - SNAP_MAGNETIC_RANGE) {
+    if (x + width > workArea.x + workArea.width - SNAP_THRESHOLD) {
       newX = workArea.x + workArea.width - width;
       snapped = true;
-      position = 'right';
+      edge = 'right';
     }
+  }
 
-    // 检查上边缘
+  // 检查上边缘
+  if (y < workArea.y + SNAP_MAGNETIC_RANGE) {
     if (y < workArea.y + SNAP_THRESHOLD) {
       newY = workArea.y;
       snapped = true;
-      position = position || 'top';
+      edge = edge || 'top';
     }
-    // 检查下边缘
-    else if (y + height > workArea.y + workArea.height - SNAP_THRESHOLD) {
+  }
+  // 检查下边缘
+  else if (y + height > workArea.y + workArea.height - SNAP_MAGNETIC_RANGE) {
+    if (y + height > workArea.y + workArea.height - SNAP_THRESHOLD) {
       newY = workArea.y + workArea.height - height;
       snapped = true;
-      position = position || 'bottom';
+      edge = edge || 'bottom';
     }
+  }
 
-    if (snapped && (newX !== x || newY !== y)) {
-      mainWindow.setPosition(newX, newY, true); // animate = true
-      isSnappedToEdge = true;
-      snapPosition = position;
-      isHalfHidden = false;
-      console.log(`🧲 Window snapped to ${position} edge`);
-
-      // 吸附后 2 秒自动半隐藏
-      hideTimeout = setTimeout(() => {
-        if (isSnappedToEdge && currentMode === 'capsule' && mainWindow) {
-          halfHideWindow();
-        }
-      }, 2000);
-    } else if (!snapped) {
-      isSnappedToEdge = false;
-      snapPosition = null;
-      isHalfHidden = false;
-    }
-  });
-
-  // 鼠标进入窗口时，如果处于半隐藏状态，弹回
-  mainWindow.on('focus', () => {
-    if (isHalfHidden && mainWindow) {
-      showFullWindow();
-    }
-  });
+  return { x: newX, y: newY, snapped, edge };
 }
 
 /**
@@ -375,8 +401,19 @@ function resizeWindowByMode(mode: 'capsule' | 'chat' | 'idle' | 'listening' | 'e
     }
   }
 
-  // 胶囊/监听模式：始终置顶，聊天/展开模式：取消置顶
-  mainWindow.setAlwaysOnTop(mode === 'capsule' || mode === 'idle' || mode === 'listening', 'floating');
+  // 胶囊/监听模式：始终置顶
+  // 聊天/展开模式：取消置顶
+  const shouldBeOnTop = mode === 'capsule' || mode === 'idle' || mode === 'listening';
+  if (shouldBeOnTop) {
+    enforceAlwaysOnTop();
+  } else {
+    mainWindow.setAlwaysOnTop(false);
+    // macOS: 取消在所有桌面可见
+    if (isMac) {
+      mainWindow.setVisibleOnAllWorkspaces(false);
+    }
+  }
+  console.log(`📌 Window alwaysOnTop: ${shouldBeOnTop} (mode: ${mode})`);
 }
 
 /**
@@ -495,6 +532,80 @@ ipcMain.handle('platform:set-ignore-mouse', (_event, { ignore, forward }: { igno
 // 获取当前吸附状态
 ipcMain.handle('platform:get-snap-state', () => {
   return { isSnapped: isSnappedToEdge, position: snapPosition };
+});
+
+// ============================================
+// 拖拽相关 IPC - 实现丝滑拖拽和边缘吸附
+// ============================================
+
+// 开始拖拽
+ipcMain.handle('platform:drag-start', (_event, { mouseX, mouseY }: { mouseX: number; mouseY: number }) => {
+  if (!mainWindow) return;
+
+  isDragging = true;
+  dragStartPos = { x: mouseX, y: mouseY };
+  const [winX, winY] = mainWindow.getPosition();
+  windowStartPos = { x: winX, y: winY };
+
+  // 如果处于半隐藏状态，先恢复
+  if (isHalfHidden) {
+    showFullWindow();
+  }
+
+  console.log('🖱️ Drag started');
+});
+
+// 拖拽移动
+ipcMain.handle('platform:drag-move', (_event, { mouseX, mouseY }: { mouseX: number; mouseY: number }) => {
+  if (!mainWindow || !isDragging) return;
+
+  const deltaX = mouseX - dragStartPos.x;
+  const deltaY = mouseY - dragStartPos.y;
+
+  let newX = windowStartPos.x + deltaX;
+  let newY = windowStartPos.y + deltaY;
+
+  // 直接设置位置，不使用动画以保证流畅
+  mainWindow.setPosition(Math.round(newX), Math.round(newY), false);
+});
+
+// 结束拖拽
+ipcMain.handle('platform:drag-end', () => {
+  if (!mainWindow || !isDragging) return;
+
+  isDragging = false;
+
+  // 只在胶囊模式下执行吸附
+  if (currentMode !== 'capsule') return;
+
+  const [x, y] = mainWindow.getPosition();
+  const [width, height] = mainWindow.getSize();
+
+  const snap = calculateSnapPosition(x, y, width, height);
+
+  if (snap.snapped) {
+    // 使用动画吸附到边缘
+    mainWindow.setPosition(snap.x, snap.y, true);
+    isSnappedToEdge = true;
+    snapPosition = snap.edge;
+    console.log(`🧲 Snapped to ${snap.edge} edge`);
+  } else {
+    isSnappedToEdge = false;
+    snapPosition = null;
+  }
+});
+
+// 获取窗口位置
+ipcMain.handle('platform:get-window-position', () => {
+  if (!mainWindow) return { x: 0, y: 0 };
+  const [x, y] = mainWindow.getPosition();
+  return { x, y };
+});
+
+// 设置窗口位置
+ipcMain.handle('platform:set-window-position', (_event, { x, y, animate }: { x: number; y: number; animate?: boolean }) => {
+  if (!mainWindow) return;
+  mainWindow.setPosition(Math.round(x), Math.round(y), animate ?? false);
 });
 
 ipcMain.handle('platform:get-screenshot', async () => {
