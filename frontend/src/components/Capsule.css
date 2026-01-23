@@ -1,81 +1,119 @@
+/* ==========================================
+   Capsule - 极简悬浮胶囊设计
+   设计理念：数字精灵，低侵入性
+   参考：macOS 悬浮球、Siri 动画
+   ========================================== */
+
 .capsule {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 64px;
-  height: 64px;
+  /* 不使用 absolute 定位，让父容器的 flex 居中 */
+  position: relative;
+
+  /* 圆形形态 - 极简 */
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
-  background: rgba(10, 15, 20, 0.85);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(0, 243, 255, 0.3); /* Cyan border */
-  cursor: pointer;
+
+  /* 调试：使用不透明背景 */
+  background: rgba(30, 30, 50, 0.95);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+
+  /* 更明显的边框 */
+  border: 2px solid rgba(0, 212, 255, 0.3);
+
+  cursor: grab;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-  box-shadow: 
-    0 0 15px rgba(0, 243, 255, 0.2),
-    inset 0 0 15px rgba(0, 243, 255, 0.1);
+
+  /* 平滑过渡 */
+  transition:
+    transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1),
+    box-shadow 0.3s ease,
+    border-color 0.3s ease;
+
+  /* 更明显的阴影 */
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.5),
+    0 0 30px rgba(0, 212, 255, 0.2),
+    0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+
   z-index: 9999;
-  -webkit-app-region: no-drag;
-  pointer-events: auto;
+
+  /* 整个胶囊可拖拽 */
+  -webkit-app-region: drag;
   user-select: none;
 }
 
-.capsule::before {
-  /* Rotating outer ring */
-  content: '';
-  position: absolute;
-  top: -4px;
-  left: -4px;
-  right: -4px;
-  bottom: -4px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  border-top-color: rgba(0, 243, 255, 0.6);
-  border-bottom-color: rgba(255, 0, 255, 0.6);
-  animation: spin 4s linear infinite;
-  opacity: 0.8;
-  pointer-events: none;
-}
-
+/* 悬停效果 - 轻微放大 + 边框高亮 */
 .capsule:hover {
-  transform: translate(-50%, -50%) scale(1.1);
-  background: rgba(10, 15, 20, 0.95);
-  box-shadow: 
-    0 0 30px rgba(0, 243, 255, 0.4),
-    inset 0 0 20px rgba(0, 243, 255, 0.2);
-  border-color: rgba(0, 243, 255, 0.8);
+  transform: scale(1.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.1) inset;
 }
 
+/* 拖拽中 */
 .capsule:active {
-  transform: translate(-50%, -50%) scale(0.95);
-  box-shadow: 0 0 10px rgba(0, 243, 255, 0.6);
+  cursor: grabbing;
+  transform: scale(1.02);
 }
+
+/* ==========================================
+   能量芯 (Core) - 核心视觉元素
+   这是唯一的视觉焦点
+   ========================================== */
 
 .capsule__core {
   width: 24px;
   height: 24px;
-  background: #00f3ff;
-  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); /* Hexagon */
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  border-radius: 50%;
+  background: linear-gradient(135deg, #00d4ff 0%, #00a8cc 100%);
   position: relative;
   z-index: 2;
-  box-shadow: 0 0 20px #00f3ff;
+
+  /* 柔和发光 */
+  box-shadow:
+    0 0 20px rgba(0, 212, 255, 0.5),
+    0 0 40px rgba(0, 212, 255, 0.2);
+
+  /* 核心区域不可拖拽，用于响应点击 */
+  -webkit-app-region: no-drag;
+  cursor: pointer;
+
+  transition:
+    transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1),
+    box-shadow 0.3s ease,
+    background 0.3s ease;
 }
+
+.capsule__core:hover {
+  transform: scale(1.1);
+}
+
+.capsule__core:active {
+  transform: scale(0.95);
+}
+
+/* ==========================================
+   呼吸光晕 (Glow) - 背景光效
+   ========================================== */
 
 .capsule__glow {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 120%;
-  height: 120%;
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(0, 243, 255, 0.2) 0%, transparent 70%);
-  opacity: 0.5;
+  background: radial-gradient(
+    circle,
+    rgba(0, 212, 255, 0.15) 0%,
+    transparent 70%
+  );
+  opacity: 0;
   transition: opacity 0.3s ease;
   pointer-events: none;
   z-index: 1;
@@ -85,128 +123,102 @@
   opacity: 1;
 }
 
-/* States */
+/* ==========================================
+   状态样式 - 通过颜色传达状态
+   ========================================== */
+
+/* 待机状态 - 静谧蓝 */
 .capsule--idle .capsule__core {
-  background: #00f3ff; /* Cyan */
-  box-shadow: 0 0 15px #00f3ff;
+  background: linear-gradient(135deg, #00d4ff 0%, #00a8cc 100%);
+  box-shadow:
+    0 0 20px rgba(0, 212, 255, 0.5),
+    0 0 40px rgba(0, 212, 255, 0.2);
 }
 
+/* 思考状态 - 紫色脉冲 */
 .capsule--thinking .capsule__core {
-  background: #ff00ff; /* Magenta */
-  box-shadow: 0 0 20px #ff00ff;
-  animation: pulse-core 1s infinite alternate;
+  background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%);
+  box-shadow:
+    0 0 24px rgba(168, 85, 247, 0.6),
+    0 0 48px rgba(168, 85, 247, 0.3);
+  animation: pulse-soft 1.5s ease-in-out infinite;
 }
 
+/* 执行状态 - 绿色 */
 .capsule--executing .capsule__core {
-  background: #00ff9d; /* Neon Green */
-  box-shadow: 0 0 20px #00ff9d;
-  animation: rotate-core 2s linear infinite;
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  box-shadow:
+    0 0 24px rgba(34, 197, 94, 0.6),
+    0 0 48px rgba(34, 197, 94, 0.3);
+  animation: pulse-soft 1s ease-in-out infinite;
 }
 
+/* 错误状态 - 红色 */
 .capsule--error .capsule__core {
-  background: #ff3333; /* Neon Red */
-  box-shadow: 0 0 20px #ff3333;
-  animation: shake 0.5s ease-in-out infinite;
-}
-
-/* Animations */
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-@keyframes rotate-core {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-@keyframes pulse-core {
-  0% { transform: scale(0.9); opacity: 0.8; }
-  100% { transform: scale(1.1); opacity: 1; }
-}
-
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-2px); }
-  75% { transform: translateX(2px); }
-}
-
-.capsule--breathing .capsule__core {
-  animation: breathe 3s ease-in-out infinite;
-}
-
-@keyframes breathe {
-  0%, 100% {
-    transform: scale(1);
-    box-shadow: 0 0 15px currentColor;
-  }
-  50% {
-    transform: scale(1.2);
-    box-shadow: 0 0 30px currentColor;
-  }
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  box-shadow:
+    0 0 24px rgba(239, 68, 68, 0.6),
+    0 0 48px rgba(239, 68, 68, 0.3);
+  animation: pulse-error 0.6s ease-in-out infinite;
 }
 
 /* ==========================================
-   Voice States
+   语音状态 - 特殊视觉反馈
    ========================================== */
 
-/* Listening - 聆听中 (Siri 风格红色呼吸灯) */
+/* 聆听状态 - 活跃橙红，Siri 风格 */
 .capsule--listening {
-  border-color: rgba(255, 77, 79, 0.8);
-  box-shadow: 
-    0 0 30px rgba(255, 77, 79, 0.5),
-    0 0 60px rgba(255, 77, 79, 0.3),
-    inset 0 0 20px rgba(255, 77, 79, 0.3);
-  animation: listening-border-breathe 1.5s ease-in-out infinite;
+  border-color: rgba(255, 100, 100, 0.2);
 }
 
 .capsule--listening .capsule__core {
-  background: linear-gradient(135deg, #ff4d4f 0%, #ff6b6b 50%, #ff8787 100%);
-  box-shadow: 
-    0 0 30px #ff4d4f,
-    0 0 60px rgba(255, 77, 79, 0.5),
-    0 0 90px rgba(255, 77, 79, 0.3);
-  animation: listening-core-breathe 1.5s ease-in-out infinite;
+  background: linear-gradient(135deg, #ff6b6b 0%, #ff8e53 100%);
+  box-shadow:
+    0 0 28px rgba(255, 107, 107, 0.7),
+    0 0 56px rgba(255, 142, 83, 0.4);
+  animation: breathing 1.2s ease-in-out infinite;
 }
 
 .capsule--listening .capsule__glow {
   background: radial-gradient(
     circle,
-    rgba(255, 77, 79, 0.5) 0%,
-    rgba(255, 77, 79, 0.2) 40%,
+    rgba(255, 107, 107, 0.2) 0%,
     transparent 70%
   );
   opacity: 1;
-  animation: listening-glow-breathe 1.5s ease-in-out infinite;
+  animation: glow-pulse 1.2s ease-in-out infinite;
 }
 
-.capsule--listening::before {
-  border-top-color: rgba(255, 77, 79, 0.9);
-  border-bottom-color: rgba(255, 180, 100, 0.7);
-  animation: spin 1.5s linear infinite;
-}
-
-/* Speaking - 回答中 (绿色波纹) */
+/* 说话状态 - 绿色波动 */
 .capsule--speaking {
-  border-color: rgba(82, 196, 26, 0.6);
-  box-shadow: 
-    0 0 20px rgba(82, 196, 26, 0.4),
-    inset 0 0 15px rgba(82, 196, 26, 0.2);
+  border-color: rgba(34, 197, 94, 0.2);
 }
 
 .capsule--speaking .capsule__core {
-  background: #52c41a; /* Green */
-  box-shadow: 0 0 25px #52c41a;
-  animation: speaking-wave 0.8s ease-in-out infinite;
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  box-shadow:
+    0 0 24px rgba(34, 197, 94, 0.6),
+    0 0 48px rgba(34, 197, 94, 0.3);
+  animation: speaking 0.8s ease-in-out infinite;
 }
 
-.capsule--speaking::before {
-  border-top-color: rgba(82, 196, 26, 0.8);
-  border-bottom-color: rgba(150, 255, 100, 0.6);
-  animation: spin 1.5s linear infinite;
+/* ==========================================
+   呼吸动画 - 待机时的生命感
+   ========================================== */
+
+.capsule--breathing .capsule__core {
+  animation: breathing-idle 3s ease-in-out infinite;
 }
 
-/* Voice Rings - 语音波纹效果 */
+.capsule--breathing .capsule__glow {
+  opacity: 0.5;
+  animation: glow-idle 3s ease-in-out infinite;
+}
+
+/* ==========================================
+   声纹波纹效果 (Ripple Effect)
+   ========================================== */
+
 .capsule__voice-rings {
   position: absolute;
   top: 50%;
@@ -224,163 +236,120 @@
   left: 50%;
   transform: translate(-50%, -50%);
   border-radius: 50%;
-  border: 2px solid currentColor;
+  border: 1px solid currentColor;
   opacity: 0;
-  animation: voice-ring-expand 1.5s ease-out infinite;
+  animation: ring-expand 1.8s ease-out infinite;
 }
 
 .capsule--listening .capsule__voice-ring {
-  border-color: rgba(255, 77, 79, 0.6);
+  border-color: rgba(255, 107, 107, 0.4);
 }
 
 .capsule--speaking .capsule__voice-ring {
-  border-color: rgba(82, 196, 26, 0.6);
+  border-color: rgba(34, 197, 94, 0.4);
 }
 
-.capsule__voice-ring:nth-child(1) {
-  animation-delay: 0s;
-}
+.capsule__voice-ring:nth-child(1) { animation-delay: 0s; }
+.capsule__voice-ring:nth-child(2) { animation-delay: 0.6s; }
+.capsule__voice-ring:nth-child(3) { animation-delay: 1.2s; }
 
-.capsule__voice-ring:nth-child(2) {
-  animation-delay: 0.5s;
-}
+/* ==========================================
+   动画关键帧
+   ========================================== */
 
-.capsule__voice-ring:nth-child(3) {
-  animation-delay: 1s;
-}
-
-/* Voice Animations - Siri-style Breathing */
-@keyframes listening-core-breathe {
-  0%, 100% {
-    transform: scale(0.85);
-    box-shadow: 
-      0 0 25px #ff4d4f,
-      0 0 50px rgba(255, 77, 79, 0.4),
-      0 0 75px rgba(255, 77, 79, 0.2);
-    filter: brightness(0.9);
-  }
-  50% {
-    transform: scale(1.15);
-    box-shadow: 
-      0 0 40px #ff4d4f,
-      0 0 80px rgba(255, 77, 79, 0.6),
-      0 0 120px rgba(255, 77, 79, 0.4);
-    filter: brightness(1.1);
-  }
-}
-
-@keyframes listening-border-breathe {
-  0%, 100% {
-    border-color: rgba(255, 77, 79, 0.6);
-    box-shadow: 
-      0 0 20px rgba(255, 77, 79, 0.4),
-      0 0 40px rgba(255, 77, 79, 0.2),
-      inset 0 0 15px rgba(255, 77, 79, 0.2);
-  }
-  50% {
-    border-color: rgba(255, 120, 120, 0.9);
-    box-shadow: 
-      0 0 40px rgba(255, 77, 79, 0.6),
-      0 0 80px rgba(255, 77, 79, 0.4),
-      inset 0 0 25px rgba(255, 77, 79, 0.4);
-  }
-}
-
-@keyframes listening-glow-breathe {
-  0%, 100% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 0.6;
-  }
-  50% {
-    transform: translate(-50%, -50%) scale(1.3);
-    opacity: 1;
-  }
-}
-
-/* Legacy fallback */
-@keyframes listening-pulse {
-  0%, 100% {
-    transform: scale(0.9);
-    box-shadow: 0 0 20px #ff4d4f;
-  }
-  50% {
-    transform: scale(1.1);
-    box-shadow: 0 0 35px #ff4d4f;
-  }
-}
-
-@keyframes speaking-wave {
+/* 待机呼吸 - 缓慢、平静 */
+@keyframes breathing-idle {
   0%, 100% {
     transform: scale(1);
-    box-shadow: 0 0 20px #52c41a;
+    box-shadow:
+      0 0 20px rgba(0, 212, 255, 0.5),
+      0 0 40px rgba(0, 212, 255, 0.2);
   }
-  25% {
-    transform: scale(1.05) rotate(5deg);
-    box-shadow: 0 0 30px #52c41a;
-  }
-  75% {
-    transform: scale(1.05) rotate(-5deg);
-    box-shadow: 0 0 30px #52c41a;
+  50% {
+    transform: scale(1.08);
+    box-shadow:
+      0 0 28px rgba(0, 212, 255, 0.6),
+      0 0 56px rgba(0, 212, 255, 0.3);
   }
 }
 
-@keyframes voice-ring-expand {
+@keyframes glow-idle {
+  0%, 100% {
+    opacity: 0.3;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+}
+
+/* 聆听呼吸 - 活跃、有节奏 */
+@keyframes breathing {
+  0%, 100% {
+    transform: scale(0.95);
+  }
+  50% {
+    transform: scale(1.12);
+  }
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    opacity: 0.6;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.15);
+  }
+}
+
+/* 通用脉冲 */
+@keyframes pulse-soft {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 0.9;
+  }
+}
+
+/* 错误脉冲 */
+@keyframes pulse-error {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* 说话波动 */
+@keyframes speaking {
+  0%, 100% {
+    transform: scale(1);
+  }
+  25% {
+    transform: scale(1.04);
+  }
+  75% {
+    transform: scale(1.04);
+  }
+}
+
+/* 波纹扩散 */
+@keyframes ring-expand {
   0% {
     width: 60%;
     height: 60%;
-    opacity: 0.8;
+    opacity: 0.5;
   }
   100% {
     width: 200%;
     height: 200%;
     opacity: 0;
-  }
-}
-
-/* ==========================================
-   Wake Word Indicator - 唤醒词监听指示器
-   ========================================== */
-
-.capsule__wake-indicator {
-  position: absolute;
-  top: -8px;
-  right: -8px;
-  width: 16px;
-  height: 16px;
-  z-index: 10;
-}
-
-.capsule__wake-pulse {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: #00f3ff;
-  border-radius: 50%;
-  box-shadow: 0 0 8px #00f3ff;
-  animation: wake-pulse 2s ease-in-out infinite;
-}
-
-.capsule__wake-pulse::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 6px;
-  height: 6px;
-  background: white;
-  border-radius: 50%;
-}
-
-@keyframes wake-pulse {
-  0%, 100% {
-    transform: scale(0.8);
-    opacity: 0.6;
-  }
-  50% {
-    transform: scale(1.2);
-    opacity: 1;
   }
 }

@@ -20,7 +20,7 @@ export function TaskPanel({ status, onEmergencyStop }: { status: AgentStatus | n
         }
       }
     }
-  }, [status?.current_plan?.currentStepIndex]);
+  }, [status?.current_plan]);
 
   const isExecuting = status?.orchestrator_state?.includes('EXECUTING');
   const isThinking = status?.orchestrator_state?.includes('THINKING') ||

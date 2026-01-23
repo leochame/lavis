@@ -454,18 +454,76 @@ cd frontend && npm run electron:build
 - **Content Security:** CSP headers (future)
 - **IPC validation:** Only whitelisted channels
 
+## Voice Interaction
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Voice Pipeline                            │
+├─────────────────────────────────────────────────────────────┤
+│  Wake Word Detection (Vosk)                                  │
+│  └── useVoskWakeWord.ts → Offline keyword detection          │
+├─────────────────────────────────────────────────────────────┤
+│  Voice Recording (Browser API)                               │
+│  └── useVoiceRecorder.ts → MediaRecorder API                 │
+├─────────────────────────────────────────────────────────────┤
+│  Speech-to-Text (Backend)                                    │
+│  └── Whisper API → Transcription                             │
+├─────────────────────────────────────────────────────────────┤
+│  Text-to-Speech (Backend)                                    │
+│  └── POST /api/agent/tts → Audio Base64                      │
+│  └── audioService.ts → Playback                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### TTS Flow
+
+1. Backend generates announcement text (async, non-blocking)
+2. WebSocket sends `voice_announcement` event with text only
+3. Frontend calls `POST /api/agent/tts` to convert text to audio
+4. Frontend plays audio via singleton Audio instance
+5. Audio blob URL revoked after playback
+
+## Memory Safety
+
+### Frontend Memory Management
+
+| Strategy | Implementation | Location |
+|----------|----------------|----------|
+| URL Revoke | `URL.revokeObjectURL()` after audio playback | `audioService.ts` |
+| Singleton Audio | Single `Audio()` instance reused | `audioService.ts` |
+| Virtual Scrolling | `react-window` for chat history | `ChatPanel.tsx` |
+| Conditional Render | Hide ChatPanel in mini mode | `App.tsx` |
+
+### Backend Memory Management
+
+| Strategy | Implementation | Location |
+|----------|----------------|----------|
+| Image Content Cleanup | Custom `ImageContentCleanableChatMemory` | `memory/` |
+| Screenshot Compression | Downscale to 768px width | `ScreenCapturer.java` |
+| Context Cleanup | Clear GlobalContext after task | `TaskOrchestrator.java` |
+| Stream Closure | try-with-resources for BufferedImage | `ScreenCapturer.java` |
+
+### ImageContentCleanableChatMemory
+
+Custom ChatMemory implementation that automatically cleans up old ImageContent:
+
+- Keeps full content for last N messages (default: 4)
+- Replaces older ImageContent with placeholder text
+- Thread-safe with read-write locks
+- Saves ~90% heap memory in long-running sessions
+
 ## Future Enhancements
 
-### Phase 5: Advanced Features
-- [ ] WebSocket for real-time state streaming
-- [ ] Voice input (Web Speech API)
-- [ ] Click highlight overlay in Electron
+### Planned Features
 - [ ] Multi-screen support
 - [ ] Task templates / shortcuts
 - [ ] History search
 - [ ] Export/import task plans
+- [ ] Click highlight overlay
 
-### Phase 6: Intelligence
+### Intelligence Improvements
 - [ ] Tool use: File operations, browser control
 - [ ] Self-correction threshold tuning
 - [ ] Plan optimization caching

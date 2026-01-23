@@ -20,8 +20,10 @@ class AgentApi {
   constructor(port?: number) {
     this.backendPort = port ?? 8080;
 
+    // 使用 127.0.0.1 而不是 localhost，避免 DNS 解析问题
+    // 这在 Electron 环境中可以防止 DNS 相关的崩溃
     this.client = axios.create({
-      baseURL: `http://localhost:${this.backendPort}/api/agent`,
+      baseURL: `http://127.0.0.1:${this.backendPort}/api/agent`,
       // 关键修改 1: 将默认超时时间设置为 0 (无限制)
       // 这解决了 "前端超时不再存在" 的需求，允许长时间运行的 Agent 任务
       timeout: 0,
@@ -30,12 +32,8 @@ class AgentApi {
       },
     });
 
-    // Request interceptor for logging
+    // Request interceptor
     this.client.interceptors.request.use((config) => {
-      // 仅在非轮询请求时打印日志，避免控制台刷屏
-      if (!config.url?.includes('status')) {
-        console.log(`[API] ${config.method?.toUpperCase()} ${config.url}`, config.data);
-      }
       return config;
     });
 
@@ -152,13 +150,12 @@ class AgentApi {
     for (const port of commonPorts) {
       try {
         const testClient = axios.create({
-          baseURL: `http://localhost:${port}/api/agent`,
+          baseURL: `http://127.0.0.1:${port}/api/agent`,
           timeout: 2000, // 检测端口时需要快速超时
         });
         await testClient.get('/status');
         this.backendPort = port;
-        this.client.defaults.baseURL = `http://localhost:${port}/api/agent`;
-        console.log(`[API] Found backend on port ${port}`);
+        this.client.defaults.baseURL = `http://127.0.0.1:${port}/api/agent`;
         return port;
       } catch {
         // Continue to next port
@@ -167,34 +164,83 @@ class AgentApi {
     throw new Error('No backend server found on common ports');
   }
 
-  // Voice Chat API
-  async voiceChat(audioFile: File, screenshot?: File): Promise<{
+  // Get WebSocket URL based on detected backend port
+  getWebSocketUrl(): string {
+    // 使用 127.0.0.1 而不是 localhost，避免 DNS 解析问题
+    return `ws://127.0.0.1:${this.backendPort}/ws/agent`;
+  }
+
+  // Voice Chat API (异步 TTS 版本)
+  // 返回文本响应，音频通过 WebSocket 异步推送
+  async voiceChat(audioFile: File, wsSessionId?: string, screenshot?: File): Promise<{
     success: boolean;
     user_text: string;
     agent_text: string;
-    agent_audio: string;
+    request_id: string;
+    audio_pending: boolean;
     duration_ms: number;
   }> {
     const formData = new FormData();
     formData.append('file', audioFile);
+    if (wsSessionId) {
+      formData.append('ws_session_id', wsSessionId);
+    }
     if (screenshot) {
       formData.append('screenshot', screenshot);
     }
 
-    const response = await this.client.post<{
-      success: boolean;
-      user_text: string;
-      agent_text: string;
-      agent_audio: string;
-      duration_ms: number;
-    }>('/voice-chat', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-      // 语音处理也可能较慢，使用默认 timeout: 0
-    });
+    try {
+      const response = await this.client.post<{
+        success: boolean;
+        user_text: string;
+        agent_text: string;
+        request_id: string;
+        audio_pending: boolean;
+        duration_ms: number;
+      }>('/voice-chat', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        // 语音处理需要合理超时，避免状态卡在 processing
+        // 5 分钟超时：足够处理大部分语音请求，但不会无限等待
+        timeout: 300000,
+      });
 
-    return response.data;
+      return response.data;
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error('[API] Voice chat failed:', error.message);
+      }
+      throw error;
+    }
+  }
+
+  // TTS API (Text-to-Speech)
+  // 调用后端 TTS 代理端点，将文本转换为音频
+  // 配置统一在后端管理，前端无需配置 API key
+  async tts(text: string): Promise<{
+    success: boolean;
+    audio: string; // Base64 encoded audio
+    format: string;
+    duration_ms: number;
+  }> {
+    try {
+      const response = await this.client.post<{
+        success: boolean;
+        audio: string;
+        format: string;
+        duration_ms: number;
+      }>('/tts', { text }, {
+        timeout: 30000, // TTS 可能需要较长时间，设置 30s 超时
+      });
+
+      return response.data;
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error('[API] TTS failed:', error.message);
+      }
+      throw error;
+    }
   }
 }
 

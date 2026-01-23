@@ -28,6 +28,10 @@
     ],
     "entitlements": {
       "com.apple.security.cs.allow-unsigned-executable-memory": true
+    },
+    "extendInfo": {
+      "NSMicrophoneUsageDescription": "Lavis 需要访问麦克风以进行语音唤醒和语音交互功能",
+      "NSAppleEventsUsageDescription": "Lavis 需要此权限以提供更好的用户体验"
     }
   },
   "win": {
@@ -60,7 +64,9 @@
   "publish": null,
   "npmRebuild": false,
   "asarUnpack": [
-    "**/node_modules/**"
+    "**/node_modules/**",
+    "**/*.ppn",
+    "**/*.pv"
   ],
   "compression": "maximum"
 }

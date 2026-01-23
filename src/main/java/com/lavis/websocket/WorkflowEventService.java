@@ -154,6 +154,19 @@ public class WorkflowEventService {
     }
 
     /**
+     * 发送语音播报事件（TTS通知）
+     * 用于在任务完成时向用户播报拟人化的完成消息
+     */
+    public void onVoiceAnnouncement(String text) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("text", text);
+        data.put("timestamp", Instant.now().toEpochMilli());
+        
+        broadcast("voice_announcement", data);
+        log.info("🎙️ 发送语音播报: {}", text);
+    }
+
+    /**
      * 发送日志消息
      */
     public void sendLog(String level, String message) {

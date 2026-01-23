@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.scheduling.annotation.EnableAsync;
 
 /**
  * Lavis - Headless Desktop AI Agent
@@ -18,6 +19,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
  */
 @Slf4j
 @SpringBootApplication
+@EnableAsync
 @RequiredArgsConstructor
 public class LavisApplication {
 

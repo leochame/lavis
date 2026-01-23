@@ -84,6 +84,47 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
     }
 
     /**
+     * 根据 Session ID 发送消息
+     * 用于异步 TTS 推送场景
+     *
+     * @param sessionId WebSocket Session ID
+     * @param message 消息内容
+     * @return true 如果发送成功，false 如果 session 不存在或已关闭
+     */
+    public boolean sendToSessionById(String sessionId, Map<String, Object> message) {
+        WebSocketSession session = sessions.get(sessionId);
+        if (session == null) {
+            log.warn("WebSocket session not found: {}", sessionId);
+            return false;
+        }
+        if (!session.isOpen()) {
+            log.warn("WebSocket session is closed: {}", sessionId);
+            sessions.remove(sessionId);
+            return false;
+        }
+        sendToSession(session, message);
+        return true;
+    }
+
+    /**
+     * 获取第一个可用的 Session ID
+     * 用于单客户端场景（如语音交互）
+     *
+     * @return Session ID，如果没有连接则返回 null
+     */
+    public String getFirstSessionId() {
+        return sessions.keySet().stream().findFirst().orElse(null);
+    }
+
+    /**
+     * 检查指定 Session 是否存在且打开
+     */
+    public boolean isSessionActive(String sessionId) {
+        WebSocketSession session = sessions.get(sessionId);
+        return session != null && session.isOpen();
+    }
+
+    /**
      * 获取当前连接数
      */
     public int getConnectionCount() {

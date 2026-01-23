@@ -1,5 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
+// 使用 Vite 的 ?url 语法导入模型文件，确保在 Electron 打包后路径依然有效
+import porcupineModelUrl from '/porcupine_params.pv?url';
+import hiLavisKeywordUrl from '/hi-lavis.ppn?url';
+
 /**
  * Wake Word Hook 配置参数
  */
@@ -90,7 +94,12 @@ export function useWakeWord({
    * 初始化 Porcupine
    */
   const initPorcupine = useCallback(async () => {
-    const resolvePublicPath = (publicPath: string): string => {
+    /**
+     * 解析资源路径，兼容 Electron 和 Web 环境
+     * 优先使用 Vite 导入的 URL，确保打包后路径正确
+     */
+    const resolvePublicPath = (publicPath: string, importedUrl?: string): string => {
+      // 已经是完整 URL，直接返回
       if (
         publicPath.startsWith('http://') ||
         publicPath.startsWith('https://') ||
@@ -100,33 +109,62 @@ export function useWakeWord({
         return publicPath;
       }
 
+      // Electron file 协议处理 - 需要指向 app.asar.unpacked 目录
       if (window.location.protocol === 'file:') {
+        // window.location.href 类似: file:///path/to/app.asar/dist/index.html
+        // 需要转换为: file:///path/to/app.asar.unpacked/dist/hi-lavis.ppn
+        const currentUrl = window.location.href;
+        const asarMatch = currentUrl.match(/^(file:\/\/.*?)(\/[^/]+\.asar)(\/.*)/);
+
+        if (asarMatch) {
+          // 在 asar 包内，使用 .unpacked 目录
+          const [, prefix, asarPath, ] = asarMatch;
+          const normalized = publicPath.replace(/^\//, '');
+          const resolved = `${prefix}${asarPath}.unpacked/dist/${normalized}`;
+          return resolved;
+        }
+
+        // 非 asar 环境（开发模式），使用相对路径
         const normalized = publicPath.replace(/^\//, '');
-        return new URL(normalized, window.location.href).toString();
+        const resolved = new URL(normalized, window.location.href).toString();
+        return resolved;
+      }
+
+      // Web 环境：如果有 Vite 导入的 URL，使用它；否则使用 publicPath
+      if (importedUrl) {
+        return importedUrl;
       }
 
       return publicPath;
     };
-    // 调试：打印环境变量状态
-    console.log('🎤 Wake word config check:');
-    console.log(`   - Access Key: ${accessKey ? '✅ 已配置 (' + accessKey.slice(0, 10) + '...)' : '❌ 未配置'}`);
-    console.log(`   - Keyword Path: ${keywordPath ? '✅ ' + keywordPath : '❌ 未配置'}`);
-    console.log(`   - Keyword Base64: ${keywordBase64 ? '✅ 已配置' : '❌ 未配置'}`);
 
     // 如果没有 Access Key，报错并停止
     if (!accessKey) {
-      const errorMsg = '⚠️ 缺少 VITE_PICOVOICE_KEY 环境变量，无法启动唤醒词检测';
-      console.error(errorMsg);
-      console.log('   请在 .env.local 文件中配置：');
-      console.log('   VITE_PICOVOICE_KEY=你的AccessKey');
+      console.error('[Porcupine] Missing VITE_PICOVOICE_KEY');
       setError('未配置 Picovoice Access Key');
+      setIsListening(false);
+      return;
+    }
+
+    // 验证 Access Key 格式（Picovoice Access Key 通常是 32 字符的字符串）
+    const trimmedKey = accessKey.trim();
+    if (trimmedKey.length < 20) {
+      console.error('[Porcupine] Access Key format invalid');
+      setError('Access Key 格式不正确');
+      setIsListening(false);
+      return;
+    }
+
+    // 检查是否包含明显的无效字符
+    if (trimmedKey.includes('your_access_key') || trimmedKey.includes('YOUR_ACCESS_KEY')) {
+      console.error('[Porcupine] Placeholder Access Key detected');
+      setError('请配置真实的 Access Key');
       setIsListening(false);
       return;
     }
 
     try {
       // 动态导入 Porcupine 和 WebVoiceProcessor
-      console.log('🎤 Loading Porcupine v4 and WebVoiceProcessor modules...');
       const [{ PorcupineWorker }, { WebVoiceProcessor }] = await Promise.all([
         import('@picovoice/porcupine-web'),
         import('@picovoice/web-voice-processor')
@@ -134,8 +172,6 @@ export function useWakeWord({
       
       // 保存 WebVoiceProcessor 引用
       webVoiceProcessorRef.current = WebVoiceProcessor;
-      
-      console.log('🎤 Initializing Porcupine v4 wake word detection...');
 
       // Porcupine v4 API 需要以下参数:
       // 1. accessKey - Picovoice Access Key
@@ -143,54 +179,50 @@ export function useWakeWord({
       // 3. keywordDetectionCallback - 检测回调
       // 4. model - Porcupine 基础模型（必需）
       
-      // 配置唤醒词 - 优先使用 publicPath，其次 base64，最后使用内置词
+      // 配置唤醒词 - 优先使用 Vite 导入的 URL，其次 publicPath，再次 base64，最后使用内置词
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let keywords: any[];
       let wakeWordLabel: string;
 
-      if (keywordPath) {
-        // 使用 publicPath 加载 .ppn 文件（推荐方式）
-        const resolvedKeywordPath = resolvePublicPath(keywordPath);
+      if (keywordPath || hiLavisKeywordUrl) {
+        // 优先使用 publicPath（推荐做法，避免错误的 Base64 配置导致初始化失败）
+        const resolvedKeywordPath = resolvePublicPath(
+          keywordPath || '/hi-lavis.ppn',
+          keywordPath ? undefined : hiLavisKeywordUrl // 如果没有自定义路径，使用 Vite 导入的 URL
+        );
         wakeWordLabel = '"Hi Lavis" (via publicPath)';
         keywords = [{
           label: 'Hi Lavis',
           publicPath: resolvedKeywordPath,
           sensitivity: 0.7,
         }];
-        console.log(`   Keyword: ${wakeWordLabel}`);
-        console.log(`   Loading from: ${resolvedKeywordPath}`);
       } else if (keywordBase64) {
-        // 使用 Base64 加载
+        // Base64 作为兜底方案（防止错误的 Base64 阻塞正常文件路径）
         wakeWordLabel = '"Hi Lavis" (via base64)';
         keywords = [{
           label: 'Hi Lavis',
           base64: keywordBase64,
           sensitivity: 0.7,
         }];
-        console.log(`   Keyword: ${wakeWordLabel}`);
       } else {
-        // 使用内置关键词
+        // 使用内置关键词（fallback）
         wakeWordLabel = '"Porcupine" (内置)';
         keywords = [{
           builtin: 'Porcupine' as const,
           sensitivity: 0.5,
         }];
-        console.log(`   Keyword: ${wakeWordLabel}`);
       }
 
       // 检测回调
-      const detectionCallback = (detection: { index: number; label: string }) => {
-        console.log(`🎉 Wake word detected: "${detection.label}" (index: ${detection.index})`);
+      const detectionCallback = () => {
         onWakeRef.current?.();
       };
 
-      // Porcupine 基础模型（从 public 目录加载）
-      const modelPublicPath = resolvePublicPath('/porcupine_params.pv');
+      // Porcupine 基础模型（使用 Vite 导入的 URL）
+      const modelPublicPath = resolvePublicPath('/porcupine_params.pv', porcupineModelUrl);
       const model = { publicPath: modelPublicPath };
-      console.log(`   Model: ${modelPublicPath}`);
 
       // 创建 Porcupine Worker (v4 API)
-      console.log('🎤 Creating PorcupineWorker...');
       const porcupine = await PorcupineWorker.create(
         accessKey,
         keywords,
@@ -201,38 +233,73 @@ export function useWakeWord({
       porcupineRef.current = porcupine;
       
       // 使用 WebVoiceProcessor 订阅 Porcupine 引擎（而不是直接调用 porcupine.start()）
-      console.log('🎤 Starting audio capture via WebVoiceProcessor...');
       await WebVoiceProcessor.subscribe(porcupine);
       
       setIsListening(true);
       setError(null);
-      console.log('✅ Porcupine wake word detection started successfully!');
-      console.log(`   Now listening for: ${wakeWordLabel}`);
 
     } catch (err: unknown) {
-      console.error('❌ Failed to initialize Porcupine:', err);
-      
+      console.error('[Porcupine] Failed to initialize:', err);
+
       let errorMessage = 'Unknown error';
+      let errorDetails = '';
+      
       if (err instanceof Error) {
         errorMessage = err.message;
-        
-        // 提供更友好的错误提示
-        if (errorMessage.includes('Invalid AccessKey')) {
-          errorMessage = 'Picovoice Access Key 无效，请检查配置';
-        } else if (errorMessage.includes('microphone')) {
-          errorMessage = '无法访问麦克风，请授予权限';
-        } else if (errorMessage.includes('model')) {
-          errorMessage = 'Porcupine 模型加载失败，请检查 /public/porcupine_params.pv';
-        } else if (errorMessage.includes('platform') || errorMessage.includes('format')) {
-          errorMessage = '唤醒词模型格式错误，请确保使用 Web (WASM) 平台的 .ppn 文件';
+        const errorName = err.name || '';
+        const errorString = err.toString();
+
+        // 检查是否是激活错误（PorcupineActivationRefusedError）
+        if (
+          errorName.includes('Activation') ||
+          errorName.includes('ActivationRefused') ||
+          errorMessage.includes('Activation') ||
+          errorMessage.includes('Initialization failed') ||
+          errorString.includes('Activation')
+        ) {
+          errorMessage = 'Porcupine 激活失败';
+          errorDetails = `
+激活错误通常由以下原因引起：
+1. Access Key 无效或已过期
+2. Access Key 未授权用于 Web/WASM 平台
+3. 网络连接问题，无法连接到 Picovoice 服务器
+4. Access Key 已达到使用限制
+
+请检查：
+- 访问 https://console.picovoice.ai/ 确认 Access Key 状态
+- 确保 Access Key 已启用 Web 平台权限
+- 检查网络连接是否正常
+- 如果使用免费版，确认未超过使用限制
+
+当前 Access Key: ${accessKey ? accessKey.slice(0, 15) + '...' : '未配置'}
+          `.trim();
+          console.error('[Porcupine] Activation error:', errorDetails);
+        } else if (errorMessage.includes('Invalid AccessKey') || errorMessage.includes('Invalid access key')) {
+          errorMessage = 'Picovoice Access Key 无效';
+          errorDetails = '请检查 .env.local 文件中的 VITE_PICOVOICE_KEY 配置是否正确';
+        } else if (errorMessage.includes('microphone') || errorMessage.includes('Microphone')) {
+          errorMessage = '无法访问麦克风';
+          errorDetails = '请授予麦克风权限并刷新页面';
+        } else if (errorMessage.includes('model') || errorMessage.includes('Model')) {
+          errorMessage = 'Porcupine 模型加载失败';
+          errorDetails = '请检查 /public/porcupine_params.pv 文件是否存在且可访问';
+        } else if (errorMessage.includes('platform') || errorMessage.includes('format') || errorMessage.includes('Platform')) {
+          errorMessage = '唤醒词模型格式错误';
+          errorDetails = '请确保使用 Web (WASM) 平台的 .ppn 文件，而不是其他平台的版本';
+        } else if (errorMessage.includes('File not found') || errorMessage.includes('Network error') || errorMessage.includes('404')) {
+          errorMessage = '模型文件加载失败';
+          errorDetails = `路径解析问题：
+- 模型路径: ${porcupineModelUrl}
+- 唤醒词路径: ${hiLavisKeywordUrl}
+请确保文件存在于 public 目录，且 Vite 构建配置正确`;
+        } else if (errorMessage.includes('network') || errorMessage.includes('Network') || errorMessage.includes('fetch')) {
+          errorMessage = '网络连接失败';
+          errorDetails = '无法连接到 Picovoice 服务器，请检查网络连接';
         }
       }
-      
-      setError(errorMessage);
+
+      setError(errorMessage + (errorDetails ? `\n${errorDetails}` : ''));
       setIsListening(false);
-      
-      // 不降级，让用户知道问题
-      console.log('⚠️ Wake word detection failed, please check configuration');
     }
   }, [accessKey, keywordPath, keywordBase64]);
 
@@ -247,9 +314,8 @@ export function useWakeWord({
           await webVoiceProcessorRef.current.unsubscribe(porcupineRef.current);
         }
         await porcupineRef.current.release();
-        console.log('🎤 Porcupine stopped');
       } catch (err) {
-        console.warn('Error stopping Porcupine:', err);
+        console.error('[Porcupine] Error stopping:', err);
       }
       porcupineRef.current = null;
     }
@@ -294,3 +360,4 @@ export function useWakeWord({
     stopListening 
   };
 }
+

@@ -4,6 +4,9 @@ import com.lavis.cognitive.AgentService;
 import com.lavis.cognitive.orchestrator.TaskOrchestrator;
 import com.lavis.perception.ScreenCapturer;
 import com.lavis.service.llm.LlmFactory;
+import com.lavis.service.tts.AsyncTtsService;
+import com.lavis.service.tts.TtsDecisionService;
+import com.lavis.websocket.AgentWebSocketHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -15,6 +18,7 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
 /**
@@ -34,6 +38,9 @@ public class AgentController {
     private final AgentService agentService;
     private final ScreenCapturer screenCapturer;
     private final LlmFactory llmFactory;
+    private final TtsDecisionService ttsDecisionService;
+    private final AsyncTtsService asyncTtsService;
+    private final AgentWebSocketHandler webSocketHandler;
 
     // Task history
     private final Deque<TaskRecord> taskHistory = new ConcurrentLinkedDeque<>();
@@ -125,15 +132,18 @@ public class AgentController {
      * Emergency stop
      */
     @PostMapping("/stop")
-    public ResponseEntity<Map<String, String>> stop() {
+    public ResponseEntity<Map<String, Object>> stop() {
         var orchestrator = agentService.getTaskOrchestrator();
+        boolean interrupted = false;
         if (orchestrator != null) {
-            // TODO: Implement interrupt() method in Orchestrator
-            // orchestrator.interrupt();
+            orchestrator.interrupt();
+            interrupted = true;
         }
 
         log.info("🛑 Emergency stop triggered by user");
-        return ResponseEntity.ok(Map.of("status", "Stop command sent"));
+        return ResponseEntity.ok(Map.of(
+                "status", interrupted ? "Stop command sent" : "Orchestrator unavailable",
+                "interrupted", interrupted));
     }
 
     /**
@@ -216,25 +226,32 @@ public class AgentController {
     // ==========================================
 
     /**
-     * 语音对话接口 (Voice Chat)
-     * 
-     * 流程：前端录音 → 后端 STT → Agent 处理 → 后端 TTS → 前端播放
-     * 
+     * 语音对话接口 (Voice Chat) - 异步 TTS 版本
+     *
+     * 流程优化：
+     * 1. STT 完成后，立即并行启动：
+     *    - LLM 生成回复
+     *    - TTS 决策判断（基于用户问题）
+     * 2. LLM 完成后立即返回 HTTP 响应（文字先行）
+     * 3. 异步：根据决策结果 + 回复内容，生成 TTS 并通过 WebSocket 推送
+     *
      * 请求格式：multipart/form-data
      * @param audioFile 用户录音文件 (WAV/MP3/M4A)
-     * @param screenshot (可选) 当前屏幕截图（如果语音包含视觉指令）
-     * 
+     * @param wsSessionId WebSocket Session ID（用于推送 TTS 音频）
+     *
      * 响应格式：
      * {
      *   "success": true,
      *   "user_text": "用户说的文本",
      *   "agent_text": "Agent 的回复文本",
-     *   "agent_audio": "Base64 编码的 MP3 音频"
+     *   "request_id": "唯一请求ID",
+     *   "audio_pending": true  // 告知前端音频稍后通过 WS 推送
      * }
      */
     @PostMapping(value = "/voice-chat", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Map<String, Object>> voiceChat(
             @RequestParam("file") MultipartFile audioFile,
+            @RequestParam(value = "ws_session_id", required = false) String wsSessionId,
             @RequestParam(value = "screenshot", required = false) MultipartFile screenshot
     ) {
         if (audioFile == null || audioFile.isEmpty()) {
@@ -243,6 +260,8 @@ public class AgentController {
 
         log.info("🎤 [Voice Chat] Received audio file: {}", audioFile.getOriginalFilename());
 
+        // 生成唯一请求 ID
+        String requestId = UUID.randomUUID().toString();
         long startTime = System.currentTimeMillis();
 
         try {
@@ -250,36 +269,105 @@ public class AgentController {
             String userText = llmFactory.getSttModel().transcribe(audioFile);
             log.info("User transcribed text: {}", userText);
 
-            // 2. Agent: 文本 → 回复（可以带截图）
-            String agentText;
-            if (screenshot != null && !screenshot.isEmpty()) {
-                // 如果提供了截图，将截图转为 Base64 传递给 Agent
-                // 注意：这里简化处理，实际可能需要先保存截图文件
-                agentText = agentService.chatWithScreenshot(userText);
-            } else {
-                agentText = agentService.chatWithScreenshot(userText);
-            }
+            // 2. Check if user needs voice feedback (runs in parallel with LLM)
+            // This is based on user intent, not LLM response content
+            CompletableFuture<Boolean> needsVoiceFeedbackFuture = asyncTtsService.checkNeedsVoiceFeedbackAsync(
+                userText, ttsDecisionService
+            );
 
+            // 3. LLM generates response
+            String agentText = agentService.chatWithScreenshot(userText);
             log.info("Agent response: {}", agentText);
 
-            // 3. TTS: 文本 → 音频
-            String agentAudio = llmFactory.getTtsModel().textToSpeech(agentText);
+            // 4. Get voice feedback decision (should be done by now, as it's fast)
+            boolean needsVoiceFeedback = needsVoiceFeedbackFuture.join();
+            log.info("Voice feedback decision: needsVoiceFeedback={}", needsVoiceFeedback);
+
+            // 5. Determine WebSocket Session ID
+            String sessionId = wsSessionId;
+            if (sessionId == null || sessionId.isBlank()) {
+                // If frontend didn't pass it, try to get the first available session
+                sessionId = webSocketHandler.getFirstSessionId();
+            }
+
+            // 6. If user needs voice feedback and has valid WebSocket connection, generate TTS async
+            // AsyncTtsService will determine whether to speak original text or generate a summary
+            boolean audioPending = false;
+            if (needsVoiceFeedback && sessionId != null && webSocketHandler.isSessionActive(sessionId)) {
+                asyncTtsService.generateAndPush(sessionId, agentText, requestId);
+                audioPending = true;
+                log.info("TTS generation started asynchronously for requestId: {}", requestId);
+            } else if (needsVoiceFeedback) {
+                log.warn("Voice feedback needed but no active WebSocket session, skipping TTS");
+            }
 
             long duration = System.currentTimeMillis() - startTime;
-
             addToHistory("voice-chat", userText, agentText, true, duration);
 
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "user_text", userText,
-                    "agent_text", agentText,
-                    "agent_audio", agentAudio,
-                    "duration_ms", duration
-            ));
+            // 7. Return text response immediately
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("user_text", userText);
+            response.put("agent_text", agentText);
+            response.put("request_id", requestId);
+            response.put("audio_pending", audioPending);
+            response.put("duration_ms", duration);
+
+            return ResponseEntity.ok(response);
 
         } catch (Exception e) {
             log.error("Voice chat failed", e);
             return handleError("voice-chat", audioFile.getOriginalFilename(), startTime, e);
+        }
+    }
+
+    // ==========================================
+    // TTS API (Text-to-Speech Proxy)
+    // ==========================================
+
+    /**
+     * TTS 代理端点
+     * 前端调用此端点将文本转换为音频，配置统一在后端管理
+     * 
+     * 请求格式：
+     * {
+     *   "text": "要转换的文本"
+     * }
+     * 
+     * 响应格式：
+     * {
+     *   "success": true,
+     *   "audio": "Base64 编码的音频数据",
+     *   "format": "mp3"
+     * }
+     */
+    @PostMapping("/tts")
+    public ResponseEntity<Map<String, Object>> textToSpeech(@RequestBody Map<String, String> request) {
+        String text = request.get("text");
+        if (text == null || text.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Text cannot be empty"));
+        }
+
+        log.info("🎙️ [TTS] Received text to convert: {} chars", text.length());
+
+        long startTime = System.currentTimeMillis();
+        try {
+            // 使用后端配置的 TTS 模型生成音频
+            String audioBase64 = llmFactory.getTtsModel().textToSpeech(text);
+            long duration = System.currentTimeMillis() - startTime;
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "audio", audioBase64,
+                    "format", "mp3",
+                    "duration_ms", duration
+            ));
+        } catch (Exception e) {
+            log.error("TTS generation failed", e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "error", e.getMessage(),
+                    "success", false
+            ));
         }
     }
 

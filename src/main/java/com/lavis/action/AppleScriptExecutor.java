@@ -79,13 +79,22 @@ public class AppleScriptExecutor {
 
     /**
      * 执行 Shell 命令 (带超时)
+     * 
+     * 改进：使用交互式 shell 模式，加载用户的 shell 配置文件
+     * 这样可以访问用户的环境变量、PATH、别名等配置
      */
     public ExecutionResult executeShell(String command, int timeoutSeconds) {
         log.info("执行 Shell: {}", command);
         
         try {
-            ProcessBuilder pb = new ProcessBuilder("/bin/zsh", "-c", command);
+            // 使用 -l (login shell) 或 -i (interactive) 参数加载用户配置
+            // 或者通过 source ~/.zshrc 来加载配置
+            // 这里使用 -l 参数，它会加载 ~/.zprofile 和 ~/.zshrc
+            ProcessBuilder pb = new ProcessBuilder("/bin/zsh", "-l", "-c", command);
             pb.redirectErrorStream(true);
+            
+            // 继承当前进程的环境变量，确保可以访问系统环境
+            pb.environment().putAll(System.getenv());
             
             Process process = pb.start();
             

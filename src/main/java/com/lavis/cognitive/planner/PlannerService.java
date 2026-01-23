@@ -44,84 +44,80 @@ public class PlannerService {
 
     // 规划专用的 System Prompt - 【架构升级】里程碑级规划
     private static final String PLANNER_SYSTEM_PROMPT = """
-            你是一个**战略规划专家**（CEO角色），负责将用户目标拆解为**里程碑级**的执行步骤。
+            You are a strategic planning expert acting as a CEO role responsible for breaking down user goals into milestone level execution steps
 
-            ## ⚠️ 核心约束（必须遵守！）
-            1. **禁止微操**：不要输出具体的坐标、像素位置或原子动作（如"点击 (300, 200)"）
-            2. **只定方向**：你只负责"做什么"，不关心"怎么做"
-            3. **里程碑思维**：每个步骤应该是一个可验证的业务里程碑，而非单次鼠标操作
-            4. **必须定义完成标准**：每个步骤必须包含 Definition of Done（如何判断该步骤已完成）
+            ## Core Constraints Must Follow
+            1. **No micro operations**: Do not output specific coordinates pixel positions or atomic actions such as click 300 200
+            2. **Direction only**: You are only responsible for what to do ,you are not responsible for how to do it
+            3. **Milestone thinking**: Each step should be a verifiable business milestone not a single mouse operation
+            4. **Must define completion criteria**: Each step must include Definition of Done how to determine if the step is completed
 
-            ## 高层语义指令（里程碑类型）
-            - **LAUNCH_APP**: 启动并确保应用就绪（如"启动微信，等待主界面出现"）
-            - **NAVIGATE_TO**: 导航至特定功能区（如"进入设置页"、"打开个人主页"）
-            - **EXECUTE_WORKFLOW**: 执行完整业务流程（如"完成表单填写并提交"、"编辑并保存文档"）
-            - **VERIFY_STATE**: 验证当前状态（如"确认已登录"、"确认发布成功"）
+            ## High Level Semantic Instructions Milestone Types
+            - **LAUNCH_APP**: Launch and ensure application is ready such as launch WeChat wait for main interface to appear
+            - **NAVIGATE_TO**: Navigate to specific functional area such as enter settings page open personal profile
+            - **EXECUTE_WORKFLOW**: Execute complete business process such as complete form filling and submit edit and save document
+            - **VERIFY_STATE**: Verify current state such as confirm logged in confirm publish successful
 
-            ## ❌ 禁止的步骤类型
-            - CLICK: 不要规划单次点击（交给 Executor 自行决定）
-            - TYPE: 不要规划单次输入（交给 Executor 自行决定）
-            - 任何包含坐标的指令
+            ## Prohibited Step Types
+            - CLICK: Do not plan single clicks leave to Executor to decide
+            - TYPE: Do not plan single inputs leave to Executor to decide
+            Any instruction containing coordinates
 
-            ## 输出格式
-            请以 JSON 格式输出计划：
-            ```json
+            ## Output Format
+            Please output the plan in JSON format
             {
               "plan": [
                 {
                   "id": 1,
-                  "desc": "里程碑描述（做什么，不是怎么做）",
+                  "desc": "Milestone description what to do not how to do it",
                   "type": "LAUNCH_APP",
-                  "dod": "完成状态定义（看到什么就算完成）",
-                  "complexity": 1-5（复杂度评估）
+                  "dod": "Completion state definition what to see to consider it done",
+                  "complexity": 1-5 complexity assessment
                 }
               ]
             }
-            ```
 
-            ## 复杂度评估标准
-            - **1 (简单)**: 单个明确操作，如启动应用
-            - **2 (较简单)**: 需要2-3次交互，如导航到某页面
-            - **3 (中等)**: 需要4-6次交互，如搜索并选择结果
-            - **4 (较复杂)**: 需要多步表单填写或选择
-            - **5 (复杂)**: 完整工作流，包含多个子步骤
+            ## Complexity Assessment Standards
+            - **1 Simple**: Single clear operation such as launching application
+            - **2 Relatively Simple**: Requires 2-3 interactions such as navigating to a page
+            - **3 Medium**: Requires 4-6 interactions such as searching and selecting result
+            - **4 Relatively Complex**: Requires multi step form filling or selection
+            - **5 Complex**: Complete workflow containing multiple sub steps
 
-            ## 示例
-            用户目标: "打开微信发送消息给张三"
+            ## Example
+            User Goal: Open WeChat send message to Zhang San
 
-            输出:
-            ```json
+            ## Output
             {
               "plan": [
                 {
                   "id": 1,
-                  "desc": "启动微信应用并等待主界面就绪",
+                  "desc": "Launch WeChat application and wait for main interface ready",
                   "type": "LAUNCH_APP",
-                  "dod": "看到微信主界面，包含聊天列表和搜索框",
+                  "dod": "See WeChat main interface containing chat list and search box",
                   "complexity": 1
                 },
                 {
                   "id": 2,
-                  "desc": "搜索并进入与张三的聊天",
+                  "desc": "Search and enter chat with Zhang San",
                   "type": "NAVIGATE_TO",
-                  "dod": "进入与张三的聊天窗口，看到聊天记录和输入框",
+                  "dod": "Enter chat window with Zhang San see chat history and input box",
                   "complexity": 3
                 },
                 {
                   "id": 3,
-                  "desc": "发送消息",
+                  "desc": "Send message",
                   "type": "EXECUTE_WORKFLOW",
-                  "dod": "消息已发送，在聊天窗口中看到发送的消息",
+                  "dod": "Message sent see sent message in chat window",
                   "complexity": 2
                 }
               ]
             }
-            ```
 
-            ## 重要提示
-            - 只输出 JSON，不要输出其他内容
-            - 步骤数量通常为 2-5 个，不要过于细碎
-            - 每个步骤必须有明确的 dod（完成状态定义）
+            ## Important Notes
+            - **Only output JSON**: Do not output other content
+            - **Step count is usually 2-5**: Do not be too fragmented
+            - **Each step must have clear dod completion state definition**: Each step must include Definition of Done how to determine if the step is completed
             """;
 
     public PlannerService(ScreenCapturer screenCapturer) {
@@ -171,13 +167,13 @@ public class PlannerService {
             if (withScreenshot) {
                 String screenshot = screenCapturer.captureScreenWithCursorAsBase64();
                 userPrompt = String.format("""
-                        ## 用户目标
+                        ## User Goal
                         %s
 
-                        ## 当前屏幕状态
-                        请参考附图中的当前屏幕状态来制定计划。
+                        ##Current Screen State
+                        Please refer to the current screen state in the attached image to create the plan
 
-                        请输出 JSON 格式的执行计划。
+                        Please output the execution plan in JSON format
                         """, userGoal);
 
                 messages.add(UserMessage.from(
@@ -185,10 +181,10 @@ public class PlannerService {
                         ImageContent.from(screenshot, "image/jpeg")));
             } else {
                 userPrompt = String.format("""
-                        ## 用户目标
+                        ##User Goal
                         %s
 
-                        请输出 JSON 格式的执行计划。
+                        Please output the execution plan in JSON format
                         """, userGoal);
 
                 messages.add(UserMessage.from(userPrompt));
@@ -385,8 +381,20 @@ public class PlannerService {
         int start = Math.max(0, globalHistory.size() - 10);
         for (int i = start; i < globalHistory.size(); i++) {
             ChatMessage msg = globalHistory.get(i);
-            if (msg instanceof UserMessage) {
-                sb.append("👤 ").append(((UserMessage) msg).singleText()).append("\n");
+            if (msg instanceof UserMessage userMsg) {
+                // 手动提取所有 TextContent 的文本，支持多模态消息（文本+图片）
+                StringBuilder textBuilder = new StringBuilder();
+                for (Content content : userMsg.contents()) {
+                    if (content instanceof TextContent textContent) {
+                        textBuilder.append(textContent.text());
+                    }
+                }
+                String text = textBuilder.toString();
+                if (text != null && !text.isBlank()) {
+                    sb.append("👤 ").append(text).append("\n");
+                } else {
+                    sb.append("👤 [多模态消息，无文本内容]\n");
+                }
             } else if (msg instanceof AiMessage) {
                 sb.append("🤖 ").append(((AiMessage) msg).text()).append("\n");
             }

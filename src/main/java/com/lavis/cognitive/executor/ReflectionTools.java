@@ -17,10 +17,10 @@ public class ReflectionTools {
      * 里程碑完成工具
      * * 调用此工具即代表流程结束（Success）。
      */
-    @Tool("当且仅当截图中能看到任务【完全达成】的明确视觉证据时调用。此调用将结束当前任务循环。")
+    @Tool("Call only when clear visual evidence of complete task achievement can be seen in screenshot This call will end current task loop")
     public String completeMilestone(
-            @dev.langchain4j.agent.tool.P("必须包含：1.截图中看到的成功证据 2.完成状态的具体表现。") String summary) {
+            @dev.langchain4j.agent.tool.P("Must include 1.success evidence seen in screenshot 2.specific manifestation of completion state") String summary) {
         log.info("✅ 反思结果: 里程碑完成 - {}", summary);
-        return "里程碑已标记为完成: " + summary;
+        return "Milestone marked as completed " + summary;
     }
 }

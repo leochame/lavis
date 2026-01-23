@@ -1,252 +1,177 @@
-# Lavis - macOS 系统级多模态智能体
+## Lavis - macOS 系统级多模态 AI 智能体 / macOS System-level Multimodal AI Agent
 
-Lavis 是一个运行在 macOS 上的 AI 智能体 (类似 "Jarvis")，能够通过视觉感知屏幕、通过鼠标键盘操作系统。
+Lavis 是一个运行在 macOS 上的桌面 AI 智能体，能够通过**视觉感知屏幕**、**模拟鼠标键盘**执行自动化操作，并支持**语音交互**。  
+Lavis is a macOS desktop AI agent that **perceives your screen**, **controls mouse & keyboard**, and supports **voice interaction**.
 
-## ✨ 核心特性
+---
 
-- **视觉感知**: 实时截图分析，支持 Retina 屏幕缩放
-- **自主操作**: 鼠标移动/点击/拖拽、键盘输入、系统快捷键
-- **反思机制**: Action-Observation-Correction (行动-观察-修正) 闭环
-- **系统集成**: AppleScript 执行、应用控制、Shell 命令
-- **透明 UI**: 现代化 HUD 抬头显示器，展示 Agent 思考过程
-- **智能重试**: 自动处理 API 限流和错误重试
+## 核心特性 / Key Features
 
-## 🏗️ 架构设计
+- **视觉感知 / Visual Perception**: 实时截图分析（支持 Retina 缩放） / real-time screenshot analysis with Retina support
+- **自主操作 / Autonomous Actions**: 鼠标移动/点击/拖拽、键盘输入、系统快捷键 / mouse, keyboard, and system shortcut control
+- **反思机制 / Reflection Loop**: Action–Observation–Correction 闭环 / closed loop for self-correction
+- **系统集成 / System Integration**: AppleScript、应用控制、Shell 命令 / AppleScript, app control, shell commands
+- **语音交互 / Voice Interaction**: 唤醒词、ASR、TTS / wake word, ASR, TTS
+- **透明 UI / Transparent UI**: HUD 式前端，展示 Agent 思考过程 / HUD-style UI showing internal reasoning
+- **内存安全 / Memory Safety**: 历史截图与音频自动清理，支持长时间运行 / automatic cleanup for long-running sessions
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Lavis Architecture                       │
-├─────────────────────────────────────────────────────────────┤
-│  M4: Overlay UI (JavaFX)                                    │
-│  └── 透明 HUD 窗口，展示思考过程                              │
-├─────────────────────────────────────────────────────────────┤
-│  M2: Cognitive Layer (LangChain4j + Gemini)                 │
-│  ├── AgentService: AI 对话与工具调用                         │
-│  ├── AgentTools: 可调用的工具集                              │
-│  └── ReflectionLoop: 反思循环机制                            │
-├─────────────────────────────────────────────────────────────┤
-│  M1: Perception │  M3: Action Layer                         │
-│  └── ScreenCapturer    ├── RobotDriver (鼠标/键盘)          │
-│                        └── AppleScriptExecutor (系统脚本)    │
-└─────────────────────────────────────────────────────────────┘
-```
+---
 
-## 🚀 快速开始
+## 技术栈 / Tech Stack
 
-### 前置要求
+| 层级 / Layer | 技术 / Tech | 版本 / Version |
+|-------------|-------------|----------------|
+| **后端 / Backend** | Spring Boot | 3.5.9 |
+| **语言 / Language** | Java | 21 |
+| **AI 框架 / AI Framework** | LangChain4j | 0.35.0 |
+| **前端 / Frontend** | React | 19.x |
+| **桌面 / Desktop** | Electron | 40.x |
+| **构建 / Build** | Vite | 7.x |
+| **状态管理 / State** | Zustand | 5.x |
 
-- macOS 系统
+---
+
+## 快速开始 / Quick Start
+
+### 前置要求 / Prerequisites
+
+- macOS (Intel / Apple Silicon)
 - JDK 21+
-- Gemini API Key (免费获取: https://makersuite.google.com/app/apikey)
+- Node.js 18+
+- 至少一个 LLM API Key / at least one LLM API key
 
-### 配置 API Key
+### 1. 配置后端 API Key / Configure Backend API Keys
 
-**方式一：使用环境变量（推荐）**
+**方式一（推荐）/ Option 1 (recommended): 环境变量 / Environment variables**
 
 ```bash
-export MODELA_API_KEY=your_modela_api_key
-export MODELC_API_KEY=your_modelc_api_key
-export WHISPER_API_KEY=your_whisper_api_key
-export TTS_API_KEY=your_tts_api_key
-export GEMINI_KEY=your_gemini_api_key
+export MODELA_API_KEY=your_modela_api_key    # 主要 LLM (e.g. GPT-4)
+export MODELB_API_KEY=your_modelb_api_key    # 视觉 LLM (e.g. Gemini)
+export MODELC_API_KEY=your_modelc_api_key    # 快速 LLM (e.g. GPT-3.5)
+export WHISPER_API_KEY=your_whisper_api_key  # 语音识别 / ASR
+export TTS_API_KEY=your_tts_api_key          # 语音合成 / TTS
 ```
 
-**方式二：使用 application.properties**
+**方式二 / Option 2: 配置文件 / Configuration file**
 
-1. 复制配置模板：
 ```bash
 cp src/main/resources/application.properties.example src/main/resources/application.properties
+# 编辑 application.properties 填写 API Key / edit and fill your API keys
 ```
 
-2. 编辑 `src/main/resources/application.properties`，填写你的 API Key：
-```properties
-app.llm.models.modela.api-key=your_modela_api_key
-app.llm.models.modelc.api-key=your_modelc_api_key
-app.llm.models.whisper.api-key=your_whisper_api_key
-app.llm.models.tts.api-key=your_tts_api_key
-app.llm.models.modelb.api-key=your_gemini_api_key
-```
-
-**⚠️ 重要提示：**
-- `application.properties` 文件已在 `.gitignore` 中，不会被提交到仓库
-- 如果使用环境变量，`application.properties` 中的 `${ENV_VAR:default-value}` 格式会优先使用环境变量
-- 建议使用环境变量方式，更安全且便于部署
-
-### 运行
+### 2. 启动后端 / Start Backend
 
 ```bash
 ./mvnw spring-boot:run
 ```
 
-### 授予权限
+> 想要使用 GraalVM Native Image 进行 AOT 编译和更强的防逆向能力，请参考 `docs/Developer-Build-and-Packaging.md`。  
+> For AOT compilation and stronger reverse-engineering resistance with GraalVM Native Image, see `docs/Developer-Build-and-Packaging.md`.
 
-首次运行时，macOS 会要求授权:
-1. **屏幕录制权限**: 系统偏好设置 → 安全性与隐私 → 隐私 → 屏幕录制
-2. **辅助功能权限**: 系统偏好设置 → 安全性与隐私 → 隐私 → 辅助功能
+### 3. 启动前端 / Start Frontend
 
-## ⌨️ 快捷键
-
-| 快捷键 | 功能 |
-|--------|------|
-| `⌘+Enter` | 发送消息 |
-| `⌘+K` | 清空日志 |
-| `↑/↓` | 浏览输入历史 |
-| `Escape` | 隐藏窗口 |
-
-## 📡 REST API
-
-### 检查状态
 ```bash
-curl http://localhost:8080/api/agent/status
+cd frontend
+npm install
+npm run electron:dev
 ```
 
-### 发送消息
+### 4. 授予 macOS 权限 / Grant macOS Permissions
+
+**中文：**
+1. 屏幕录制：系统设置 → 隐私与安全性 → 屏幕录制 → 勾选 Lavis
+2. 辅助功能：系统设置 → 隐私与安全性 → 辅助功能 → 勾选 Lavis
+
+**English:**
+1. Screen Recording: System Settings → Privacy & Security → Screen Recording → enable Lavis
+2. Accessibility: System Settings → Privacy & Security → Accessibility → enable Lavis
+
+---
+
+## 项目结构 / Project Structure
+
+```text
+lavis/
+├── src/main/java/com/lavis/        # Java 后端 / backend
+│   ├── cognitive/                  # 认知层 / cognitive logic
+│   ├── perception/                 # 感知层（截图）/ perception (screen)
+│   ├── action/                     # 动作层（鼠标键盘）/ actions
+│   ├── controller/                 # REST API
+│   ├── websocket/                  # WebSocket 通信 / WebSocket
+│   └── service/                    # TTS/ASR 等服务 / services
+├── frontend/                       # Electron + React 前端 / frontend
+│   ├── electron/                   # Electron 主进程 / main process
+│   └── src/                        # React UI & hooks
+├── docs/                           # 文档 / documentation
+│   ├── User-Guide.md               # 用户使用说明 / User guide
+│   ├── Developer-Build-and-Packaging.md  # 构建与打包指南 / Build & packaging
+│   └── ARCHITECTURE.md (planned)   # 可以迁移现有架构文档 / planned ref
+├── ARCHITECTURE.md                 # 详细架构文档 / architecture (legacy location)
+├── Dev_Plan.md                     # 开发计划 / dev plan
+└── IMPLEMENTATION_STATUS.md        # 实现状态 / implementation status
+```
+
+---
+
+## REST API 概览 / REST API Overview
+
+| 方法 / Method | 端点 / Endpoint | 说明 / Description |
+|--------------|-----------------|--------------------|
+| GET | `/api/agent/status` | 获取系统状态 / get system status |
+| POST | `/api/agent/chat` | 聊天 / chat with screenshot context |
+| POST | `/api/agent/task` | 执行自动化任务 / execute automation task |
+| POST | `/api/agent/stop` | 紧急停止 / emergency stop |
+| POST | `/api/agent/reset` | 重置对话 / reset state |
+| GET | `/api/agent/screenshot` | 获取屏幕截图 / get screenshot |
+| POST | `/api/agent/tts` | 文本转语音 / text-to-speech |
+| GET | `/api/agent/history` | 获取任务历史 / get task history |
+
+**示例 / Examples**
+
 ```bash
+# 检查状态 / check status
+curl http://localhost:8080/api/agent/status
+
+# 发送消息 / send a chat message
 curl -X POST http://localhost:8080/api/agent/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "你好"}'
-```
-
-### 带截图的对话 (视觉分析)
-```bash
-curl -X POST http://localhost:8080/api/agent/chat-with-screenshot \
-  -H "Content-Type: application/json" \
   -d '{"message": "当前屏幕上显示了什么?"}'
-```
 
-### 执行自动化任务
-```bash
-curl -X POST http://localhost:8080/api/agent/execute \
+# 执行任务 / execute a task
+curl -X POST http://localhost:8080/api/agent/task \
   -H "Content-Type: application/json" \
-  -d '{"task": "打开 Safari 并搜索天气"}'
+  -d '{"goal": "打开 Safari 并搜索天气"}'
 ```
 
-### 获取屏幕截图
-```bash
-curl http://localhost:8080/api/agent/screenshot
-```
+---
 
-### 重置对话
-```bash
-curl -X POST http://localhost:8080/api/agent/reset
-```
+## 文档导航 / Documentation
 
-### 查看任务历史
-```bash
-curl http://localhost:8080/api/agent/history?limit=10
-```
+- `docs/User-Guide.md`  
+  - **中文/English** 用户说明：安装、运行、权限、基础使用。
+- `docs/Developer-Build-and-Packaging.md`  
+  - **中文/English** 开发者指南：构建、GraalVM Native Image 打包、Electron 打包。
+- `ARCHITECTURE.md`  
+  - 系统架构与数据流的详细说明。
+- `Dev_Plan.md` & `IMPLEMENTATION_STATUS.md`  
+  - 开发计划与当前实现进度，适合作为贡献者参考。
+- `frontend/README.md`  
+  - 前端（Electron + React）开发说明。
 
-### 清空历史
-```bash
-curl -X DELETE http://localhost:8080/api/agent/history
-```
+---
 
-## 🛠️ 可用工具
+## 安全与隐私 / Security & Privacy
 
-### 鼠标操作
-- `click(x, y)` - 单击
-- `doubleClick(x, y)` - 双击
-- `rightClick(x, y)` - 右键点击
-- `drag(fromX, fromY, toX, toY)` - 拖拽
-- `scroll(amount)` - 滚动
+- 所有自动化操作在本地执行；截图仅用于视觉推理，不做长期持久化。  
+- API Key 存储于本地环境变量或配置文件，不会被前端或第三方服务泄露。  
+- 使用 GraalVM Native Image 打包后端，可移除 `.class` 字节码，增加反编译与逆向的难度。
 
-### 键盘操作
-- `typeText(text)` - 输入文本 (支持中英文)
-- `pressEnter()` - 回车
-- `pressEscape()` - ESC
-- `pressTab()` - Tab
-- `copy()` / `paste()` - 复制/粘贴
-- `selectAll()` - 全选
-- `save()` - 保存
-- `undo()` - 撤销
+All automation runs locally; screenshots are transient and used only for visual reasoning.  
+API keys live in local env/config only and are never exposed to the frontend or third parties.  
+GraalVM Native Image packaging removes `.class` files, making reverse engineering significantly harder.
 
-### 系统操作
-- `openApplication(name)` - 打开应用
-- `quitApplication(name)` - 关闭应用
-- `openURL(url)` - 打开网址
-- `openFile(path)` - 打开文件
-- `executeAppleScript(script)` - 执行 AppleScript
-- `executeShell(command)` - 执行 Shell 命令
-- `showNotification(title, message)` - 显示通知
+---
 
-## 🔄 反思机制
-
-Lavis 采用类似 Flowith OS 的反思机制:
-
-1. **行动 (Action)**: 执行用户指定的操作
-2. **观察 (Observation)**: 截图分析执行结果
-3. **修正 (Correction)**: 如果未完成，调整策略重试
-
-```
-┌──────┐    ┌──────────┐    ┌──────────┐
-│ 行动 │ -> │ 截图观察 │ -> │ 完成判断 │
-└──────┘    └──────────┘    └────┬─────┘
-     ^                          │
-     │       ┌──────────┐       │ NO
-     └───────│ 修正策略 │<──────┘
-             └──────────┘
-```
-
-## 📁 项目结构
-
-```
-src/main/java/com/lavis/
-├── LavisApplication.java       # 应用入口
-├── perception/
-│   └── ScreenCapturer.java     # 屏幕截图 (M1)
-├── cognitive/
-│   ├── AgentService.java       # AI 服务 (M2)
-│   ├── AgentTools.java         # AI 工具集 (M2)
-│   └── ReflectionLoop.java     # 反思循环 (M2)
-├── action/
-│   ├── RobotDriver.java        # 鼠标键盘控制 (M3)
-│   └── AppleScriptExecutor.java# 系统脚本执行 (M3)
-├── ui/
-│   ├── OverlayWindow.java      # 透明 HUD 窗口 (M4)
-│   └── JavaFXInitializer.java  # JavaFX 初始化
-├── controller/
-│   └── AgentController.java    # REST API
-└── config/
-    └── AppConfig.java          # 应用配置
-```
-
-## ⚙️ 配置项
-
-| 配置项 | 默认值 | 说明 |
-|--------|--------|------|
-| `gemini.api.key` | - | Gemini API Key (必填) |
-| `gemini.model` | gemini-2.5-flash | 使用的 AI 模型 |
-| `agent.retry.max` | 3 | 最大重试次数 |
-| `agent.retry.delay.ms` | 2000 | 重试延迟 (毫秒) |
-| `reflection.max.iterations` | 5 | 反思循环最大次数 |
-| `reflection.delay.ms` | 1000 | 每次操作后等待时间 |
-| `screenshot.target.width` | 768 | 截图压缩宽度 |
-
-## 🎯 示例任务
-
-```bash
-# 打开应用
-curl -X POST http://localhost:8080/api/agent/execute \
-  -H "Content-Type: application/json" \
-  -d '{"task": "打开 Notes 应用并创建一个新笔记"}'
-
-# 网页操作
-curl -X POST http://localhost:8080/api/agent/execute \
-  -H "Content-Type: application/json" \
-  -d '{"task": "打开 Safari，访问 github.com"}'
-
-# 文件操作
-curl -X POST http://localhost:8080/api/agent/execute \
-  -H "Content-Type: application/json" \
-  -d '{"task": "打开 Finder，进入 Documents 文件夹"}'
-```
-
-## 🔒 隐私说明
-
-- 所有操作在本地执行
-- 截图按需获取，不会持久存储
-- API Key 存储在本地配置中
-
-## 📜 License
+## License
 
 MIT License

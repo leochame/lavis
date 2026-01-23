@@ -3,28 +3,45 @@ import { Capsule } from './components/Capsule';
 import { ChatPanel } from './components/ChatPanel';
 import { agentApi } from './api/agentApi';
 import { useGlobalVoice } from './hooks/useGlobalVoice';
+import { useWebSocket } from './hooks/useWebSocket';
 import type { AgentStatus } from './types/agent';
+import { useUIStore } from './store/uiStore';
+import { usePlatform } from './platforms/PlatformProvider';
 import './App.css';
 
-type ViewMode = 'capsule' | 'chat';
-
 export default function App() {
-  const [viewMode, setViewMode] = useState<ViewMode>('capsule');
+  const { platform, isElectron } = usePlatform();
+  const appClassName = `app ${isElectron ? 'app--electron' : 'app--web'}`;
+  const viewMode = useUIStore((s) => s.viewMode);
+  const setViewMode = useUIStore((s) => s.setViewMode);
+  const windowState = useUIStore((s) => s.windowState);
+  const setWindowState = useUIStore((s) => s.setWindowState);
   const [status, setStatus] = useState<AgentStatus | null>(null);
+  // Electron 模式下自动启动，Web 模式需要用户点击
   const [isStarted, setIsStarted] = useState(false);
+
+  // Electron 模式下自动启动
+  useEffect(() => {
+    if (isElectron && !isStarted) {
+      setIsStarted(true);
+    }
+  }, [isElectron, isStarted]);
 
   // ====================================
   // 全局语音大脑 (Global Voice Brain)
   // 无论 viewMode 如何变化，唤醒词监听始终运行
   // 必须在用户点击开始后才初始化音频功能（浏览器安全策略）
   // ====================================
+
+  // 先初始化 WebSocket 以获取 sessionId
+  const wsUrl = agentApi.getWebSocketUrl();
+
+  // 初始化全局语音（先不传 sessionId，稍后通过 effect 更新）
   const globalVoice = useGlobalVoice(isStarted);
 
-  // Debug: Check on mount
-  useEffect(() => {
-    console.log('🚀 App mounted - Global Voice Brain initialized');
-    console.log(`   Wake word listening: ${globalVoice.isWakeWordListening ? '✅ Active' : '❌ Inactive'}`);
-  }, [globalVoice.isWakeWordListening]);
+  // 初始化 WebSocket，传入 TTS 回调
+  const { sessionId: wsSessionId, connected: wsConnected } = useWebSocket(wsUrl, globalVoice.ttsCallbacks);
+
 
   // Start heartbeat on mount
   useEffect(() => {
@@ -35,32 +52,72 @@ export default function App() {
     return () => {
       agentApi.stopHeartbeat();
     };
+  }, [isElectron, platform, setViewMode]);
+
+  // Handle capsule click - start recording (new behavior per design spec)
+  const handleCapsuleClick = useCallback(() => {
+    // 单击现在用于开始录音，由 Capsule 组件内部处理
   }, []);
 
-  // Handle capsule click - switch to chat mode
-  const handleCapsuleClick = useCallback(() => {
-    console.log('Capsule clicked, switching to chat mode');
+  // Handle capsule double-click - switch to chat mode (new behavior per design spec)
+  const handleCapsuleDoubleClick = useCallback(() => {
     setViewMode('chat');
-  }, []);
+    setWindowState('expanded');
+    if (isElectron) {
+      platform.resizeWindow('expanded');
+      // 也支持旧的 resize-window-full IPC
+      if (window.electron?.platform?.resizeWindowFull) {
+        window.electron.platform.resizeWindowFull();
+      }
+    }
+  }, [isElectron, platform, setViewMode, setWindowState]);
+
+  // Handle capsule right-click - show context menu
+  const handleCapsuleContextMenu = useCallback(() => {
+    // 在 Electron 中，右键菜单由主进程处理
+    // 这里可以通过 IPC 触发主进程显示菜单
+    if (isElectron && window.electron?.ipcRenderer) {
+      window.electron.ipcRenderer.sendMessage('show-context-menu', {});
+    }
+  }, [isElectron]);
 
   // Handle chat close - switch back to capsule mode
   const handleChatClose = useCallback(() => {
-    console.log('Chat closed, switching to capsule mode');
     setViewMode('capsule');
-  }, []);
+    if (isElectron) {
+      platform.resizeWindow('capsule');
+    }
+  }, [isElectron, platform, setViewMode]);
 
-  // Handle wake word detection - switch to chat mode
+  // Handle wake word detection - set window state to Listening
   useEffect(() => {
     if (globalVoice.wakeWordDetected) {
-      console.log('Wake word detected, switching to chat mode');
-      setViewMode('chat');
+      setWindowState('listening');
+      if (isElectron) {
+        // 发送 resize-window-mini IPC
+        if (window.electron?.platform?.resizeWindowMini) {
+          window.electron.platform.resizeWindowMini();
+        } else {
+          // 降级到使用 resizeWindow
+          platform.resizeWindow('listening');
+        }
+      }
     }
-  }, [globalVoice.wakeWordDetected]);
+  }, [globalVoice.wakeWordDetected, isElectron, platform, setWindowState]);
+
+  // 窗口模式变化时同步 Electron 物理窗口
+  useEffect(() => {
+    if (isElectron) {
+      platform.resizeWindow(viewMode);
+      // 注意：不要在这里设置 setIgnoreMouseEvents
+      // 透明区域穿透应该由 CSS 和窗口配置处理，而不是全局禁用鼠标事件
+      // 否则会导致拖拽和点击都无法工作
+    }
+  }, [isElectron, platform, viewMode]);
 
   // Listen for auto-record event (triggered by mic button on start overlay)
   useEffect(() => {
     const handleAutoRecord = () => {
-      console.log('🎤 Auto-record triggered, starting recording...');
       // 切换到 chat 模式并开始录音
       setViewMode('chat');
       // 延迟一点等待 globalVoice 初始化完成
@@ -75,11 +132,10 @@ export default function App() {
     return () => {
       window.removeEventListener('lavis-auto-record', handleAutoRecord);
     };
-  }, [globalVoice]);
+  }, [globalVoice, setViewMode]);
 
   // Handle mic button click - initialize audio context AND start recording immediately
   const handleMicStart = useCallback(() => {
-    console.log('🎤 User clicked mic button, initializing and starting recording...');
     setIsStarted(true);
     // 标记需要在初始化完成后自动开始录音
     // 由于 globalVoice 还未初始化，我们使用 setTimeout 确保状态更新后再触发录音
@@ -90,8 +146,9 @@ export default function App() {
     }, 100);
   }, []);
 
-  // Show start overlay until user clicks to start
-  if (!isStarted) {
+  // Show start overlay until user clicks to start (Web mode only)
+  // Electron 模式下跳过启动页，直接显示胶囊
+  if (!isStarted && !isElectron) {
     // 检查是否缺少 Picovoice 配置
     const hasPicoKey = !!import.meta.env.VITE_PICOVOICE_KEY;
     const hasWakeWordPath = !!import.meta.env.VITE_WAKE_WORD_PATH || !!import.meta.env.VITE_WAKE_WORD_BASE64;
@@ -147,7 +204,6 @@ export default function App() {
           <button
             className="start-overlay__mic-button"
             onClick={handleMicStart}
-            disabled={!hasPicoKey}
             title="点击开始对话"
           >
             <svg className="start-overlay__mic-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -157,13 +213,13 @@ export default function App() {
           </button>
           
           <p className="start-overlay__mic-hint">
-            {hasPicoKey ? '点击麦克风开始对话' : '请先完成配置'}
+            {hasPicoKey ? '点击麦克风开始对话' : '点击麦克风开始对话（未配置唤醒词，将无法语音唤醒）'}
           </p>
           
           <p className="start-overlay__hint">
             {hasPicoKey && hasWakeWordPath
               ? '点击后将自动进入语音对话模式'
-              : '需要麦克风权限以支持语音唤醒与对话'
+              : '未配置 Picovoice 唤醒词时仍可手动语音对话（点击麦克风开始）'
             }
           </p>
         </div>
@@ -172,12 +228,14 @@ export default function App() {
   }
 
   return (
-    <div className="app">
+    <div className={appClassName}>
       <div className={`stage stage--${viewMode}`}>
         {viewMode === 'capsule' && (
           <Capsule
             status={status}
             onClick={handleCapsuleClick}
+            onDoubleClick={handleCapsuleDoubleClick}
+            onContextMenu={handleCapsuleContextMenu}
             voiceState={globalVoice.voiceState}
             isWakeWordListening={globalVoice.isWakeWordListening}
             isRecorderReady={globalVoice.isRecorderReady}

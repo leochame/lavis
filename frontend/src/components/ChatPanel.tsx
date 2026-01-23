@@ -2,10 +2,13 @@ import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+// 使用动态导入以兼容 CommonJS 模块
+import type { FixedSizeList as FixedSizeListType } from 'react-window';
 import { agentApi } from '../api/agentApi';
 import { WorkflowPanel } from './WorkflowPanel';
 import { VoicePanel } from './VoicePanel';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { useUIStore } from '../store/uiStore';
 import type { AgentStatus } from '../types/agent';
 import type { UseGlobalVoiceReturn } from '../hooks/useGlobalVoice';
 import './ChatPanel.css';
@@ -32,15 +35,56 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
   const [screenshotData, setScreenshotData] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [showVoicePanel, setShowVoicePanel] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [showBrain, setShowBrain] = useState(true); // 默认显示思维透视
+  const [FixedSizeList, setFixedSizeList] = useState<typeof FixedSizeListType | null>(null);
+  const listRef = useRef<FixedSizeListType | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  
+  // 【内存安全】获取窗口状态，在 Listening/Idle 模式下停止渲染复杂组件
+  const windowState = useUIStore((s) => s.windowState);
+  const shouldRenderComplexComponents = windowState === 'expanded';
+  
+  // 动态加载 react-window
+  useEffect(() => {
+    import('react-window').then((module) => {
+      // react-window 是 CommonJS 模块，可能需要从 default 或命名导出中获取
+      const ListComponent = (module as any).FixedSizeList || (module as any).default?.FixedSizeList || module.default;
+      if (ListComponent) {
+        setFixedSizeList(() => ListComponent);
+      }
+    }).catch((err) => {
+      console.error('Failed to load react-window:', err);
+    });
+  }, []);
+  
+  // 计算消息列表容器高度（动态计算，减去 header 和 input 的高度）
+  const [containerHeight, setContainerHeight] = useState(600);
+  
+  useEffect(() => {
+    const updateHeight = () => {
+      if (messagesContainerRef.current) {
+        const rect = messagesContainerRef.current.getBoundingClientRect();
+        setContainerHeight(rect.height);
+      }
+    };
+    
+    updateHeight();
+    window.addEventListener('resize', updateHeight);
+    return () => window.removeEventListener('resize', updateHeight);
+  }, []);
 
   // WebSocket connection for real-time workflow updates
-  // 使用新的 status 状态来提供更好的 UI 反馈
-  const { connected, status: wsStatus, workflow, resetWorkflow } = useWebSocket();
+  const { connected, status: wsStatus, workflow, resetWorkflow } = useWebSocket(agentApi.getWebSocketUrl());
 
+  // 自动滚动到底部（新消息到达时）
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (listRef.current && messages.length > 0) {
+      // 使用 setTimeout 确保 DOM 更新后再滚动
+      setTimeout(() => {
+        listRef.current?.scrollToItem(messages.length - 1, 'end');
+      }, 0);
+    }
+  }, [messages, isLoading]);
 
   // 当语音对话完成时，将消息添加到聊天记录
   useEffect(() => {
@@ -64,9 +108,15 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
     }
   }, [globalVoice.transcribedText, globalVoice.agentResponse, globalVoice.voiceState, messages]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  // 当有工作流活动时自动显示 Brain 面板
+  useEffect(() => {
+    if (workflow.status === 'executing' || workflow.steps.length > 0) {
+      setShowBrain(true);
+    }
+  }, [workflow.status, workflow.steps.length]);
+
+  // 估算每条消息平均高度（包含 padding 和 gap）
+  const estimatedItemHeight = 150;
 
   const handleScreenshotClick = async () => {
     if (showScreenshot) {
@@ -76,19 +126,18 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
       try {
         setIsCapturing(true);
 
-        // @ts-expect-error - TypeScript may not have complete type definitions for getDisplayMedia
         const mediaStream = await navigator.mediaDevices.getDisplayMedia({
           video: {
             displaySurface: 'browser',
             frameRate: 30,
-            cursor: 'never',
-          },
+          } as MediaTrackConstraints,
           audio: false,
         });
 
         const videoTrack = mediaStream.getVideoTracks()[0];
         const imageCapture = new ImageCapture(videoTrack);
-        const bitmap = await imageCapture.grabFrame();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const bitmap = await (imageCapture as any).grabFrame() as ImageBitmap;
 
         const canvas = document.createElement('canvas');
         canvas.width = bitmap.width;
@@ -168,7 +217,7 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
   const getWsStatusColor = () => {
     switch (wsStatus) {
       case 'connected': return '#00ff9d';
-      case 'connecting': return '#ffa500'; // 橙色表示连接中
+      case 'connecting': return '#ffa500';
       default: return '#ff3333';
     }
   };
@@ -183,18 +232,18 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
 
   return (
     <div className="chat-panel">
+      {/* Header */}
       <div className="chat-panel__header">
         <div className="chat-panel__header-left">
           <h2>Lavis AI</h2>
-          {/* Enhanced WebSocket Status Indicator */}
-          <div 
-            className={`chat-panel__ws-status ${connected ? 'chat-panel__ws-status--connected' : ''}`} 
-            style={{ 
+          <div
+            className={`chat-panel__ws-status ${connected ? 'chat-panel__ws-status--connected' : ''}`}
+            style={{
               backgroundColor: getWsStatusColor(),
               boxShadow: `0 0 6px ${getWsStatusColor()}`,
               animation: wsStatus === 'connecting' ? 'pulse-ws 1s infinite' : undefined
             }}
-            title={getWsStatusTitle()} 
+            title={getWsStatusTitle()}
           />
           <button
             className={`chat-panel__screenshot ${showScreenshot ? 'chat-panel__screenshot--active' : ''}`}
@@ -210,6 +259,13 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
             title={showVoicePanel ? '切换到文字输入' : '切换到语音输入'}
           >
             🎤
+          </button>
+          <button
+            className={`chat-panel__brain-btn ${showBrain ? 'chat-panel__brain-btn--active' : ''}`}
+            onClick={() => setShowBrain(!showBrain)}
+            title={showBrain ? '隐藏思维透视' : '显示思维透视'}
+          >
+            🧠
           </button>
         </div>
         <button className="chat-panel__close" onClick={onClose}>×</button>
@@ -227,96 +283,172 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
         </div>
       )}
 
-      <div className="chat-panel__messages">
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={`message message--${message.role}`}
+      {/* Body - 左右分栏 */}
+      <div className="chat-panel__body">
+        {/* 左侧：聊天区 */}
+        <div className="chat-panel__main">
+          <div 
+            ref={messagesContainerRef}
+            className="chat-panel__messages"
+            style={{ position: 'relative' }}
           >
-            <div className="message__content">
-              {message.role === 'assistant' ? (
-                <ReactMarkdown
-                  components={{
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    code({ className, children, ...props }: any) {
-                      const match = /language-(\w+)/.exec(className || '');
-                      const isInline = !match;
-                      return !isInline && match ? (
-                        <SyntaxHighlighter
-                          style={oneDark}
-                          language={match[1]}
-                          PreTag="div"
-                          {...props}
-                        >
-                          {String(children).replace(/\n$/, '')}
-                        </SyntaxHighlighter>
-                      ) : (
-                        <code className={className} {...props}>
-                          {children}
-                        </code>
-                      );
-                    },
-                  }}
+            {/* 【内存安全】仅在 Expanded 模式下渲染消息列表，减少 DOM 节点 */}
+            {shouldRenderComplexComponents ? (
+              messages.length > 0 && FixedSizeList ? (
+                <FixedSizeList
+                  ref={listRef}
+                  height={containerHeight}
+                  itemCount={messages.length + (isLoading ? 1 : 0)}
+                  itemSize={estimatedItemHeight}
+                  width="100%"
+                  style={{ padding: '20px' }}
                 >
-                  {message.content}
-                </ReactMarkdown>
+                  {({ index, style }) => {
+                    // 如果是加载中的消息
+                    if (index === messages.length) {
+                      return (
+                        <div style={style}>
+                          <div className="message message--assistant">
+                            <div className="message__content message__loading">
+                              <span>.</span><span>.</span><span>.</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    
+                    const message = messages[index];
+                    return (
+                      <div style={{ ...style, paddingBottom: '16px' }}>
+              <div
+                key={message.id}
+                className={`message message--${message.role}`}
+              >
+                <div className="message__content">
+                  {message.role === 'assistant' ? (
+                    <ReactMarkdown
+                      components={{
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        code({ className, children, ...props }: any) {
+                          const match = /language-(\w+)/.exec(className || '');
+                          const isInline = !match;
+                          return !isInline && match ? (
+                            <SyntaxHighlighter
+                              style={oneDark}
+                              language={match[1]}
+                              PreTag="div"
+                              {...props}
+                            >
+                              {String(children).replace(/\n$/, '')}
+                            </SyntaxHighlighter>
+                          ) : (
+                            <code className={className} {...props}>
+                              {children}
+                            </code>
+                          );
+                        },
+                      }}
+                    >
+                      {message.content}
+                    </ReactMarkdown>
+                  ) : (
+                    message.content
+                  )}
+                </div>
+                <div className="message__timestamp">
+                  {new Date(message.timestamp).toLocaleTimeString()}
+                </div>
+              </div>
+                      </div>
+                    );
+                  }}
+                </FixedSizeList>
+              ) : isLoading ? (
+              <div className="message message--assistant">
+                <div className="message__content message__loading">
+                  <span>.</span><span>.</span><span>.</span>
+                </div>
+                </div>
               ) : (
-                message.content
-              )}
-            </div>
-            <div className="message__timestamp">
-              {new Date(message.timestamp).toLocaleTimeString()}
-            </div>
+                <div className="chat-panel__messages-empty">
+                  <p>开始对话...</p>
+                </div>
+              )
+            ) : (
+              <div className="chat-panel__messages-placeholder">
+                <p>窗口处于 {windowState} 模式，消息列表已暂停渲染以节省内存</p>
+                <p>双击胶囊展开窗口以查看完整聊天记录</p>
+              </div>
+            )}
           </div>
-        ))}
-        {isLoading && (
-          <div className="message message--assistant">
-            <div className="message__content message__loading">
-              <span>.</span><span>.</span><span>.</span>
+
+          {/* 输入区 */}
+          {showVoicePanel ? (
+            <div className="chat-panel__voice-container">
+              <VoicePanel
+                status={status}
+                voiceState={globalVoice.voiceState}
+                isRecording={globalVoice.isRecording}
+                isWakeWordListening={globalVoice.isWakeWordListening}
+                transcribedText={globalVoice.transcribedText}
+                agentResponse={globalVoice.agentResponse}
+                error={globalVoice.error}
+                onStartRecording={globalVoice.startRecording}
+                onStopRecording={globalVoice.stopRecording}
+              />
             </div>
-          </div>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {showWorkflow && (
-        <WorkflowPanel 
-          workflow={workflow} 
-          connected={connected}
-          onStop={handleEmergencyStop} 
-        />
-      )}
-
-      {showVoicePanel ? (
-        <div className="chat-panel__voice-container">
-          <VoicePanel 
-            status={status}
-            voiceState={globalVoice.voiceState}
-            isRecording={globalVoice.isRecording}
-            isWakeWordListening={globalVoice.isWakeWordListening}
-            transcribedText={globalVoice.transcribedText}
-            agentResponse={globalVoice.agentResponse}
-            agentAudio={globalVoice.agentAudio}
-            error={globalVoice.error}
-            onStartRecording={globalVoice.startRecording}
-            onStopRecording={globalVoice.stopRecording}
-          />
+          ) : (
+            <form className="chat-panel__input" onSubmit={handleSubmit}>
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={wsStatus === 'connected' ? "Type a message..." : "Connecting to brain..."}
+                disabled={isLoading || isExecuting || wsStatus !== 'connected'}
+                autoFocus
+              />
+              <button type="submit" disabled={!input.trim() || isLoading || isExecuting || wsStatus !== 'connected'}>
+                Send
+              </button>
+            </form>
+          )}
         </div>
-      ) : (
-        <form className="chat-panel__input" onSubmit={handleSubmit}>
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={wsStatus === 'connected' ? "Type a message..." : "Connecting to brain..."}
-            disabled={isLoading || isExecuting || wsStatus !== 'connected'}
-            autoFocus
-          />
-          <button type="submit" disabled={!input.trim() || isLoading || isExecuting || wsStatus !== 'connected'}>
-            Send
-          </button>
-        </form>
-      )}
+
+        {/* 右侧：思维透视 (Brain) */}
+        {/* 【内存安全】仅在 Expanded 模式下渲染 WorkflowPanel，减少内存占用 */}
+        {shouldRenderComplexComponents && (
+        <div className={`chat-panel__brain ${!showBrain ? 'chat-panel__brain--collapsed' : ''}`}>
+          {showBrain && (
+            <>
+              <div className="chat-panel__brain-header">
+                <div className="chat-panel__brain-title">
+                  <div className="chat-panel__brain-icon" />
+                  <span>BRAIN</span>
+                </div>
+              </div>
+              <div className="chat-panel__brain-content">
+                {showWorkflow ? (
+                  <WorkflowPanel
+                    workflow={workflow}
+                    connected={connected}
+                    onStop={handleEmergencyStop}
+                  />
+                ) : (
+                  <div className="chat-panel__brain-empty">
+                    <div className="chat-panel__brain-empty-icon">🧠</div>
+                    <div className="chat-panel__brain-empty-text">
+                      思维透视区域
+                      <br />
+                      当 Agent 开始工作时，这里将实时展示思考过程
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+        )}
+      </div>
     </div>
   );
 }

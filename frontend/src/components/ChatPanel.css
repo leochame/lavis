@@ -4,20 +4,39 @@
   display: flex;
   flex-direction: column;
   background: rgba(10, 15, 20, 0.95);
-  background-image: 
+  background-image:
     linear-gradient(rgba(0, 243, 255, 0.03) 1px, transparent 1px),
     linear-gradient(90deg, rgba(0, 243, 255, 0.03) 1px, transparent 1px);
   background-size: 20px 20px;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid rgba(0, 243, 255, 0.2);
-  box-shadow: 
+  box-shadow:
     0 0 40px rgba(0, 0, 0, 0.8),
     0 0 10px rgba(0, 243, 255, 0.1),
     inset 0 0 30px rgba(0, 0, 0, 0.5);
   -webkit-app-region: no-drag;
+  /* Entrance animation - morphing from capsule */
+  animation: chat-panel-morph 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Morphing animation from capsule to panel */
+@keyframes chat-panel-morph {
+  0% {
+    opacity: 0;
+    transform: scale(0.1);
+    border-radius: 50%;
+  }
+  50% {
+    border-radius: 24px;
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    border-radius: 12px;
+  }
 }
 
 .chat-panel::before {
@@ -74,11 +93,32 @@
 
 .chat-panel__messages {
   flex: 1;
-  overflow-y: auto;
-  padding: 20px;
+  overflow: hidden; /* 虚拟滚动容器不需要 overflow-y: auto */
+  min-height: 0; /* 确保 flex 子元素可以缩小 */
+  position: relative;
+}
+
+/* 虚拟滚动占位符样式 */
+.chat-panel__messages-placeholder {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 20px;
+  color: rgba(0, 243, 255, 0.5);
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.chat-panel__messages-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: rgba(0, 243, 255, 0.4);
+  font-size: 14px;
 }
 
 .message {
@@ -478,4 +518,181 @@ code:not(pre code) {
 .chat-panel__voice-container .voice-panel__hint {
   color: rgba(0, 243, 255, 0.5);
   font-size: 0.75rem;
+}
+
+/* ==========================================
+   Split Layout - 左右分栏布局
+   左侧：聊天区 | 右侧：思维透视 (Brain)
+   ========================================== */
+
+.chat-panel__body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* 左侧聊天区 */
+.chat-panel__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid rgba(0, 243, 255, 0.1);
+}
+
+/* 右侧思维透视区 */
+.chat-panel__brain {
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  transition: width 0.3s ease;
+}
+
+.chat-panel__brain--collapsed {
+  width: 0;
+  border: none;
+}
+
+/* Brain 区域头部 */
+.chat-panel__brain-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(168, 85, 247, 0.2);
+  background: rgba(168, 85, 247, 0.05);
+}
+
+.chat-panel__brain-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #a855f7;
+  font-family: 'Courier New', Courier, monospace;
+}
+
+.chat-panel__brain-icon {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #a855f7;
+  box-shadow: 0 0 8px #a855f7;
+  animation: brain-pulse 2s ease-in-out infinite;
+}
+
+@keyframes brain-pulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+.chat-panel__brain-toggle {
+  background: none;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  color: rgba(168, 85, 247, 0.7);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  -webkit-app-region: no-drag;
+}
+
+.chat-panel__brain-toggle:hover {
+  background: rgba(168, 85, 247, 0.1);
+  border-color: #a855f7;
+  color: #a855f7;
+}
+
+/* Brain 内容区 - 包含 WorkflowPanel */
+.chat-panel__brain-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.chat-panel__brain-content .workflow-panel {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Brain 区域的 WorkflowPanel 样式覆盖 */
+.chat-panel__brain-content .workflow-header {
+  background: transparent;
+  border-bottom: 1px solid rgba(168, 85, 247, 0.1);
+  padding: 12px 16px;
+}
+
+.chat-panel__brain-content .workflow-header__title {
+  color: #a855f7;
+  font-size: 10px;
+}
+
+.chat-panel__brain-content .workflow-progress__fill {
+  background: linear-gradient(90deg, #a855f7, #c084fc);
+}
+
+.chat-panel__brain-content .workflow-step--active .workflow-step__dot {
+  background: #a855f7;
+  box-shadow: 0 0 10px #a855f7;
+}
+
+/* Brain 空状态 */
+.chat-panel__brain-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  color: rgba(168, 85, 247, 0.4);
+  text-align: center;
+}
+
+.chat-panel__brain-empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.3;
+}
+
+.chat-panel__brain-empty-text {
+  font-size: 12px;
+  line-height: 1.6;
+  max-width: 200px;
+}
+
+/* Header 中的 Brain 切换按钮 */
+.chat-panel__brain-btn {
+  background: none;
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  color: rgba(168, 85, 247, 0.6);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  margin-left: 6px;
+  -webkit-app-region: no-drag;
+}
+
+.chat-panel__brain-btn:hover {
+  background: rgba(168, 85, 247, 0.1);
+  border-color: rgba(168, 85, 247, 0.6);
+  color: #a855f7;
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.2);
+}
+
+.chat-panel__brain-btn--active {
+  background: rgba(168, 85, 247, 0.2);
+  border-color: #a855f7;
+  color: #a855f7;
+  box-shadow: 0 0 15px rgba(168, 85, 247, 0.3);
 }

@@ -7,7 +7,12 @@ import com.lavis.cognitive.model.TaskPlan;
 import com.lavis.cognitive.planner.PlannerService;
 import com.lavis.service.llm.LlmFactory;
 import com.lavis.websocket.WorkflowEventService;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.output.Response;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,7 +20,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * 任务调度器 (Task Orchestrator) - 唯一指挥官
@@ -71,6 +79,9 @@ public class TaskOrchestrator {
     // 最大连续失败次数（触发 Re-plan）
     private static final int MAX_CONSECUTIVE_FAILURES = 2;
     private int consecutiveFailures = 0;
+    
+    // 中断标记（/stop 指令触发）
+    private volatile boolean interrupted = false;
 
     public TaskOrchestrator(PlannerService plannerService, MicroExecutorService microExecutorService, 
                             LlmFactory llmFactory) {
@@ -126,6 +137,7 @@ public class TaskOrchestrator {
     public OrchestratorResult executeGoal(String userGoal) {
         log.info("🚀 开始执行目标: {}", userGoal);
         Instant startTime = Instant.now();
+        clearInterruptFlag();
 
         try {
             // 0. 【新增】创建 GlobalContext（宏观上下文）
@@ -139,6 +151,8 @@ public class TaskOrchestrator {
             currentPlan = plannerService.generatePlan(userGoal);
 
             if (currentPlan.getSteps().isEmpty()) {
+                // 【内存安全】规划失败时清理 GlobalContext
+                cleanupGlobalContext();
                 return OrchestratorResult.failed("规划失败：未能生成任何步骤");
             }
 
@@ -155,6 +169,10 @@ public class TaskOrchestrator {
             consecutiveFailures = 0;
 
             while (true) {
+                if (interrupted) {
+                    return handleInterrupt(userGoal);
+                }
+
                 Optional<PlanStep> currentStepOpt = currentPlan.getCurrentStep();
 
                 if (currentStepOpt.isEmpty()) {
@@ -178,6 +196,10 @@ public class TaskOrchestrator {
                 // 执行单个步骤（通过 MicroExecutor，注入 GlobalContext）
                 MicroExecutorService.ExecutionResult stepResult = microExecutorService.executeStep(currentStep,
                         globalContext);
+
+                if (interrupted || microExecutorService.isInterrupted()) {
+                    return handleInterrupt(userGoal);
+                }
 
                 totalStepsExecuted++;
 
@@ -254,6 +276,8 @@ public class TaskOrchestrator {
                             if (!replanned) {
                                 // Re-plan 失败，中止任务
                                 currentPlan.markFailed("Re-plan 失败: " + stepResult.getMessage());
+                                // 【内存安全】清理 GlobalContext
+                                cleanupGlobalContext();
                                 return OrchestratorResult.failed(
                                         "任务在 Re-plan 后仍然失败: " + stepResult.getMessage(),
                                         currentStep.getPostMortem());
@@ -263,6 +287,8 @@ public class TaskOrchestrator {
                         case ABORT -> {
                             // 中止任务
                             currentPlan.markFailed("验尸报告建议中止: " + stepResult.getMessage());
+                            // 【内存安全】清理 GlobalContext
+                            cleanupGlobalContext();
                             return OrchestratorResult.failed(
                                     String.format("任务在里程碑 %d 失败后中止: %s\n%s",
                                             currentStep.getId(),
@@ -291,10 +317,17 @@ public class TaskOrchestrator {
                 // 【WebSocket】通知前端计划完成
                 if (workflowEventService != null) {
                     workflowEventService.onPlanCompleted(currentPlan);
+                    
+                    // 【新增】异步生成并发送拟人化TTS通知（仅在最终步骤完成时）
+                    generateAndSendVoiceAnnouncement(userGoal, totalStepsExecuted, executionTimeMs);
                 }
 
                 log.info("✅ 目标执行完成！耗时 {}ms", executionTimeMs);
                 log.info("📊 GlobalContext 摘要:\n{}", globalContext.getExecutionSummary());
+                
+                // 【内存安全】任务完成后清理 GlobalContext
+                cleanupGlobalContext();
+                
                 return OrchestratorResult.success(
                         String.format("任务完成：%s (执行 %d 步，耗时 %dms)",
                                 userGoal, totalStepsExecuted, executionTimeMs),
@@ -308,6 +341,9 @@ public class TaskOrchestrator {
                     workflowEventService.onPlanFailed(currentPlan, "部分步骤执行失败");
                 }
 
+                // 【内存安全】任务失败后清理 GlobalContext
+                cleanupGlobalContext();
+                
                 return OrchestratorResult.partial(
                         String.format("任务部分完成：%d/%d 步骤成功",
                                 totalStepsExecuted - totalStepsFailed,
@@ -317,11 +353,16 @@ public class TaskOrchestrator {
                 state = OrchestratorState.COMPLETED;
                 currentPlan.markCompleted();
 
+                // 【内存安全】任务完成后清理 GlobalContext
+                cleanupGlobalContext();
+                
                 return OrchestratorResult.success("任务完成", currentPlan);
             }
 
         } catch (Exception e) {
             log.error("❌ 任务执行异常: {}", e.getMessage(), e);
+            // 【内存安全】异常情况下也要清理 GlobalContext
+            cleanupGlobalContext();
             state = OrchestratorState.FAILED;
 
             if (currentPlan != null) {
@@ -345,16 +386,16 @@ public class TaskOrchestrator {
 
             // 构建 Re-plan 请求
             String replanContext = String.format("""
-                    ## 原计划步骤 %d 执行失败
-                    描述: %s
+                    ## Original Plan Step %d Execution Failed
+                    Description %s
 
-                    ## 验尸报告
+                    ## Post Mortem Report
                     %s
 
-                    ## 已完成的里程碑
+                    ## Completed Milestones
                     %s
 
-                    请基于当前屏幕状态，重新规划剩余步骤。
+                    Please replan remaining steps based on current screen state
                     """,
                     failedStep.getId(),
                     failedStep.getDescription(),
@@ -474,6 +515,45 @@ public class TaskOrchestrator {
     }
 
     /**
+     * 外部中断（/stop 指令）
+     */
+    public void interrupt() {
+        interrupted = true;
+        microExecutorService.requestInterrupt();
+        state = OrchestratorState.FAILED;
+        log.warn("🛑 TaskOrchestrator 收到中断信号");
+    }
+
+    /**
+     * 是否处于中断状态
+     */
+    public boolean isInterrupted() {
+        return interrupted;
+    }
+
+    /**
+     * 处理用户中断
+     */
+    private OrchestratorResult handleInterrupt(String userGoal) {
+        state = OrchestratorState.FAILED;
+        if (currentPlan != null && !currentPlan.hasFailed()) {
+            currentPlan.markFailed("用户中断任务");
+        }
+        log.warn("🛑 用户中断任务: {}", userGoal);
+        // 【内存安全】中断时清理 GlobalContext
+        cleanupGlobalContext();
+        return OrchestratorResult.partial("任务已被用户中断", currentPlan);
+    }
+
+    /**
+     * 清除中断状态
+     */
+    private void clearInterruptFlag() {
+        interrupted = false;
+        microExecutorService.clearInterrupt();
+    }
+
+    /**
      * 获取当前状态
      */
     public OrchestratorState getState() {
@@ -495,20 +575,115 @@ public class TaskOrchestrator {
     }
 
     /**
+     * 【内存安全】清理 GlobalContext
+     * 在任务执行结束后（无论成功失败）调用，清空可能缓存的临时跨步骤数据
+     */
+    private void cleanupGlobalContext() {
+        if (globalContext != null) {
+            log.info("🧹 清理 GlobalContext [{}]", globalContext.getContextId());
+            // 清理共享变量
+            globalContext.getSharedVariables().clear();
+            // 清理最近操作摘要（保留已完成里程碑用于日志）
+            globalContext.getRecentActions().clear();
+            // 清空当前屏幕状态
+            globalContext.setCurrentScreenState(null);
+            globalContext.setLastError(null);
+            globalContext.setInRecoveryMode(false);
+            // 注意：不清理 completedMilestones，因为它们可能用于日志和摘要
+            log.debug("✅ GlobalContext 清理完成");
+        }
+    }
+
+    /**
      * 获取执行摘要
      */
     public String getExecutionSummary() {
         StringBuilder sb = new StringBuilder();
-        sb.append("## 执行摘要\n");
-        sb.append("状态: ").append(state).append("\n");
-        sb.append("已执行: ").append(totalStepsExecuted).append(" 步\n");
-        sb.append("失败: ").append(totalStepsFailed).append(" 步\n");
+        sb.append("Execution Summary\n");
+        sb.append("State: ").append(state).append("\n");
+        sb.append("Executed: ").append(totalStepsExecuted).append(" steps\n");
+        sb.append("Failed: ").append(totalStepsFailed).append(" steps\n");
 
         if (currentPlan != null) {
             sb.append("\n").append(currentPlan.generateSummary());
         }
 
         return sb.toString();
+    }
+
+    /**
+     * 【新增】异步生成并发送拟人化TTS通知
+     * 仅在最终步骤（计划完成时）调用，不阻塞主执行流程
+     * 
+     * @param userGoal 用户目标
+     * @param stepsExecuted 执行的步数
+     * @param executionTimeMs 执行耗时（毫秒）
+     */
+    private void generateAndSendVoiceAnnouncement(String userGoal, int stepsExecuted, long executionTimeMs) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                // 获取快速模型（优先使用 executor 模型，否则使用默认模型）
+                ChatLanguageModel fastModel = null;
+                if (executorModelAlias != null && !executorModelAlias.isBlank() 
+                        && llmFactory.isModelAvailable(executorModelAlias)) {
+                    fastModel = llmFactory.getModel(executorModelAlias);
+                } else {
+                    fastModel = llmFactory.getModel();
+                }
+                
+                if (fastModel == null) {
+                    log.warn("⚠️ 无法获取 LLM 模型，跳过 TTS 通知生成");
+                    return;
+                }
+                
+                // 构建提示词
+                String systemPrompt = "You are a personified assistant Please summarize task completion in spoken language limit to 20 characters For example task completed WeChat message sent No unnecessary words just state the result";
+                
+                String userPrompt = String.format("""
+                        User Goal %s
+                        Executed %d steps took %d seconds
+                        
+                        Please summarize task completion in one sentence
+                        """, 
+                        userGoal, 
+                        stepsExecuted, 
+                        executionTimeMs / 1000);
+                
+                // 构建消息
+                List<ChatMessage> messages = new ArrayList<>();
+                messages.add(SystemMessage.from(systemPrompt));
+                messages.add(UserMessage.from(userPrompt));
+                
+                // 调用 LLM 生成文本
+                Response<AiMessage> response = fastModel.generate(messages);
+                String announcementText = response.content().text();
+                
+                if (announcementText != null && !announcementText.trim().isEmpty()) {
+                    // 清理文本（移除可能的引号、换行等）
+                    announcementText = announcementText.trim()
+                            .replaceAll("^[\"']|[\"']$", "") // 移除首尾引号
+                            .replaceAll("\n+", " ") // 替换换行为空格
+                            .trim();
+                    
+                    // 限制长度（20字以内）
+                    if (announcementText.length() > 20) {
+                        announcementText = announcementText.substring(0, 20) + "...";
+                    }
+                    
+                    // 发送 TTS 通知
+                    if (workflowEventService != null) {
+                        workflowEventService.onVoiceAnnouncement(announcementText);
+                        log.info("🎙️ TTS 通知已生成: {}", announcementText);
+                    }
+                } else {
+                    log.warn("⚠️ LLM 返回空文本，跳过 TTS 通知");
+                }
+                
+            } catch (Exception e) {
+                log.error("❌ 生成 TTS 通知失败: {}", e.getMessage(), e);
+                // 失败不影响主流程，静默处理
+            }
+        });
     }
 
     /**
@@ -521,6 +696,7 @@ public class TaskOrchestrator {
         totalStepsExecuted = 0;
         totalStepsFailed = 0;
         consecutiveFailures = 0;
+        clearInterruptFlag();
         plannerService.clearHistory();
         log.info("🔄 调度器已重置");
     }

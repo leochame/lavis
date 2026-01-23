@@ -2,21 +2,30 @@
   "name": "lavis-web",
   "private": true,
   "version": "1.0.0",
-  "type": "module",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:electron": "tsc -p tsconfig.electron.json",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron:dev": "node scripts/electron-dev.js",
+    "electron:dev:attach": "wait-on http://localhost:5173 || wait-on http://localhost:5174 || wait-on http://localhost:5175 && electron .",
+    "electron:build": "npm run build && npm run build:electron && electron-builder"
   },
   "dependencies": {
+    "@picovoice/porcupine-web": "^4.0.0",
+    "@picovoice/web-voice-processor": "^4.0.9",
+    "@types/react-window": "^1.8.8",
     "axios": "^1.13.2",
+    "lucide-react": "^0.562.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
     "react-syntax-highlighter": "^16.1.0",
-    "@picovoice/porcupine-web": "^4.0.0",
-    "@picovoice/web-voice-processor": "^4.0.9"
+    "react-window": "^2.2.5",
+    "vosk-browser": "^0.0.8",
+    "zustand": "^5.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
@@ -25,7 +34,10 @@
     "@types/react-dom": "^19.2.3",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@vitejs/plugin-react": "^5.1.1",
+    "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
+    "electron": "^40.0.0",
+    "electron-builder": "^26.4.0",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
@@ -33,6 +45,28 @@
     "tsx": "^4.21.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
-    "vite": "^7.2.4"
+    "vite": "^7.2.4",
+    "wait-on": "^8.0.5"
+  },
+  "build": {
+    "appId": "com.lavis.ai",
+    "productName": "Lavis AI",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": "dmg"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
   }
 }

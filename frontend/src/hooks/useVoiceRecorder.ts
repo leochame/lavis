@@ -21,6 +21,7 @@ export interface UseVoiceRecorderReturn {
   audioDuration: number;
   error: string | null;
   isTooShort: boolean; // 录音时长是否过短（< 0.5秒）
+  clearAudioBlob: () => void; // 清理音频 Blob，释放内存
 }
 
 interface EnergyInfo {
@@ -63,7 +64,7 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
   // 释放麦克风流
   const releaseStream = useCallback(() => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => {
+      streamRef.current.getTracks().forEach((track: MediaStreamTrack) => {
         track.stop();
         console.log('🔇 Audio track stopped');
       });
@@ -231,11 +232,13 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
 
       mediaRecorder.onstop = () => {
         const duration = (Date.now() - startTimeRef.current) / 1000;
-        console.log(`📼 Recording completed: ${duration.toFixed(2)}s`);
+        console.log(`📼 [useVoiceRecorder] Recording completed: ${duration.toFixed(2)}s`);
+        console.log(`   Audio chunks count: ${audioChunksRef.current.length}`);
+        console.log(`   Total chunks size: ${audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0)} bytes`);
 
         // 检查是否过短（< 0.5秒）
         if (duration < 0.5) {
-          console.warn('⚠️ Recording too short (< 0.5s), discarding...');
+          console.warn('⚠️ [useVoiceRecorder] Recording too short (< 0.5s), discarding...');
           setIsTooShort(true);
           setAudioBlob(null);
           setAudioDuration(0);
@@ -243,19 +246,21 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
         }
 
         const audioBlob = new Blob(audioChunksRef.current!, { type: mediaRecorder.mimeType || 'audio/webm' });
-        console.log(`📀 Audio blob created: ${audioBlob.size} bytes, type: ${audioBlob.type}`);
+        console.log(`📀 [useVoiceRecorder] Audio blob created: ${audioBlob.size} bytes, type: ${audioBlob.type}`);
         
         // 检查音频大小是否合理（至少 5KB，否则可能是空音频）
         if (audioBlob.size < 5000) {
-          console.warn(`⚠️ Audio blob too small (${audioBlob.size} bytes), might be empty`);
+          console.warn(`⚠️ [useVoiceRecorder] Audio blob too small (${audioBlob.size} bytes), might be empty`);
           setIsTooShort(true);
           setAudioBlob(null);
           setAudioDuration(0);
           return;
         }
         
+        console.log(`✅ [useVoiceRecorder] Setting audioBlob (${audioBlob.size} bytes)`);
         setAudioBlob(audioBlob);
         setAudioDuration(duration);
+        console.log(`✅ [useVoiceRecorder] audioBlob state updated, should trigger upload`);
       };
 
       // 使用 timeslice 参数，每 500ms 收集一次数据，确保增量捕获
@@ -297,6 +302,17 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     }
   }, [checkSilence]);
 
+  // 清理音频 Blob，释放内存（消费即焚策略）
+  const clearAudioBlob = useCallback(() => {
+    if (audioBlob) {
+      console.log(`🗑️ Clearing audioBlob (${audioBlob.size} bytes)`);
+      setAudioBlob(null);
+      setAudioDuration(0);
+      // 清理 audioChunksRef，释放内存
+      audioChunksRef.current = [];
+    }
+  }, [audioBlob]);
+
   return {
     isRecording,
     isRecordingReady,
@@ -306,5 +322,6 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     audioDuration,
     error,
     isTooShort,
+    clearAudioBlob,
   };
 }

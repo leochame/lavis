@@ -293,15 +293,19 @@ public class ScreenCapturer {
     }
 
     public String imageToBase64(BufferedImage image) throws IOException {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        // 【内存安全】使用 try-with-resources 确保流关闭
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
         ImageIO.write(image, "jpg", baos);
         return Base64.getEncoder().encodeToString(baos.toByteArray());
+        }
     }
 
     public byte[] imageToPNG(BufferedImage image) throws IOException {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        // 【内存安全】使用 try-with-resources 确保流关闭
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
         ImageIO.write(image, "png", baos);
         return baos.toByteArray();
+        }
     }
 
     public String captureScreenAsBase64() throws IOException {

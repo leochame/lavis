@@ -134,16 +134,15 @@ public class GlobalContext {
      */
     public String getCompletedMilestonesSummary() {
         if (completedMilestones.isEmpty()) {
-            return "暂无已完成的里程碑";
+            return "No completed milestones yet";
         }
         
         StringBuilder sb = new StringBuilder();
-        sb.append("### 已完成的里程碑:\n");
+        sb.append("### Completed Milestones\n");
         for (MilestoneRecord milestone : completedMilestones) {
-            String icon = milestone.isSuccess() ? "✅" : "❌";
-            sb.append(String.format("%s %d. %s\n", icon, milestone.getStepId(), milestone.getDescription()));
+            sb.append(String.format("%d. %s\n", milestone.getStepId(), milestone.getDescription()));
             if (milestone.getResult() != null) {
-                sb.append(String.format("   结果: %s\n", truncate(milestone.getResult(), 100)));
+                sb.append(String.format("   Result %s\n", truncate(milestone.getResult(), 100)));
             }
         }
         return sb.toString();
@@ -196,16 +195,15 @@ public class GlobalContext {
      */
     public String getRecentActionsSummary() {
         if (recentActions.isEmpty()) {
-            return "暂无最近操作";
+            return "No recent actions";
         }
         
         StringBuilder sb = new StringBuilder();
-        sb.append("### 最近操作:\n");
+        sb.append("### Recent Actions\n");
         int idx = 1;
         for (ActionSummary action : recentActions) {
-            String icon = action.isSuccess() ? "✅" : "❌";
-            sb.append(String.format("%d. %s %s -> %s\n", 
-                    idx++, icon, action.getAction(), truncate(action.getResult(), 50)));
+            sb.append(String.format("%d. %s -> %s\n", 
+                    idx++, action.getAction(), truncate(action.getResult(), 50)));
         }
         return sb.toString();
     }
@@ -222,22 +220,22 @@ public class GlobalContext {
         StringBuilder sb = new StringBuilder();
         
         // 1. 总目标
-        sb.append("## 🎯 总目标\n");
+        sb.append("## Overall Goal\n");
         sb.append(userGoal).append("\n\n");
         
         // 2. 当前进度
-        sb.append("## 📊 当前进度\n");
-        sb.append(String.format("已完成 %d/%d 个里程碑 (成功: %d, 失败: %d)\n\n", 
+        sb.append("## Current Progress\n");
+        sb.append(String.format("Completed %d/%d milestones success %d failed %d\n\n", 
                 completedMilestones.size(), totalSteps, successfulSteps, failedSteps));
         
         // 3. 已完成的里程碑（简要）
         if (!completedMilestones.isEmpty()) {
-            sb.append("### 已完成:\n");
+            sb.append("### Completed\n");
             // 只显示最近 3 个
             int start = Math.max(0, completedMilestones.size() - 3);
             for (int i = start; i < completedMilestones.size(); i++) {
                 MilestoneRecord m = completedMilestones.get(i);
-                sb.append(String.format("- %s 步骤 %d: %s\n", 
+                sb.append(String.format("- %s step %d: %s\n", 
                         m.isSuccess() ? "✅" : "❌", m.getStepId(), m.getDescription()));
             }
             sb.append("\n");
@@ -245,18 +243,18 @@ public class GlobalContext {
         
         // 4. 当前里程碑
         if (currentMilestone != null) {
-            sb.append("### 当前任务:\n");
-            sb.append(String.format("步骤 %d: %s\n", 
+            sb.append("### Current Task\n");
+            sb.append(String.format("Step %d %s\n", 
                     currentMilestone.getStepId(), currentMilestone.getDescription()));
             if (currentMilestone.getDefinitionOfDone() != null) {
-                sb.append(String.format("完成标准: %s\n", currentMilestone.getDefinitionOfDone()));
+                sb.append(String.format("Completion Criteria: %s\n", currentMilestone.getDefinitionOfDone()));
             }
             sb.append("\n");
         }
         
         // 5. 最近操作（如果有）
         if (!recentActions.isEmpty()) {
-            sb.append("### 刚才做了什么:\n");
+            sb.append("### Recent Actions\n");
             // 只显示最近 3 条
             List<ActionSummary> recent = new ArrayList<>(recentActions);
             int start = Math.max(0, recent.size() - 3);
@@ -269,9 +267,9 @@ public class GlobalContext {
         
         // 6. 恢复模式提示
         if (inRecoveryMode && lastError != null) {
-            sb.append("### ⚠️ 注意\n");
-            sb.append("上一步执行失败，原因: ").append(truncate(lastError, 100)).append("\n");
-            sb.append("请尝试不同的策略来完成当前任务。\n\n");
+            sb.append("### Note\n");
+            sb.append("Last step execution failed, reason ").append(truncate(lastError, 100)).append("\n");
+            sb.append("Please try different strategies to complete current task\n\n");
         }
         
         return sb.toString();
@@ -304,14 +302,14 @@ public class GlobalContext {
      */
     public String getExecutionSummary() {
         StringBuilder sb = new StringBuilder();
-        sb.append("## 📊 执行摘要\n");
-        sb.append(String.format("- 上下文ID: %s\n", contextId));
-        sb.append(String.format("- 目标: %s\n", userGoal));
-        sb.append(String.format("- 总步骤: %d\n", totalSteps));
-        sb.append(String.format("- 成功: %d, 失败: %d\n", successfulSteps, failedSteps));
-        sb.append(String.format("- 总重试: %d\n", totalRetries));
+        sb.append("## Execution Summary\n");
+        sb.append(String.format("- Context ID: %s\n", contextId));
+        sb.append(String.format("- Goal: %s\n", userGoal));
+        sb.append(String.format("- Total Steps: %d\n", totalSteps));
+        sb.append(String.format("- Success: %d Failed: %d\n", successfulSteps, failedSteps));
+        sb.append(String.format("- Total Retries: %d\n", totalRetries));
         if (currentScreenState != null) {
-            sb.append(String.format("- 当前状态: %s\n", truncate(currentScreenState, 80)));
+            sb.append(String.format("- Current State: %s\n", truncate(currentScreenState, 80)));
         }
         return sb.toString();
     }

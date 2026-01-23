@@ -17,6 +17,7 @@ import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 /**
@@ -45,6 +46,9 @@ public class DashScopeTtsModel implements TtsModel {
     private static final int CHANNELS = 1;
     private static final int FRAME_SIZE = 2;
     private static final boolean BIG_ENDIAN = false;
+    
+    // DashScope TTS API 最大输入长度限制（字节数）
+    private static final int MAX_TEXT_BYTES = 600;
 
     public DashScopeTtsModel(ModelConfig config) {
         this.config = config;
@@ -59,14 +63,19 @@ public class DashScopeTtsModel implements TtsModel {
         }
 
         try {
-            log.info("🎙️ Starting DashScope TTS (SDK) for text ({} chars), model: {}, voice: {}", 
-                text.length(), config.getModelName(), config.getVoice());
+            // 检查并截断文本以确保不超过 API 限制
+            String processedText = truncateTextIfNeeded(text);
+            
+            int charCount = processedText.length();
+            int byteCount = processedText.getBytes(StandardCharsets.UTF_8).length;
+            log.info("🎙️ Starting DashScope TTS (SDK) for text ({} chars, {} bytes), model: {}, voice: {}", 
+                charCount, byteCount, config.getModelName(), config.getVoice());
 
             // 收集所有音频数据
             ByteArrayOutputStream audioBuffer = new ByteArrayOutputStream();
             
             // 调用流式 TTS API
-            streamCall(text, audioBuffer);
+            streamCall(processedText, audioBuffer);
             
             byte[] pcmData = audioBuffer.toByteArray();
             
@@ -161,6 +170,55 @@ public class DashScopeTtsModel implements TtsModel {
                 yield AudioParameters.Voice.CHERRY;
             }
         };
+    }
+
+    /**
+     * 截断文本以确保不超过 API 的字节长度限制
+     * 使用 UTF-8 编码计算字节数，从末尾逐个字符减少，确保不会损坏字符
+     */
+    private String truncateTextIfNeeded(String text) {
+        if (text == null) {
+            return text;
+        }
+        
+        byte[] textBytes = text.getBytes(StandardCharsets.UTF_8);
+        
+        if (textBytes.length <= MAX_TEXT_BYTES) {
+            return text;
+        }
+        
+        // 需要截断：从末尾逐个字符减少，直到字节数符合要求
+        String truncated = text;
+        int originalChars = text.length();
+        int originalBytes = textBytes.length;
+        
+        // 从末尾逐个字符减少
+        while (truncated.getBytes(StandardCharsets.UTF_8).length > MAX_TEXT_BYTES && truncated.length() > 0) {
+            truncated = truncated.substring(0, truncated.length() - 1);
+        }
+        
+        // 如果截断后为空，至少保留一些内容（使用字节截断作为后备）
+        if (truncated.isEmpty() && text.length() > 0) {
+            // 使用字节截断，但确保在字符边界
+            int truncatePos = MAX_TEXT_BYTES;
+            while (truncatePos > 0 && (textBytes[truncatePos] & 0xC0) == 0x80) {
+                truncatePos--;
+            }
+            if (truncatePos > 0) {
+                truncated = new String(textBytes, 0, truncatePos, StandardCharsets.UTF_8);
+            } else {
+                // 最后的后备：至少保留前 MAX_TEXT_BYTES 个字节
+                truncated = new String(textBytes, 0, Math.min(MAX_TEXT_BYTES, textBytes.length), StandardCharsets.UTF_8);
+            }
+        }
+        
+        int truncatedChars = truncated.length();
+        int truncatedBytes = truncated.getBytes(StandardCharsets.UTF_8).length;
+        
+        log.warn("⚠️ Text truncated due to API limit ({} bytes max): {} chars ({} bytes) -> {} chars ({} bytes)", 
+            MAX_TEXT_BYTES, originalChars, originalBytes, truncatedChars, truncatedBytes);
+        
+        return truncated;
     }
 
     /**

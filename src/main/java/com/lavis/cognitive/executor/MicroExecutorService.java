@@ -47,6 +47,8 @@ public class MicroExecutorService {
     private final List<ToolSpecification> reflectionToolSpecs;
     // 在类成员变量区域添加
     private final ObjectMapper objectMapper = new ObjectMapper();
+    /** 调度器触发的中断标记 */
+    private volatile boolean interrupted = false;
 
     // LLM 模型（由外部注入或配置）
     private ChatLanguageModel chatModel;
@@ -78,54 +80,53 @@ public class MicroExecutorService {
 
         // 基础角色定义
         sb.append(String.format("""
-                你是一个**战术执行专家**（熟练工角色），负责完成里程碑级任务的具体执行。
+                You are a tactical execution expert acting as a skilled worker role responsible for completing the specific execution of milestone level tasks
 
-                ## 🎯 核心理念：M-E-R 闭环
-                你拥有完整的 记忆-执行-反思 闭环能力：
-                1. **Memory（记忆）**: 你知道"我在哪"、"我刚才做了什么"
-                2. **Execution（执行）**: 基于当前观测和记忆做出决策
-                3. **Reflection（反思）**: 每次操作后观察屏幕变化，判断是否成功
+                ## Core Concept M-E-R Loop
+                You have complete memory execution reflection loop capability
+                1. **Memory**: You know where I am what I just did
+                2. **Execution**: Make decisions based on current observation and memory
+                3. **Reflection**: Observe screen changes after each operation and judge if successful
 
-                ## ⚠️ 坐标系统（严格遵守！）
-                屏幕尺寸: **%d x %d 像素**（逻辑屏幕坐标）
-                - X 坐标范围: 0 ~ %d
-                - Y 坐标范围: 0 ~ %d
+                ## Coordinate System Strict Compliance Required
+                Screen size %d x %d pixels logical screen coordinates
+                - X coordinate range 0 to %d
+                - Y coordinate range 0 to %d
 
-                **重要**:
-                - 截图中显示的坐标就是你需要使用的坐标
-                - 红色十字标记显示当前鼠标位置及其坐标
-                - 绿色圆环标记显示上次点击位置
+                **Important**: 
+                The coordinates shown in the screenshot are the coordinates you need to use
+                Red cross marker shows current mouse position and its coordinates
+                Green circle marker shows last click position
 
-                ## 🔴 视觉标记说明
-                - 【红色十字 + 坐标】: 当前鼠标位置
-                - 【绿色圆环 + 标签】: 上一次点击位置
+                ## Visual Marker Description
+                - [Red cross + coordinates]: Current mouse position
+                - [Green circle + label]: Last click position
 
-                ## 🎯 锚点定位策略（关键！）
-                **禁止**盲目猜测坐标，**必须**基于视觉锚点定位：
+                ## Anchor Point Positioning Strategy(Critical): 
+                **Prohibited blind coordinate guessing**: Must base on visual anchor points
+                1. **Find anchor point**: Identify visual features of target button input box color text icon
+                2. **Relative positioning**: Estimate precise coordinates of target based on anchor point and current mouse position
+                3. **Verify hit**: After execution observe if green circle lands on target
+                4. **Fine tune correction**: If deviated fine tune based on current position plus or minus 5-30 pixels
 
-                1. **寻找锚点**: 识别目标按钮/输入框的视觉特征（颜色、文字、图标）
-                2. **相对定位**: 基于锚点和当前鼠标位置估算目标的精确坐标
-                3. **验证命中**: 执行后观察绿色圆环是否落在目标上
-                4. **微调修正**: 如果偏离，基于当前位置 +/- 5-30 像素微调
+                ## Autonomous Processing Capability
+                - You do not need to report to Planner: Can handle the following situations independently
+                - Popup dialog boxes: Close or confirm independently
+                - Loading delays: Wait and re capture screenshot independently
+                - Click offset: Fine tune coordinates and retry independently
+                - Scroll search: Scroll to find target element independently
 
-                ## 自主处理能力
-                你**无需上报给 Planner**，可自行处理以下情况：
-                - 弹窗/对话框：自行关闭或确认
-                - 加载延迟：自行等待并重新截图
-                - 点击偏移：自行微调坐标重试
-                - 滚动查找：自行滚动寻找目标元素
-
-                ## 执行规则
-                - 每次只执行**一个**动作（单步原则）
-                - 始终根据**最新截图**做决策
-                - 不要解释太多，直接执行操作
-                - 如果截图中看到目标状态已达成，报告"任务完成"
+                ## Execution Rules
+                - Execute only one action at a time single step principle
+                - Always make decisions based on latest screenshot
+                - Do not explain too much execute operations directly
+                - If target state is achieved in screenshot report task completed
 
                 """, logicalSize.width, logicalSize.height, logicalSize.width, logicalSize.height));
 
         // 【新增】注入 GlobalContext 的"前情提要"
         if (globalContext != null) {
-            sb.append("## 📋 前情提要（你的记忆）\n");
+            sb.append("Context Summary Your Memory\n");
             sb.append(globalContext.generateContextInjection());
         }
 
@@ -183,6 +184,11 @@ public class MicroExecutorService {
             return ExecutionResult.failed("MicroExecutor 未初始化", null);
         }
 
+        if (interrupted) {
+            step.markFailed("用户中断任务");
+            return ExecutionResult.failed("用户中断任务", null);
+        }
+
         step.markStarted();
 
         // 根据步骤复杂度动态设置参数
@@ -208,6 +214,11 @@ public class MicroExecutorService {
         String lastActionResult = null;
 
         while (corrections < effectiveMaxRetries && Instant.now().isBefore(deadline)) {
+            if (interrupted) {
+                step.markFailed("用户中断任务");
+                return ExecutionResult.failed("用户中断任务", null);
+            }
+
             try {
                 // ========== Execution: 观察-决策-行动 ==========
 
@@ -366,61 +377,49 @@ public class MicroExecutorService {
     private String buildToolBasedReflectionPrompt(PlanStep step, String lastActionResult) {
         String definitionOfDone = step.getDefinitionOfDone() != null 
                 ? step.getDefinitionOfDone() 
-                : "无明确标准，请根据任务描述自行判断";
+                : "No clear criteria please judge based on task description";
         
         return String.format("""
-                ## 🛑 反思检查点
+                ## Reflection Checkpoint
                 
-                你刚刚执行了操作：
-                ```
+                You just executed operation
                 %s
-                ```
                 
-                **现在请仔细观察最新的屏幕截图**，判断任务是否已完成。
+                Now please carefully observe the latest screen screenshot and judge if the task is completed
                 
-                ---
+                ## Task Information
+                - Current Milestone %s
+                - Completion Criteria Definition of Done %s
                 
-                ## 📋 任务信息
-                - **当前里程碑**: %s
-                - **完成标准 (Definition of Done)**: %s
+                ## Visual Success Indicators
+                - To judge task success you should see in screenshot
+                - Target state has been achieved such as opened correct application entered correct page
+                - Success prompt appears such as Success Completed green checkmark
+                - URL title bar displays expected content
+                - Element that needed operation has disappeared or state has changed
                 
-                ---
+                ## Incomplete Indicators
+                When encountering the following situations do not judge as success:
+                - Interface has no changes
+                - Error text appears such as Error Failed
+                - Interface stays at Loading
+                - Click position deviated from target
+                - Unexpected dialog popped up
                 
-                ## ✅ 视觉成功标志
-                判断任务成功，你应该在截图中看到：
-                - 目标状态已经达成（如打开了正确的应用、进入了正确的页面）
-                - 出现成功提示（如 "Success"、"已完成"、绿色勾号）
-                - URL/标题栏显示预期内容
-                - 原来需要操作的元素已消失或状态已改变
+                ## Response Instructions
                 
-                ---
+                Please respond according to the following rules
                 
-                ## ❌ 未完成的标志
-                遇到以下情况，**不要**判断为成功：
-                - 界面没有任何变化
-                - 出现 "Error"、"Failed"、"失败" 等错误文字
-                - 界面停留在 "Loading..."（加载中）
-                - 点击位置偏离目标
-                - 弹出了意外的对话框
+                ### If task is completed
+                Call completeMilestone tool summary parameter describes success evidence you see in screenshot
                 
-                ---
+                ### If task is not completed
+                Do not call any tools directly output text analysis
+                1. What is the current screen state
+                2. What is still missing to complete
+                3. What should be done next
                 
-                ## 🔧 响应指令
-                
-                **请根据以下规则响应：**
-                
-                ### 如果任务【已完成】：
-                调用 `completeMilestone` 工具，`summary` 参数描述你在截图中看到的成功证据。
-                
-                ### 如果任务【未完成】：
-                **不要调用任何工具**，直接输出文本分析：
-                1. 当前屏幕状态是什么？
-                2. 距离完成还差什么？
-                3. 下一步应该做什么？
-                
-                ---
-                
-                请做出判断。
+                Please make a judgment
                 """,
                 lastActionResult,
                 step.getDescription(),
@@ -448,47 +447,47 @@ public class MicroExecutorService {
             GlobalContext globalContext) {
         StringBuilder prompt = new StringBuilder();
 
-        prompt.append("## 当前里程碑任务\n");
+        prompt.append("Current Milestone Task\n");
         prompt.append(step.getDescription()).append("\n\n");
 
         // 注入完成状态定义（Definition of Done）
         if (step.getDefinitionOfDone() != null && !step.getDefinitionOfDone().isEmpty()) {
-            prompt.append("## ✅ 完成标准 (Definition of Done)\n");
+            prompt.append("Completion Criteria Definition of Done\n");
             prompt.append(step.getDefinitionOfDone()).append("\n");
-            prompt.append("当你在截图中看到上述状态时，任务即为完成。\n\n");
+            prompt.append("When you see the above state in the screenshot the task is considered completed\n\n");
         }
 
         if (corrections == 0) {
             // 首次执行
             prompt.append("""
-                    ## 执行指令
-                    请分析截图，使用锚点定位策略找到目标元素，然后执行必要的操作。
+                    ## Execution Instructions
+                    Please analyze the screenshot use anchor point positioning strategy to find target element then execute necessary operations
 
-                    锚点定位步骤：
-                    1. 识别目标元素的视觉特征（颜色、文字、图标、位置关系）
-                    2. 基于特征在截图中定位目标
-                    3. 参考红色十字（当前鼠标位置）估算精确坐标
-                    4. 执行**一个**操作（单步原则）
+                    Anchor Point Positioning Steps
+                    1. Identify visual features of target element color text icon position relationship
+                    2. Locate target in screenshot based on features
+                    3. Reference red cross current mouse position to estimate precise coordinates
+                    4. Execute one operation single step principle
                     """);
         } else {
             // 修正执行
-            prompt.append("## 继续执行（第 ").append(corrections + 1).append(" 次尝试）\n");
-            prompt.append("上次操作结果: ").append(lastActionResult).append("\n\n");
+            prompt.append("## Continue Execution Attempt ").append(corrections + 1).append("\n");
+            prompt.append("Last Operation Result ").append(lastActionResult).append("\n\n");
             prompt.append("""
-                    ## ⚠️ 微调策略
-                    1. 查看【红色十字】的当前位置坐标
-                    2. 评估与目标的距离和方向
-                    3. 基于当前位置进行 5-30 像素的微调
-                    4. 如果多次点击无效，考虑：
-                       - 目标可能需要先滚动到可见区域
-                       - 可能有弹窗遮挡，需要先关闭
-                       - 可能需要使用不同的交互方式（双击、右键等）
+                    ## Fine Tuning Strategy
+                    1. Check current position coordinates of red cross
+                    2. Evaluate distance and direction to target
+                    3. Fine tune based on current position 5-30 pixels
+                    4. If multiple clicks are ineffective consider
+                       - Target may need to be scrolled into visible area first
+                       - There may be popup blocking need to close first
+                       - May need to use different interaction methods double click right click etc
                     """);
 
             // 如果处于恢复模式，给出更强的提示
             if (globalContext != null && globalContext.isInRecoveryMode()) {
-                prompt.append("\n## ⚠️ 注意：当前处于恢复模式\n");
-                prompt.append("之前的策略未能成功，请尝试完全不同的方法！\n");
+                prompt.append("\n## Note Currently in Recovery Mode\n");
+                prompt.append("Previous strategies were unsuccessful please try completely different methods\n");
             }
         }
 
@@ -598,6 +597,27 @@ public class MicroExecutorService {
         }
 
         return ExecutionResult.failed(reason, postMortem);
+    }
+
+    /**
+     * 调度器触发的中断请求
+     */
+    public void requestInterrupt() {
+        interrupted = true;
+    }
+
+    /**
+     * 新任务前清除中断标记
+     */
+    public void clearInterrupt() {
+        interrupted = false;
+    }
+
+    /**
+     * 当前是否处于中断状态
+     */
+    public boolean isInterrupted() {
+        return interrupted;
     }
 
     /**

@@ -6,8 +6,8 @@ import com.lavis.perception.ScreenCapturer;
 import com.lavis.service.llm.LlmFactory;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.*;
+import com.lavis.cognitive.memory.ImageContentCleanableChatMemory;
 import dev.langchain4j.memory.ChatMemory;
-import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.output.Response;
 import jakarta.annotation.PostConstruct;
@@ -56,48 +56,48 @@ public class AgentService {
     private ChatMemory chatMemory;
 
     private static final String SYSTEM_PROMPT = """
-            你是 Lavis，一个专业的 macOS 自动化助手。你拥有视觉能力和完整的系统控制权。
+            You are Lavis a professional macOS automation assistant You have visual capabilities and complete system control
 
-            ## 核心能力
-            - 视觉分析：精确识别屏幕上的 UI 元素、按钮、文本框、菜单
-            - 鼠标控制：移动、单击、双击、右键、拖拽、滚动
-            - 键盘输入：文本输入、快捷键、特殊按键
-            - 系统操作：打开/关闭应用、执行脚本、文件操作
+            ## Core Capabilities
+            - Visual analysis: Precisely identify UI elements buttons text boxes menus on screen
+            - Mouse control: Move click double click right click drag scroll
+            - Keyboard input: Text input shortcuts special keys
+            - System operations: Open close applications execute scripts file operations
 
-            ## ⚠️ 坐标系统（重要！）
-            - 截图中【红色十字】标记显示当前鼠标位置及其坐标
-            - 截图中【绿色圆环】标记显示上一次点击位置
-            - 使用截图中显示的坐标进行操作
+            ## Coordinate System (Important):
+            - Red cross marker in screenshot shows current mouse position and its coordinates
+            - Green circle marker in screenshot shows last click position
+            - Use coordinates shown in screenshot for operations
 
-            ## 🎯 锚点定位策略（关键！）
-            **禁止**盲目猜测坐标，**必须**基于视觉锚点定位：
-            1. 识别目标元素的视觉特征（颜色、文字、图标、位置关系）
-            2. 参考红色十字当前位置估算目标坐标
-            3. 执行操作后观察绿色圆环是否命中目标
-            4. 如果偏离，基于当前位置微调 5-30 像素
+            ## Anchor Point Positioning Strategy (Critical):
+            Prohibited blind coordinate guessing must base on visual anchor points
+            1. Identify visual features of target element color text icon position relationship
+            2. Reference red cross current position to estimate target coordinates
+            3. After execution observe if green circle hits target
+            4. If deviated fine tune based on current position 5-30 pixels
+            //todo: add more details
+            ## Visual Markers in Screenshot
+            - [Red cross + coordinates]: Current mouse position
+            - [Green circle + label]: Last click position
 
-            ## 截图中的视觉标记
-            - 🔴 **红色十字 + 坐标**：当前鼠标位置
-            - 🟢 **绿色圆环 + 标签**：上一次点击位置
+            ## Execution Rules:
+            1. **Observe first**: Carefully analyze latest screenshot identify UI element positions
+            2. **Plan then**: Make clear execution steps
+            3. **Execute after**: Call tools to execute operations: execute only one action at a time
+            4. **Verify**: Execution will receive new screenshot: observe screen changes
+            5. **Reflect**: Judge if operation succeeded based on new screenshot: decide next step
 
-            ## 执行规则
-            1. **先观察**: 仔细分析**最新的截图**，识别 UI 元素位置
-            2. **再规划**: 制定清晰的执行步骤
-            3. **后执行**: 调用工具执行操作，**每次只执行一个动作**
-            4. **要验证**: 执行后会收到**新的截图**，观察屏幕变化
-            5. **会反思**: 根据新截图判断操作是否成功，决定下一步
+            ## Key Behavioral Guidelines:
+            - After each operation you will receive updated screen screenshot
+            - Always make decisions based on latest screenshot do not rely on old images in memory
+            - If tool returns success but screenshot shows no changes may need to wait for loading
+            - If same operation repeated 3 times still ineffective try different strategy
 
-            ## 关键行为准则
-            - 每次操作后，你会收到**更新后的屏幕截图**
-            - 始终根据**最新截图**做决策，不要依赖记忆中的旧画面
-            - 如果工具返回"成功"但截图显示没变化，可能需要等待加载
-            - 如果同一操作重复3次仍无效，尝试不同策略
-
-            ## 重要提示
-            - 当用户要求操作时，你必须调用相应的工具来执行
-            - 不要只是描述要做什么，而是实际调用工具去做
-            - 点击文本框后，等待一下再输入文本
-            - 遇到弹窗/对话框，优先处理
+            ## Important Notes:
+            - When user requests operations you must call corresponding tools to execute
+            - Do not just describe what to do actually call tools to do it
+            - After clicking text box wait a bit before entering text
+            - When encountering popup dialog prioritize handling it
             """;
 
     // 工具执行后等待 UI 响应的时间（毫秒）
@@ -115,8 +115,8 @@ public class AgentService {
             
             this.chatModel = llmFactory.getModel(modelAlias);
 
-            // 初始化聊天记忆
-            this.chatMemory = MessageWindowChatMemory.withMaxMessages(20);
+            // 初始化聊天记忆（使用支持 ImageContent 清理的自定义实现）
+            this.chatMemory = ImageContentCleanableChatMemory.withMaxMessages(20);
 
             // 初始化调度器（传递 LLM 模型给 Planner 和 Executor）
             taskOrchestrator.initialize(chatModel);
@@ -204,6 +204,7 @@ public class AgentService {
      *                    maxToolIterations
      */
     private String processWithTools(UserMessage userMessage, int maxSteps) {
+        // 【内存安全】ImageContent 清理现在在 ChatMemory.add() 中自动执行
         // 构建消息列表
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(SystemMessage.from(SYSTEM_PROMPT));
@@ -295,17 +296,17 @@ public class AgentService {
 
                     // 构建观察消息，告诉模型这是操作后的新截图
                     String observationText = String.format("""
-                            ## 📷 操作后的屏幕观察
+                            ## Screen Observation After Operation
 
-                            上一步执行结果:
+                            Last Step Execution Result
                             %s
 
-                            请仔细观察**当前最新截图**，判断：
-                            1. 操作是否成功？屏幕是否发生了预期变化？
-                            2. 如果成功，下一步应该做什么？
-                            3. 如果失败或无变化，需要如何调整？
+                            Please carefully observe current latest screenshot and judge
+                            1. Was operation successful Did screen change as expected
+                            2. If successful what should be done next
+                            3. If failed or no change how should it be adjusted
 
-                            **注意**：始终根据这张最新截图做决策！
+                            **Note**: Always make decisions based on this latest screenshot
                             """, toolResultsSummary.toString());
 
                     UserMessage observationMessage = UserMessage.from(
@@ -393,6 +394,7 @@ public class AgentService {
         }
         log.info("🔄 对话历史已重置");
     }
+
 
     @FunctionalInterface
     interface ThrowingSupplier<T> {

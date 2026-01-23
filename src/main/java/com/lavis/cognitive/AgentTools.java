@@ -50,7 +50,7 @@ public class AgentTools {
         return logical;
     }
 
-    public String moveMouse(@P("坐标位置数组 [x, y]") int[] coords) {
+    public String moveMouse(@P("Coordinate position array [x, y]") int[] coords) {
         if (coords == null || coords.length < 2) return "❌ 错误: 坐标无效";
         try {
             Point logical = toLogicalPoint(coords);
@@ -63,8 +63,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("单击屏幕指定位置。注意：点击操作执行后，必须观察屏幕变化（如按钮变色、页面跳转、弹窗消失）来确认点击是否生效。")
-    public String click(@P("坐标位置数组 [x, y]") int[] coords) {
+    @Tool("Click at specified screen position Note After click operation executes must observe screen changes such as button color change page jump popup disappearance to confirm if click took effect")
+    public String click(@P("Coordinate position array [x, y]") int[] coords) {
         if (coords == null || coords.length < 2) return "❌ 错误: 坐标无效";
         try {
             Point logical = toLogicalPoint(coords);
@@ -81,8 +81,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("双击屏幕指定位置。如果单击没有触发预期的UI变化，尝试使用此工具。")
-    public String doubleClick(@P("坐标位置数组 [x, y]") int[] coords) {
+    @Tool("Double click at specified screen position If single click did not trigger expected UI changes try using this tool")
+    public String doubleClick(@P("Coordinate position array [x, y]") int[] coords) {
         if (coords == null || coords.length < 2) return "❌ 错误: 坐标无效";
         try {
             Point logical = toLogicalPoint(coords);
@@ -96,8 +96,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("右键单击。")
-    public String rightClick(@P("坐标位置数组 [x, y]") int[] coords) {
+    @Tool("Right click")
+    public String rightClick(@P("Coordinate position array [x, y]") int[] coords) {
         if (coords == null || coords.length < 2) return "❌ 错误: 坐标无效";
         try {
             Point logical = toLogicalPoint(coords);
@@ -111,8 +111,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("拖拽操作。")
-    public String drag(@P("起始位置 [x, y]") int[] from, @P("目标位置 [x, y]") int[] to) {
+    @Tool("Drag operation")
+    public String drag(@P("Start position [x, y]") int[] from, @P("Target position [x, y]") int[] to) {
         try {
             if (from == null || from.length < 2 || to == null || to.length < 2) return "❌ 错误: 坐标无效";
             Point fromLogical = toLogicalPoint(from);
@@ -125,8 +125,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("滚动屏幕。")
-    public String scroll(@P("滚动量(正数向下, 负数向上)") int amount) {
+    @Tool("Scroll screen")
+    public String scroll(@P("Scroll amount: positive down, negative up") int amount) {
         try {
             robotDriver.scroll(amount);
             return "已执行滚动操作。请检查可视区域是否更新。";
@@ -137,8 +137,8 @@ public class AgentTools {
 
     // ==================== 键盘操作 ====================
 
-    @Tool("输入文本。注意：确保输入框已聚焦。输入后请检查文本是否正确显示在屏幕上。")
-    public String typeText(@P("要输入的文本") String text) {
+    @Tool("Input text. Note: Ensure input box is focused. After input check if text is correctly displayed on screen")
+    public String typeText(@P("Text to input") String text) {
         try {
             robotDriver.type(text);
             return String.format("⌨️ 键盘敲击已发送: \"%s\"。请通过截图验证文字是否上屏。", text);
@@ -147,7 +147,7 @@ public class AgentTools {
         }
     }
 
-    @Tool("按下回车键。")
+    @Tool("Press Enter key")
     public String pressEnter() {
         try {
             robotDriver.pressEnter();
@@ -157,7 +157,7 @@ public class AgentTools {
         }
     }
 
-    @Tool("按下 Escape 键。")
+    @Tool("Press Escape key")
     public String pressEscape() {
         try {
             robotDriver.pressEscape();
@@ -167,7 +167,7 @@ public class AgentTools {
         }
     }
 
-    @Tool("按下 Tab 键。")
+    @Tool("Press Tab key")
     public String pressTab() {
         try {
             robotDriver.pressTab();
@@ -177,7 +177,7 @@ public class AgentTools {
         }
     }
 
-    @Tool("按下退格键。")
+    @Tool("Press Backspace key")
     public String pressBackspace() {
         try {
             robotDriver.pressBackspace();
@@ -187,7 +187,7 @@ public class AgentTools {
         }
     }
 
-    @Tool("复制 (Cmd+C)。")
+    @Tool("Copy Cmd+C")
     public String copy() {
         try {
             robotDriver.copy();
@@ -197,7 +197,7 @@ public class AgentTools {
         }
     }
 
-    @Tool("粘贴 (Cmd+V)。")
+    @Tool("Paste Cmd+V")
     public String paste() {
         try {
             robotDriver.paste();
@@ -207,7 +207,7 @@ public class AgentTools {
         }
     }
 
-    @Tool("全选 (Cmd+A)。")
+    @Tool("Select All Cmd+A")
     public String selectAll() {
         try {
             robotDriver.selectAll();
@@ -217,7 +217,7 @@ public class AgentTools {
         }
     }
 
-    @Tool("保存 (Cmd+S)。")
+    @Tool("Save Cmd+S")
     public String save() {
         try {
             robotDriver.save();
@@ -227,7 +227,7 @@ public class AgentTools {
         }
     }
 
-    @Tool("撤销 (Cmd+Z)。")
+    @Tool("Undo Cmd+Z")
     public String undo() {
         try {
             robotDriver.undo();
@@ -239,8 +239,8 @@ public class AgentTools {
 
     // ==================== 系统操作 ====================
 
-    @Tool("打开应用程序。")
-    public String openApplication(@P("应用名称") String appName) {
+    @Tool("Open application")
+    public String openApplication(@P("Application name") String appName) {
         try {
             var result = appleScriptExecutor.openApplication(appName);
             return result.success() ?
@@ -251,7 +251,7 @@ public class AgentTools {
         }
     }
 
-    @Tool("列出已安装的应用。")
+    @Tool("List installed applications")
     public String listInstalledApplications() {
         try {
             var result = appleScriptExecutor.executeShell("ls /Applications | grep '.app'");
@@ -261,8 +261,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("关闭应用。")
-    public String quitApplication(@P("应用名称") String appName) {
+    @Tool("Quit application")
+    public String quitApplication(@P("Application name") String appName) {
         try {
             var result = appleScriptExecutor.quitApplication(appName);
             return result.success() ? "已发送关闭指令。" : "❌ 关闭失败: " + result.output();
@@ -271,7 +271,7 @@ public class AgentTools {
         }
     }
 
-    @Tool("获取当前活动应用。")
+    @Tool("Get current active application")
     public String getActiveApp() {
         try {
             return "当前活动应用: " + appleScriptExecutor.getActiveApplication();
@@ -280,7 +280,7 @@ public class AgentTools {
         }
     }
 
-    @Tool("获取当前窗口标题。")
+    @Tool("Get current window title")
     public String getActiveWindowTitle() {
         try {
             return "窗口标题: " + appleScriptExecutor.getActiveWindowTitle();
@@ -289,8 +289,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("打开 URL。")
-    public String openURL(@P("URL地址") String url) {
+    @Tool("Open URL")
+    public String openURL(@P("URL address") String url) {
         try {
             var result = appleScriptExecutor.openURL(url);
             return result.success() ? "已请求打开 URL: " + url + "。请检查浏览器是否已加载页面。" : "❌ 打开失败";
@@ -299,8 +299,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("打开文件。")
-    public String openFile(@P("文件路径") String filePath) {
+    @Tool("Open file")
+    public String openFile(@P("File path") String filePath) {
         try {
             var result = appleScriptExecutor.openFile(filePath);
             return result.success() ? "已请求打开文件: " + filePath : "❌ 打开失败";
@@ -309,8 +309,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("在 Finder 中显示。")
-    public String revealInFinder(@P("路径") String filePath) {
+    @Tool("Reveal in Finder")
+    public String revealInFinder(@P("Path") String filePath) {
         try {
             var result = appleScriptExecutor.revealInFinder(filePath);
             return result.success() ? "已在 Finder 中选中。" : "❌ 操作失败";
@@ -319,8 +319,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("显示通知。")
-    public String showNotification(@P("标题") String title, @P("内容") String message) {
+    @Tool("Show notification")
+    public String showNotification(@P("Title") String title, @P("Content") String message) {
         try {
             appleScriptExecutor.showNotification(title, message);
             return "通知已发送。";
@@ -329,8 +329,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("执行 AppleScript。")
-    public String executeAppleScript(@P("脚本") String script) {
+    @Tool("Execute AppleScript")
+    public String executeAppleScript(@P("Script") String script) {
         try {
             var result = appleScriptExecutor.executeAppleScript(script);
             return "脚本执行结果: " + result.output();
@@ -339,8 +339,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("执行 Shell 命令。")
-    public String executeShell(@P("命令") String command) {
+    @Tool("Execute Shell command")
+    public String executeShell(@P("Command") String command) {
         try {
             var result = appleScriptExecutor.executeShell(command);
             return "Shell 输出: " + result.output();
@@ -351,7 +351,7 @@ public class AgentTools {
 
     // ==================== 感知操作 ====================
 
-    @Tool("获取屏幕截图。")
+    @Tool("Get screen screenshot")
     public String captureScreen() {
         try {
             String base64 = screenCapturer.captureScreenAsBase64();
@@ -361,8 +361,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("等待。用于等待UI动画或加载。")
-    public String wait(@P("毫秒数") int milliseconds) {
+    @Tool("Wait Used to wait for UI animation or loading")
+    public String wait(@P("Milliseconds") int milliseconds) {
         try {
             Thread.sleep(milliseconds);
             return String.format("⏳ 已等待 %d ms。请检查屏幕是否已就绪。", milliseconds);
@@ -374,7 +374,7 @@ public class AgentTools {
 
     // ==================== 诊断工具 ====================
 
-    @Tool("获取鼠标信息。")
+    @Tool("Get mouse information")
     public String getMouseInfo() {
         try {
             java.awt.Point mousePos = java.awt.MouseInfo.getPointerInfo().getLocation();
@@ -386,8 +386,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("验证坐标是否在屏幕内。")
-    public String verifyClickPosition(@P("坐标 [x, y]") int[] coords) {
+    @Tool("Verify if coordinates are within screen")
+    public String verifyClickPosition(@P("Coordinates [x, y]") int[] coords) {
         if (coords == null || coords.length < 2) return "❌ 错误: 坐标无效";
         try {
             java.awt.Dimension screenSize = screenCapturer.getScreenSize();
