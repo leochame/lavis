@@ -5,7 +5,7 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 // 使用动态导入以兼容 CommonJS 模块
 import type { FixedSizeList as FixedSizeListType } from 'react-window';
 import { agentApi } from '../api/agentApi';
-import { WorkflowPanel } from './WorkflowPanel';
+import { BrainPanel } from './BrainPanel';
 import { VoicePanel } from './VoicePanel';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useUIStore } from '../store/uiStore';
@@ -94,7 +94,7 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
         const userMessage: Message = {
           id: Date.now().toString(),
           role: 'user',
-          content: `🎤 ${globalVoice.transcribedText}`,
+          content: `[Voice] ${globalVoice.transcribedText}`,
           timestamp: Date.now(),
         };
         const assistantMessage: Message = {
@@ -108,9 +108,9 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
     }
   }, [globalVoice.transcribedText, globalVoice.agentResponse, globalVoice.voiceState, messages]);
 
-  // 当有工作流活动时自动显示 Brain 面板
+  // Auto-show Brain panel when workflow is active
   useEffect(() => {
-    if (workflow.status === 'executing' || workflow.steps.length > 0) {
+    if (workflow.status === 'executing' || workflow.status === 'planning' || workflow.steps.length > 0) {
       setShowBrain(true);
     }
   }, [workflow.status, workflow.steps.length]);
@@ -211,7 +211,6 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
   };
 
   const isExecuting = workflow.status === 'executing' || status?.orchestrator_state?.includes('EXECUTING');
-  const showWorkflow = workflow.steps.length > 0 || workflow.status !== 'idle';
 
   // 根据 WebSocket 状态获取标题颜色
   const getWsStatusColor = () => {
@@ -251,21 +250,21 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
             title="Capture screen"
             disabled={isCapturing}
           >
-            {isCapturing ? '⏳' : '📷'}
+            {isCapturing ? '...' : 'CAM'}
           </button>
           <button
             className={`chat-panel__voice-toggle ${showVoicePanel ? 'chat-panel__voice-toggle--active' : ''}`}
             onClick={() => setShowVoicePanel(!showVoicePanel)}
-            title={showVoicePanel ? '切换到文字输入' : '切换到语音输入'}
+            title={showVoicePanel ? 'Switch to text input' : 'Switch to voice input'}
           >
-            🎤
+            MIC
           </button>
           <button
             className={`chat-panel__brain-btn ${showBrain ? 'chat-panel__brain-btn--active' : ''}`}
             onClick={() => setShowBrain(!showBrain)}
-            title={showBrain ? '隐藏思维透视' : '显示思维透视'}
+            title={showBrain ? 'Hide brain view' : 'Show brain view'}
           >
-            🧠
+            BRAIN
           </button>
         </div>
         <button className="chat-panel__close" onClick={onClose}>×</button>
@@ -371,33 +370,34 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
                 </div>
               ) : (
                 <div className="chat-panel__messages-empty">
-                  <p>开始对话...</p>
+                  <p>Start conversation...</p>
                 </div>
               )
             ) : (
               <div className="chat-panel__messages-placeholder">
-                <p>窗口处于 {windowState} 模式，消息列表已暂停渲染以节省内存</p>
-                <p>双击胶囊展开窗口以查看完整聊天记录</p>
+                <p>Window is in {windowState} mode, message list rendering paused to save memory</p>
+                <p>Double-click capsule to expand window and view full chat history</p>
               </div>
             )}
           </div>
 
-          {/* 输入区 */}
-          {showVoicePanel ? (
-            <div className="chat-panel__voice-container">
-              <VoicePanel
-                status={status}
-                voiceState={globalVoice.voiceState}
-                isRecording={globalVoice.isRecording}
-                isWakeWordListening={globalVoice.isWakeWordListening}
-                transcribedText={globalVoice.transcribedText}
-                agentResponse={globalVoice.agentResponse}
-                error={globalVoice.error}
-                onStartRecording={globalVoice.startRecording}
-                onStopRecording={globalVoice.stopRecording}
-              />
-            </div>
-          ) : (
+          {/* Input Area - Always show text input, voice panel is additional */}
+          <div className="chat-panel__input-container">
+            {showVoicePanel && (
+              <div className="chat-panel__voice-container">
+                <VoicePanel
+                  status={status}
+                  voiceState={globalVoice.voiceState}
+                  isRecording={globalVoice.isRecording}
+                  isWakeWordListening={globalVoice.isWakeWordListening}
+                  transcribedText={globalVoice.transcribedText}
+                  agentResponse={globalVoice.agentResponse}
+                  error={globalVoice.error}
+                  onStartRecording={globalVoice.startRecording}
+                  onStopRecording={globalVoice.stopRecording}
+                />
+              </div>
+            )}
             <form className="chat-panel__input" onSubmit={handleSubmit}>
               <input
                 type="text"
@@ -411,40 +411,19 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
                 Send
               </button>
             </form>
-          )}
+          </div>
         </div>
 
         {/* 右侧：思维透视 (Brain) */}
-        {/* 【内存安全】仅在 Expanded 模式下渲染 WorkflowPanel，减少内存占用 */}
+        {/* 【内存安全】仅在 Expanded 模式下渲染 BrainPanel，减少内存占用 */}
         {shouldRenderComplexComponents && (
         <div className={`chat-panel__brain ${!showBrain ? 'chat-panel__brain--collapsed' : ''}`}>
           {showBrain && (
-            <>
-              <div className="chat-panel__brain-header">
-                <div className="chat-panel__brain-title">
-                  <div className="chat-panel__brain-icon" />
-                  <span>BRAIN</span>
-                </div>
-              </div>
-              <div className="chat-panel__brain-content">
-                {showWorkflow ? (
-                  <WorkflowPanel
-                    workflow={workflow}
-                    connected={connected}
-                    onStop={handleEmergencyStop}
-                  />
-                ) : (
-                  <div className="chat-panel__brain-empty">
-                    <div className="chat-panel__brain-empty-icon">🧠</div>
-                    <div className="chat-panel__brain-empty-text">
-                      思维透视区域
-                      <br />
-                      当 Agent 开始工作时，这里将实时展示思考过程
-                    </div>
-                  </div>
-                )}
-              </div>
-            </>
+            <BrainPanel
+              workflow={workflow}
+              connectionStatus={wsStatus}
+              onStop={handleEmergencyStop}
+            />
           )}
         </div>
         )}

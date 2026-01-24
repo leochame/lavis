@@ -105,6 +105,21 @@ export default function App() {
     }
   }, [globalVoice.wakeWordDetected, isElectron, platform, setWindowState]);
 
+  // Auto-collapse to capsule when window state becomes idle or listening
+  // This ensures that when the window shrinks (e.g., due to timeout), it returns to capsule mode
+  // Only collapse if we're currently in chat mode and window state is not expanded
+  useEffect(() => {
+    // Only auto-collapse if we're in chat mode but window is not expanded
+    // This handles the case where window auto-shrinks due to timeout or inactivity
+    // When window shrinks to idle or listening state, we should show capsule instead of simplified chat panel
+    if (viewMode === 'chat' && (windowState === 'idle' || windowState === 'listening')) {
+      setViewMode('capsule');
+      if (isElectron) {
+        platform.resizeWindow('capsule');
+      }
+    }
+  }, [windowState, viewMode, isElectron, platform, setViewMode]);
+
   // 窗口模式变化时同步 Electron 物理窗口
   useEffect(() => {
     if (isElectron) {
@@ -163,24 +178,24 @@ export default function App() {
             </div>
           </div>
           <h1>Lavis AI</h1>
-          <p className="start-overlay__subtitle">您的本地 AI 智能助手</p>
+          <p className="start-overlay__subtitle">Your Local AI Assistant</p>
 
-          {/* 配置警告 */}
+          {/* Configuration warnings */}
           {!hasPicoKey && (
             <div className="start-overlay__warning">
-              <p>⚠️ 缺少 Picovoice Access Key</p>
+              <p>Missing Picovoice Access Key</p>
               <p className="start-overlay__warning-detail">
-                语音唤醒功能需要配置 Picovoice Access Key
+                Voice wake word feature requires Picovoice Access Key
               </p>
               <p className="start-overlay__warning-detail">
-                请在 <code>.env.local</code> 文件中添加:
+                Please add to <code>.env.local</code> file:
               </p>
               <pre className="start-overlay__code">
                 VITE_PICOVOICE_KEY=your_access_key_here
               </pre>
               <p className="start-overlay__warning-detail">
                 <a href="https://console.picovoice.ai/" target="_blank" rel="noopener noreferrer">
-                  前往 Picovoice Console 获取免费 Access Key
+                  Visit Picovoice Console to get a free Access Key
                 </a>
               </p>
             </div>
@@ -188,23 +203,23 @@ export default function App() {
 
           {hasPicoKey && !hasWakeWordPath && (
             <div className="start-overlay__warning">
-              <p>⚠️ 缺少唤醒词模型</p>
+              <p>Missing Wake Word Model</p>
               <p className="start-overlay__warning-detail">
-                请在 <code>.env.local</code> 中配置唤醒词模型路径或 Base64 编码:
+                Please configure wake word model path or Base64 encoding in <code>.env.local</code>:
               </p>
               <pre className="start-overlay__code">
                 VITE_WAKE_WORD_PATH=/hi-lavis.ppn
-                # 或
+                # or
                 VITE_WAKE_WORD_BASE64=&lt;base64 encoded .ppn file&gt;
               </pre>
             </div>
           )}
 
-          {/* 麦克风按钮 - 点击即开始并录音 */}
+          {/* Microphone button - click to start and record */}
           <button
             className="start-overlay__mic-button"
             onClick={handleMicStart}
-            title="点击开始对话"
+            title="Click to start conversation"
           >
             <svg className="start-overlay__mic-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
@@ -213,13 +228,13 @@ export default function App() {
           </button>
           
           <p className="start-overlay__mic-hint">
-            {hasPicoKey ? '点击麦克风开始对话' : '点击麦克风开始对话（未配置唤醒词，将无法语音唤醒）'}
+            {hasPicoKey ? 'Click microphone to start conversation' : 'Click microphone to start conversation (wake word not configured, voice wake-up unavailable)'}
           </p>
           
           <p className="start-overlay__hint">
             {hasPicoKey && hasWakeWordPath
-              ? '点击后将自动进入语音对话模式'
-              : '未配置 Picovoice 唤醒词时仍可手动语音对话（点击麦克风开始）'
+              ? 'Will automatically enter voice conversation mode after clicking'
+              : 'Manual voice conversation still available without Picovoice wake word (click microphone to start)'
             }
           </p>
         </div>

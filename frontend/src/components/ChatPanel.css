@@ -201,12 +201,17 @@
   }
 }
 
+.chat-panel__input-container {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid rgba(0, 243, 255, 0.15);
+  background: rgba(0, 0, 0, 0.4);
+}
+
 .chat-panel__input {
   display: flex;
   gap: 12px;
   padding: 20px;
-  border-top: 1px solid rgba(0, 243, 255, 0.15);
-  background: rgba(0, 0, 0, 0.4);
 }
 
 .chat-panel__input input {
@@ -543,10 +548,10 @@ code:not(pre code) {
 
 /* 右侧思维透视区 */
 .chat-panel__brain {
-  width: 320px;
+  width: 360px;
   display: flex;
   flex-direction: column;
-  background: rgba(0, 0, 0, 0.2);
+  background: transparent;
   overflow: hidden;
   transition: width 0.3s ease;
 }
@@ -554,6 +559,14 @@ code:not(pre code) {
 .chat-panel__brain--collapsed {
   width: 0;
   border: none;
+}
+
+/* BrainPanel 在 ChatPanel 中的样式覆盖 */
+.chat-panel__brain .brain-panel {
+  height: 100%;
+  border-radius: 0;
+  border: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 /* Brain 区域头部 */
@@ -658,9 +671,7 @@ code:not(pre code) {
 }
 
 .chat-panel__brain-empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.3;
+  display: none;
 }
 
 .chat-panel__brain-empty-text {

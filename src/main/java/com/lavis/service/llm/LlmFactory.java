@@ -4,6 +4,7 @@ import com.lavis.config.llm.LlmProperties;
 import com.lavis.config.llm.ModelConfig;
 
 import com.lavis.service.llm.stt.DashScopeSttModel;
+import com.lavis.service.llm.stt.GeminiFlashSttModel;
 import com.lavis.service.llm.stt.OpenAiSttModel;
 import com.lavis.service.llm.stt.SttModel;
 import com.lavis.service.llm.tts.DashScopeTtsModel;
@@ -91,7 +92,16 @@ public class LlmFactory {
 
         return switch (config.getProvider()) {
             case OPENAI -> createOpenAiModel(config);
-            case GEMINI -> createGeminiModel(config);
+            case GEMINI -> {
+                // 如果配置了 baseUrl（中转站），使用 OpenAI 兼容接口
+                // 因为 LangChain4j 的 GoogleAiGeminiChatModel 不支持自定义 baseUrl
+                if (config.getBaseUrl() != null && !config.getBaseUrl().isBlank()) {
+                    log.info("🔄 Gemini 模型配置了自定义 baseUrl，使用 OpenAI 兼容接口（中转站）");
+                    yield createOpenAiModel(config);
+                } else {
+                    yield createGeminiModel(config);
+                }
+            }
             // DashScope 的 Chat 也是 OpenAI 兼容的，所以走 OpenAiModel
             case DASHSCOPE -> createOpenAiModel(config);
         };
@@ -109,6 +119,7 @@ public class LlmFactory {
         return switch (config.getProvider()) {
             case DASHSCOPE -> new DashScopeSttModel(config);
             case OPENAI -> new OpenAiSttModel(config);
+            case GEMINI -> new GeminiFlashSttModel(config);
             default -> throw new IllegalArgumentException("不支持的 STT Provider: " + config.getProvider());
         };
     }
@@ -169,14 +180,20 @@ public class LlmFactory {
         return builder.build();
     }
 
+    /**
+     * 创建 Gemini 模型实例（使用 Google 官方 API）
+     * 注意：此方法仅在未配置 baseUrl 时使用
+     * 如果配置了 baseUrl（中转站），会自动使用 OpenAI 兼容接口
+     */
     private ChatLanguageModel createGeminiModel(ModelConfig config) {
-        return GoogleAiGeminiChatModel.builder()
+        var builder = GoogleAiGeminiChatModel.builder()
                 .apiKey(config.getApiKey())
                 .modelName(config.getModelName())
                 .temperature(config.getTemperature())
                 .timeout(Duration.ofSeconds(config.getTimeoutSeconds()))
-                .maxRetries(config.getMaxRetries())
-                .build();
+                .maxRetries(config.getMaxRetries());
+
+        return builder.build();
     }
 
     public void clearCache() {

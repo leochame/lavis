@@ -11,7 +11,12 @@
     "preview": "vite preview",
     "electron:dev": "node scripts/electron-dev.js",
     "electron:dev:attach": "wait-on http://localhost:5173 || wait-on http://localhost:5174 || wait-on http://localhost:5175 && electron .",
-    "electron:build": "npm run build && npm run build:electron && electron-builder"
+    "electron:build": "npm run build && npm run build:electron && electron-builder",
+    "package": "./scripts/build.sh",
+    "package:mac": "./scripts/build.sh mac",
+    "package:win": "./scripts/build.sh win",
+    "package:linux": "./scripts/build.sh linux",
+    "package:all": "./scripts/build.sh all"
   },
   "dependencies": {
     "@picovoice/porcupine-web": "^4.0.0",

@@ -8,15 +8,15 @@ import './VoicePanel.css';
 export type { VoiceState };
 
 /**
- * 语音交互状态配置
+ * Voice interaction state configuration
  */
 const VOICE_STATE_CONFIG: Record<VoiceState, { label: string; className: string; icon: React.ReactNode }> = {
-  idle: { label: '待机中', className: 'voice-panel__status--idle', icon: <Mic size={20} /> },
-  listening: { label: '聆听中...', className: 'voice-panel__status--recording', icon: <Brain size={20} /> },
-  processing: { label: '思考中...', className: 'voice-panel__status--processing', icon: <Brain size={20} /> },
-  speaking: { label: '回答中...', className: 'voice-panel__status--playing', icon: <Volume2 size={20} /> },
-  awaiting_audio: { label: '等待音频...', className: 'voice-panel__status--processing', icon: <Volume2 size={20} /> },
-  error: { label: '出错了', className: 'voice-panel__status--error', icon: <AlertTriangle size={20} /> },
+  idle: { label: 'Idle', className: 'voice-panel__status--idle', icon: <Mic size={20} /> },
+  listening: { label: 'Listening...', className: 'voice-panel__status--recording', icon: <Brain size={20} /> },
+  processing: { label: 'Processing...', className: 'voice-panel__status--processing', icon: <Brain size={20} /> },
+  speaking: { label: 'Speaking...', className: 'voice-panel__status--playing', icon: <Volume2 size={20} /> },
+  awaiting_audio: { label: 'Awaiting audio...', className: 'voice-panel__status--processing', icon: <Volume2 size={20} /> },
+  error: { label: 'Error', className: 'voice-panel__status--error', icon: <AlertTriangle size={20} /> },
 };
 
 interface VoicePanelProps {
@@ -86,7 +86,7 @@ export function VoicePanel({
       <div className="voice-panel__header">
         <h3>
           <Mic size={16} style={{ marginRight: '8px' }} />
-          语音交互
+          Voice Interaction
         </h3>
         <div className="voice-panel__status">
           <span className={`voice-panel__status-badge ${stateConfig.className}`}>
@@ -105,25 +105,25 @@ export function VoicePanel({
           {voiceState === 'listening' ? (
             <>
               <StopCircle size={16} style={{ marginRight: '8px' }} />
-              点击停止
+              Stop
             </>
           ) : (
             <>
               <Mic size={16} style={{ marginRight: '8px' }} />
-              点击说话
+              Click to Speak
             </>
           )}
         </button>
 
-        {/* 唤醒词提示 */}
+        {/* Wake word hint */}
         {isWakeWordListening && voiceState === 'idle' && (
           <div className="voice-panel__hint">
             <Lightbulb size={14} style={{ marginRight: '6px' }} />
-            或说 "你好拉维斯" 唤醒
+            Or say "Hello Lavis" to wake up
           </div>
         )}
 
-        {/* 错误提示 */}
+        {/* Error message */}
         {error && (
           <div className="voice-panel__error">
             {error}
@@ -132,18 +132,18 @@ export function VoicePanel({
       </div>
 
       <div className="voice-panel__transcript">
-        {/* 用户输入 */}
+        {/* User input */}
         <div className="voice-panel__transcript-item voice-panel__transcript-item--user">
           <span className="voice-panel__transcript-label">
             <User size={14} style={{ marginRight: '6px' }} />
-            用户
+            User
           </span>
           <span className="voice-panel__transcript-text">
-            {transcribedText || (voiceState === 'listening' ? '正在聆听...' : '...')}
+            {transcribedText || (voiceState === 'listening' ? 'Listening...' : '...')}
           </span>
         </div>
 
-        {/* Agent 回复 */}
+        {/* Agent response */}
         {(agentResponse || voiceState === 'processing') && (
           <div className="voice-panel__transcript-item voice-panel__transcript-item--agent">
             <span className="voice-panel__transcript-label">
@@ -152,7 +152,7 @@ export function VoicePanel({
             </span>
             <span className="voice-panel__transcript-text">
               {voiceState === 'processing' ? (
-                <span className="voice-panel__thinking">思考中...</span>
+                <span className="voice-panel__thinking">Processing...</span>
               ) : (
                 agentResponse
               )}

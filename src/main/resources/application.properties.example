@@ -19,24 +19,30 @@ app.llm.default-stt-model=whisper
 app.llm.default-tts-model=tts
 
 
-app.llm.models.modela.provider=OPENAI
-app.llm.models.modela.base-url=https://api.newapi.pro/v1
+# ====================================
+# Chat Models - Gemini (via LangChain4j)
+# ====================================
+# Using LangChain4j GoogleAiGeminiChatModel with custom baseUrl (relay)
+# Supports: tool calling, multimodal (text + images), system instructions
+# Docs: https://docs.newapi.pro/zh/docs/api/ai-model/chat/gemini/geminirelayv1beta-391536411
+app.llm.models.modela.provider=GEMINI
+app.llm.models.modela.base-url=https://api.jieai.shop/v1
 app.llm.models.modela.api-key=${MODELA_API_KEY:sk-N8Ra8IXzokz5qAkAy48zXQE3DSPRYKnHYVGQJXmzu2IZbq7J}
 app.llm.models.modela.model-name=gemini-3-flash-preview
 app.llm.models.modela.temperature=0.4
 app.llm.models.modela.timeout-seconds=180
 app.llm.models.modela.max-retries=3
 
-app.llm.models.modelb.provider=OPENAI
-app.llm.models.modelb.base-url=https://api.newapi.pro/v1
+app.llm.models.modelb.provider=GEMINI
+app.llm.models.modelb.base-url=https://api.jieai.shop/v1
 app.llm.models.modelb.api-key=${MODELB_API_KEY:sk-N8Ra8IXzokz5qAkAy48zXQE3DSPRYKnHYVGQJXmzu2IZbq7J}
 app.llm.models.modelb.model-name=gemini-3-flash-preview
 app.llm.models.modelb.temperature=0.4
 app.llm.models.modelb.timeout-seconds=60
 app.llm.models.modelb.max-retries=3
 
-app.llm.models.modelc.provider=OPENAI
-app.llm.models.modelc.base-url=https://api.newapi.pro/v1
+app.llm.models.modelc.provider=GEMINI
+app.llm.models.modelc.base-url=https://api.jieai.shop/v1
 app.llm.models.modelc.api-key=${MODELC_API_KEY:sk-N8Ra8IXzokz5qAkAy48zXQE3DSPRYKnHYVGQJXmzu2IZbq7J}
 app.llm.models.modelc.model-name=gemini-3-flash-preview
 app.llm.models.modelc.temperature=0.4
@@ -44,16 +50,26 @@ app.llm.models.modelc.timeout-seconds=60
 app.llm.models.modelc.max-retries=3
 
 # ====================================
-# Voice: STT (Speech-to-Text) - Qwen ASR
+# Voice: STT (Speech-to-Text)
 # ====================================
-# Using Alibaba Cloud DashScope OpenAI-compatible API
-# Set environment variable WHISPER_API_KEY or directly fill in the API Key
+# Option 1: Gemini-flash STT (recommended)
+# Using Gemini generateContent API with inlineData base64 audio upload
+# Supports: audio/webm, audio/wav, audio/mpeg, audio/mp4, etc.
 app.llm.models.whisper.type=STT
-app.llm.models.whisper.provider=OPENAI
-app.llm.models.whisper.base-url=https://dashscope.aliyuncs.com/compatible-mode/v1
-app.llm.models.whisper.api-key=${WHISPER_API_KEY:your-dashscope-api-key-here}
-app.llm.models.whisper.model-name=qwen3-asr-flash
+app.llm.models.whisper.provider=GEMINI
+app.llm.models.whisper.base-url=https://api.jieai.shop/v1
+app.llm.models.whisper.api-key=${WHISPER_API_KEY:your-gemini-api-key-here}
+app.llm.models.whisper.model-name=gemini-3-flash-preview
 app.llm.models.whisper.timeout-seconds=60
+
+# Option 2: Qwen ASR (DashScope)
+# Using Alibaba Cloud DashScope OpenAI-compatible API
+# app.llm.models.whisper.type=STT
+# app.llm.models.whisper.provider=OPENAI
+# app.llm.models.whisper.base-url=https://dashscope.aliyuncs.com/compatible-mode/v1
+# app.llm.models.whisper.api-key=${WHISPER_API_KEY:your-dashscope-api-key-here}
+# app.llm.models.whisper.model-name=qwen3-asr-flash
+# app.llm.models.whisper.timeout-seconds=60
 
 # ====================================
 # Voice: TTS (Text-to-Speech) - Qwen TTS

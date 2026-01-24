@@ -10,6 +10,17 @@
     "dist/**/*",
     "electron/**/*"
   ],
+  "extraResources": [
+    {
+      "from": "../target/lavis.jar",
+      "to": "backend/lavis.jar"
+    },
+    {
+      "from": "jre/${os}-${arch}",
+      "to": "jre",
+      "filter": ["**/*"]
+    }
+  ],
   "extraMetadata": {
     "main": "electron/main.js"
   },
@@ -19,19 +30,36 @@
     "target": [
       {
         "target": "dmg",
-        "arch": ["x64", "arm64"]
-      },
-      {
-        "target": "zip",
-        "arch": ["x64", "arm64"]
+        "arch": ["arm64"]
       }
     ],
-    "entitlements": {
-      "com.apple.security.cs.allow-unsigned-executable-memory": true
-    },
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.plist",
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false,
     "extendInfo": {
-      "NSMicrophoneUsageDescription": "Lavis 需要访问麦克风以进行语音唤醒和语音交互功能",
-      "NSAppleEventsUsageDescription": "Lavis 需要此权限以提供更好的用户体验"
+      "NSMicrophoneUsageDescription": "Lavis needs microphone access for voice wake-up and voice interaction features",
+      "NSAppleEventsUsageDescription": "Lavis needs this permission to provide a better user experience"
+    }
+  },
+  "dmg": {
+    "title": "Lavis",
+    "icon": "build/icon.icns",
+    "contents": [
+      {
+        "x": 130,
+        "y": 220
+      },
+      {
+        "x": 410,
+        "y": 220,
+        "type": "link",
+        "path": "/Applications"
+      }
+    ],
+    "window": {
+      "width": 540,
+      "height": 380
     }
   },
   "win": {
@@ -40,12 +68,20 @@
       {
         "target": "nsis",
         "arch": ["x64"]
-      },
-      {
-        "target": "portable",
-        "arch": ["x64"]
       }
     ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Lavis AI",
+    "installerIcon": "build/icon.ico",
+    "uninstallerIcon": "build/icon.ico",
+    "installerHeaderIcon": "build/icon.ico",
+    "license": "build/license.txt"
   },
   "linux": {
     "icon": "build/icon.png",
@@ -59,10 +95,19 @@
         "target": "deb",
         "arch": ["x64"]
       }
-    ]
+    ],
+    "desktop": {
+      "Name": "Lavis AI",
+      "Comment": "Your Local AI Assistant",
+      "Categories": "Utility;Application;"
+    }
+  },
+  "appImage": {
+    "artifactName": "${productName}-${version}-${arch}.${ext}"
   },
   "publish": null,
   "npmRebuild": false,
+  "asar": true,
   "asarUnpack": [
     "**/node_modules/**",
     "**/*.ppn",

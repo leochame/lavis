@@ -170,26 +170,26 @@ export function Capsule({
     onContextMenu?.();
   }, [onContextMenu]);
 
-  // 根据状态生成提示文字
+  // Generate tooltip text based on state
   const getTooltip = useCallback((): string => {
     switch (capsuleState) {
       case 'listening':
-        return isRecorderReady ? '正在聆听... (双击展开)' : '准备录音...';
+        return isRecorderReady ? 'Listening... (Double-click to expand)' : 'Preparing to record...';
       case 'speaking':
-        return '正在回答... (双击展开)';
+        return 'Speaking... (Double-click to expand)';
       case 'thinking':
-        return '思考中... (双击展开)';
+        return 'Thinking... (Double-click to expand)';
       case 'executing':
-        return '执行中... (双击展开)';
+        return 'Executing... (Double-click to expand)';
       case 'error':
-        return '连接错误 (双击展开)';
+        return 'Connection error (Double-click to expand)';
       default:
         if (isWakeWordListening) {
           return isRecorderReady
-            ? '说 "Hi Lavis" 或点击开始 / 双击展开 / 右键菜单'
-            : '正在准备...';
+            ? 'Say "Hi Lavis" or click to start / Double-click to expand / Right-click for menu'
+            : 'Preparing...';
         }
-        return '点击开始对话 / 双击展开 / 右键菜单';
+        return 'Click to start conversation / Double-click to expand / Right-click for menu';
     }
   }, [capsuleState, isWakeWordListening, isRecorderReady]);
 
