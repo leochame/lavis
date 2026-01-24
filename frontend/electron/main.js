@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const electron_1 = require("electron");
 const path = __importStar(require("path"));
 const http = __importStar(require("http"));
+const backend_manager_1 = require("./backend-manager");
 let mainWindow = null;
 let tray = null;
 // Allow multiple hints for "dev mode" so that Electron shell loads the Vite dev server.
@@ -505,6 +506,16 @@ electron_1.ipcMain.handle('platform:set-ignore-mouse', (_event, { ignore, forwar
 electron_1.ipcMain.handle('platform:get-snap-state', () => {
     return { isSnapped: isSnappedToEdge, position: snapPosition };
 });
+// 获取后端状态
+electron_1.ipcMain.handle('platform:get-backend-status', () => {
+    return (0, backend_manager_1.getBackendStatus)();
+});
+// 重启后端
+electron_1.ipcMain.handle('platform:restart-backend', async () => {
+    console.log('🔄 Restarting backend...');
+    await (0, backend_manager_1.stopBackend)();
+    return await (0, backend_manager_1.startBackend)();
+});
 // ============================================
 // 拖拽相关 IPC - 实现丝滑拖拽和边缘吸附
 // ============================================
@@ -678,6 +689,33 @@ electron_1.app.on('activate', () => {
 });
 // Global hotkey (Option+Space or Alt+Space)
 electron_1.app.whenReady().then(async () => {
+    // 设置后端日志回调
+    (0, backend_manager_1.setLogCallback)((level, message) => {
+        const prefix = level === 'error' ? '❌' : level === 'warn' ? '⚠️' : '📦';
+        console.log(`${prefix} [Backend] ${message}`);
+        // 如果窗口已创建，发送日志到渲染进程
+        if (mainWindow) {
+            mainWindow.webContents.send('backend-log', { level, message });
+        }
+    });
+    // 启动后端服务
+    console.log('🚀 Starting backend service...');
+    const backendStarted = await (0, backend_manager_1.startBackend)();
+    if (!backendStarted) {
+        console.error('❌ Failed to start backend service');
+        // 在开发模式下显示警告，但继续启动
+        if (!electron_1.app.isPackaged) {
+            console.warn('⚠️ Development mode: Please ensure the backend JAR is built (mvn package)');
+            console.warn('⚠️ Or start the backend manually: mvn spring-boot:run');
+        }
+        else {
+            // 生产模式下显示错误对话框
+            electron_1.dialog.showErrorBox('Backend Error', 'Failed to start the backend service. Please check the logs or reinstall the application.');
+        }
+    }
+    else {
+        console.log('✅ Backend service started successfully');
+    }
     // 首先检查并请求麦克风权限
     const micPermission = await checkAndRequestMicrophonePermission();
     if (!micPermission) {
@@ -700,8 +738,16 @@ electron_1.app.whenReady().then(async () => {
     createTray();
 });
 // Clean up on quit
-electron_1.app.on('will-quit', () => {
+electron_1.app.on('will-quit', async (event) => {
+    // 阻止默认退出，等待后端关闭
+    event.preventDefault();
     electron_1.globalShortcut.unregisterAll();
+    // 停止后端服务
+    console.log('🛑 Stopping backend service...');
+    await (0, backend_manager_1.stopBackend)();
+    console.log('✅ Backend service stopped');
+    // 现在可以退出了
+    electron_1.app.exit(0);
 });
 function createTray() {
     // Create a simple tray icon (in production, replace with actual icon file)
