@@ -45,8 +45,6 @@ export interface PlanStepEvent {
   description: string;
   type: string;
   status: 'PENDING' | 'IN_PROGRESS' | 'SUCCESS' | 'FAILED' | 'SKIPPED';
-  complexity?: number;
-  definitionOfDone?: string;
   resultSummary?: string;
   executionTimeMs?: number;
 }
@@ -281,6 +279,42 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
         setWorkflow((prev) => ({
           ...prev,
           status: 'failed',
+        }));
+        // 如果有错误信息，记录到日志
+        if (data && (data as any).reason) {
+          console.error('[WS] 计划失败:', (data as any).reason);
+        }
+        break;
+
+      case 'execution_error':
+        // 处理执行错误事件
+        if (!data) {
+          console.warn('[WS] ⚠️ execution_error message missing data');
+          break;
+        }
+        const errorMessage = (data as any).errorMessage as string;
+        const errorType = (data as any).errorType as string;
+        const errorPlanId = (data as any).planId as string;
+        
+        console.error('[WS] ❌ 执行错误:', {
+          errorType,
+          errorMessage,
+          planId: errorPlanId
+        });
+        
+        // 更新工作流状态为失败
+        setWorkflow((prev) => ({
+          ...prev,
+          status: 'failed',
+          // 将错误信息添加到日志
+          logs: [
+            ...prev.logs.slice(-49),
+            {
+              level: 'error',
+              message: `执行错误 [${errorType}]: ${errorMessage}`,
+              timestamp: (data as any).timestamp as number || Date.now(),
+            },
+          ],
         }));
         break;
 

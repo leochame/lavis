@@ -39,35 +39,18 @@ public class PlanStep {
     private StepType type;
     
     /**
-     * 【新增】完成状态定义 (Definition of Done)
-     * 描述如何判断该里程碑已完成
-     * 例如: "看到个人主页的头像和昵称"、"看到'发布成功'提示"
-     */
-    private String definitionOfDone;
-    
-    /**
-     * 【新增】步骤复杂度 (1-5)
-     * 用于动态计算 maxRetries
-     * 1: 简单（启动应用）-> 3次重试
-     * 3: 中等（导航到某页面）-> 8次重试
-     * 5: 复杂（完成工作流）-> 15次重试
-     */
-    @Builder.Default
-    private int complexity = 3;
-    
-    /**
      * 预期操作数量 (可选) - 帮助判断是否陷入死循环
      */
     private Integer expectedActions;
     
     /**
-     * 超时时间 (秒) - 根据复杂度动态计算
+     * 超时时间 (秒)
      */
     @Builder.Default
     private int timeoutSeconds = 60;
     
     /**
-     * 最大重试次数 (Executor 内部重试) - 根据复杂度动态计算
+     * 最大重试次数 (Executor 内部重试)
      */
     @Builder.Default
     private int maxRetries = 8;
@@ -209,49 +192,10 @@ public class PlanStep {
         return java.time.Duration.between(startTime, endTime).toMillis();
     }
     
-    /**
-     * 【新增】根据复杂度计算动态 maxRetries
-     * 复杂度 1 -> 3次，复杂度 3 -> 8次，复杂度 5 -> 15次
-     */
-    public int calculateDynamicMaxRetries() {
-        return switch (complexity) {
-            case 1 -> 3;
-            case 2 -> 5;
-            case 3 -> 8;
-            case 4 -> 12;
-            case 5 -> 15;
-            default -> 8;
-        };
-    }
-    
-    /**
-     * 【新增】根据复杂度计算动态超时时间（秒）
-     * 复杂度 1 -> 30秒，复杂度 3 -> 60秒，复杂度 5 -> 120秒
-     */
-    public int calculateDynamicTimeout() {
-        return switch (complexity) {
-            case 1 -> 30;
-            case 2 -> 45;
-            case 3 -> 60;
-            case 4 -> 90;
-            case 5 -> 120;
-            default -> 60;
-        };
-    }
-    
-    /**
-     * 【新增】应用动态参数（根据复杂度设置 maxRetries 和 timeoutSeconds）
-     */
-    public void applyDynamicParameters() {
-        this.maxRetries = calculateDynamicMaxRetries();
-        this.timeoutSeconds = calculateDynamicTimeout();
-    }
-    
     @Override
     public String toString() {
-        return String.format("Step[%d]: %s (%s) [复杂度:%d, DoD:%s]", 
-                id, description, status, complexity, 
-                definitionOfDone != null ? definitionOfDone : "未定义");
+        return String.format("Step[%d]: %s (%s)", 
+                id, description, status);
     }
 }
 

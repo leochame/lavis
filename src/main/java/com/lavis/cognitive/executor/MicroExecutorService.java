@@ -194,8 +194,8 @@ public class MicroExecutorService {
         // 根据步骤复杂度动态设置参数
         int effectiveMaxRetries = step.getMaxRetries();
         int effectiveTimeoutSeconds = step.getTimeoutSeconds();
-        log.info("   📊 复杂度: {}, 最大重试: {}, 超时: {}秒",
-                step.getComplexity(), effectiveMaxRetries, effectiveTimeoutSeconds);
+        log.info("   📊 最大重试: {}, 超时: {}秒",
+                effectiveMaxRetries, effectiveTimeoutSeconds);
 
         Instant deadline = Instant.now().plusSeconds(effectiveTimeoutSeconds);
 
@@ -375,10 +375,6 @@ public class MicroExecutorService {
      * - 如果任务未完成 → 直接输出文本分析（不调用工具）
      */
     private String buildToolBasedReflectionPrompt(PlanStep step, String lastActionResult) {
-        String definitionOfDone = step.getDefinitionOfDone() != null 
-                ? step.getDefinitionOfDone() 
-                : "No clear criteria please judge based on task description";
-        
         return String.format("""
                 ## Reflection Checkpoint
                 
@@ -389,7 +385,6 @@ public class MicroExecutorService {
                 
                 ## Task Information
                 - Current Milestone %s
-                - Completion Criteria Definition of Done %s
                 
                 ## Visual Success Indicators
                 - To judge task success you should see in screenshot
@@ -422,8 +417,7 @@ public class MicroExecutorService {
                 Please make a judgment
                 """,
                 lastActionResult,
-                step.getDescription(),
-                definitionOfDone);
+                step.getDescription());
     }
 
     /**
@@ -449,13 +443,6 @@ public class MicroExecutorService {
 
         prompt.append("Current Milestone Task\n");
         prompt.append(step.getDescription()).append("\n\n");
-
-        // 注入完成状态定义（Definition of Done）
-        if (step.getDefinitionOfDone() != null && !step.getDefinitionOfDone().isEmpty()) {
-            prompt.append("Completion Criteria Definition of Done\n");
-            prompt.append(step.getDefinitionOfDone()).append("\n");
-            prompt.append("When you see the above state in the screenshot the task is considered completed\n\n");
-        }
 
         if (corrections == 0) {
             // 首次执行
@@ -501,24 +488,6 @@ public class MicroExecutorService {
         // 基本关键词匹配
         if (text.contains("完成") || text.contains("成功") || text.contains("已经")) {
             return true;
-        }
-
-        // 【新增】如果有 Definition of Done，检查是否提到
-        if (step.getDefinitionOfDone() != null) {
-            String dod = step.getDefinitionOfDone().toLowerCase();
-            String textLower = text.toLowerCase();
-            // 简单匹配：如果 DoD 中的关键词出现在响应中
-            String[] dodKeywords = dod.split("[\\s,，。、]+");
-            int matchCount = 0;
-            for (String keyword : dodKeywords) {
-                if (keyword.length() > 2 && textLower.contains(keyword)) {
-                    matchCount++;
-                }
-            }
-            // 超过一半的关键词匹配则认为完成
-            if (matchCount > dodKeywords.length / 2) {
-                return true;
-            }
         }
 
         return false;

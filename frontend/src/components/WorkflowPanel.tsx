@@ -98,7 +98,7 @@ export function WorkflowPanel({ workflow, connected, onStop }: WorkflowPanelProp
             <div className="workflow-step__content">
               <div className="workflow-step__header">
                 <span className="workflow-step__number">{String(step.id).padStart(2, '0')}</span>
-                <span className="workflow-step__type">{step.type}</span>
+                {step.type && <span className="workflow-step__type">{step.type}</span>}
                 {step.executionTimeMs && (
                   <span className="workflow-step__time">{step.executionTimeMs}ms</span>
                 )}

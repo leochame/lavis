@@ -102,7 +102,7 @@ Check microphone permission, network connectivity, and backend voice service con
 ## 7. Getting Support
 
 - If you encounter any issues:
-  - Refer to `README.md` and `ARCHITECTURE.md` in the project root.
+  - Refer to `README.md` and `docs/ARCHITECTURE.md` in the project root.
   - Open an Issue for the maintainers (if the project is public).
 
 

@@ -26,25 +26,41 @@ public class WorkflowEventService {
      * 发送计划创建事件
      */
     public void onPlanCreated(TaskPlan plan) {
-        broadcast("plan_created", Map.of(
-            "planId", plan.getPlanId(),
-            "userGoal", plan.getUserGoal(),
-            "steps", formatSteps(plan.getSteps()),
-            "totalSteps", plan.getSteps().size()
-        ));
+        try {
+            broadcast("plan_created", Map.of(
+                "planId", plan != null ? plan.getPlanId() : "unknown",
+                "userGoal", plan != null && plan.getUserGoal() != null ? plan.getUserGoal() : "未知目标",
+                "steps", plan != null ? formatSteps(plan.getSteps()) : List.of(),
+                "totalSteps", plan != null && plan.getSteps() != null ? plan.getSteps().size() : 0
+            ));
+        } catch (Exception e) {
+            log.error("❌ 发送计划创建事件时出错: {}", e.getMessage(), e);
+            // 发送错误事件
+            onExecutionError("发送计划创建事件失败: " + e.getMessage(), "PLAN_CREATED_ERROR", 
+                    plan != null ? plan.getPlanId() : "unknown");
+        }
     }
 
     /**
      * 发送步骤开始事件
      */
     public void onStepStarted(TaskPlan plan, PlanStep step) {
-        broadcast("step_started", Map.of(
-            "planId", plan.getPlanId(),
-            "stepId", step.getId(),
-            "description", step.getDescription(),
-            "type", step.getType().name(),
-            "progress", plan.getProgressPercent()
-        ));
+        try {
+            Map<String, Object> data = new HashMap<>();
+            data.put("planId", plan != null ? plan.getPlanId() : "unknown");
+            data.put("stepId", step != null ? step.getId() : 0);
+            data.put("description", step != null && step.getDescription() != null ? step.getDescription() : "未知步骤");
+            if (step != null && step.getType() != null) {
+                data.put("type", step.getType().name());
+            }
+            data.put("progress", plan != null ? plan.getProgressPercent() : 0);
+            broadcast("step_started", data);
+        } catch (Exception e) {
+            log.error("❌ 发送步骤开始事件时出错: {}", e.getMessage(), e);
+            // 发送错误事件
+            onExecutionError("发送步骤开始事件失败: " + e.getMessage(), "STEP_STARTED_ERROR", 
+                    plan != null ? plan.getPlanId() : "unknown");
+        }
     }
 
     /**
@@ -178,6 +194,35 @@ public class WorkflowEventService {
     }
 
     /**
+     * 发送执行错误事件
+     * 用于通知前端执行过程中发生的异常错误
+     */
+    public void onExecutionError(String errorMessage, String errorType, String planId) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("errorMessage", errorMessage);
+        data.put("errorType", errorType != null ? errorType : "UNKNOWN_ERROR");
+        data.put("planId", planId);
+        data.put("timestamp", Instant.now().toEpochMilli());
+        
+        broadcast("execution_error", data);
+        log.error("❌ 发送执行错误事件: {}", errorMessage);
+    }
+
+    /**
+     * 发送任务执行异常事件（用于 TaskOrchestrator 的 catch 块）
+     */
+    public void onTaskExecutionException(String errorMessage, String planId) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("errorMessage", errorMessage);
+        data.put("errorType", "TASK_EXECUTION_EXCEPTION");
+        data.put("planId", planId != null ? planId : "unknown");
+        data.put("timestamp", Instant.now().toEpochMilli());
+        
+        broadcast("execution_error", data);
+        log.error("❌ 发送任务执行异常事件: {}", errorMessage);
+    }
+
+    /**
      * 广播消息
      */
     private void broadcast(String type, Map<String, Object> data) {
@@ -195,16 +240,28 @@ public class WorkflowEventService {
      */
     private List<Map<String, Object>> formatSteps(List<PlanStep> steps) {
         return steps.stream().map(step -> {
-            Map<String, Object> map = new HashMap<>();
-            map.put("id", step.getId());
-            map.put("description", step.getDescription());
-            map.put("type", step.getType().name());
-            map.put("status", step.getStatus().name());
-            map.put("complexity", step.getComplexity());
-            if (step.getDefinitionOfDone() != null) {
-                map.put("definitionOfDone", step.getDefinitionOfDone());
+            try {
+                Map<String, Object> map = new HashMap<>();
+                map.put("id", step.getId());
+                map.put("description", step.getDescription() != null ? step.getDescription() : "");
+                if (step.getType() != null) {
+                    map.put("type", step.getType().name());
+                }
+                if (step.getStatus() != null) {
+                    map.put("status", step.getStatus().name());
+                } else {
+                    map.put("status", "PENDING");
+                }
+                return map;
+            } catch (Exception e) {
+                log.error("❌ 格式化步骤时出错: {}", e.getMessage(), e);
+                // 返回最小化的安全数据
+                Map<String, Object> safeMap = new HashMap<>();
+                safeMap.put("id", step != null ? step.getId() : 0);
+                safeMap.put("description", step != null && step.getDescription() != null ? step.getDescription() : "未知步骤");
+                safeMap.put("status", "PENDING");
+                return safeMap;
             }
-            return map;
         }).toList();
     }
 }

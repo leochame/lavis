@@ -215,17 +215,6 @@ public class AsyncTtsService {
         return CompletableFuture.supplyAsync(() -> decisionService.needsVoiceFeedback(userQuery));
     }
 
-    /**
-     * @deprecated Use {@link #checkNeedsVoiceFeedbackAsync(String, TtsDecisionService)} instead
-     */
-    @Deprecated
-    public CompletableFuture<Boolean> checkNeedsTtsAsync(String userQuery, TtsDecisionService decisionService) {
-        return checkNeedsVoiceFeedbackAsync(userQuery, decisionService);
-    }
-
-    /**
-     * Send TTS audio message
-     */
     private boolean sendTtsAudio(String sessionId, String requestId, String audioBase64, int index, boolean isLast) {
         return webSocketHandler.sendToSessionById(sessionId, Map.of(
             "type", "tts_audio",

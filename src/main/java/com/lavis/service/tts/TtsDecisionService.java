@@ -66,12 +66,4 @@ public class TtsDecisionService {
         log.debug("TTS Decision: DEFAULT -> true, query: {}", userQuery);
         return true;
     }
-
-    /**
-     * @deprecated Use {@link #needsVoiceFeedback(String)} instead
-     */
-    @Deprecated
-    public boolean shouldSpeak(String userQuery) {
-        return needsVoiceFeedback(userQuery);
-    }
 }

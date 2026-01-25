@@ -155,10 +155,7 @@ lavis/
 ├── docs/                           # 文档 / documentation
 │   ├── User-Guide.md               # 用户使用说明 / User guide
 │   ├── Developer-Build-and-Packaging.md  # 构建与打包指南 / Build & packaging
-│   └── ARCHITECTURE.md (planned)   # 可以迁移现有架构文档 / planned ref
-├── ARCHITECTURE.md                 # 详细架构文档 / architecture (legacy location)
-├── Dev_Plan.md                     # 开发计划 / dev plan
-└── IMPLEMENTATION_STATUS.md        # 实现状态 / implementation status
+│   └── ARCHITECTURE.md             # 详细架构文档 / architecture documentation
 ```
 
 ---
@@ -255,10 +252,10 @@ npm run build
   - **开发者指南**：构建、GraalVM Native Image 打包（高级选项）、Electron 打包。
 - `frontend/PACKAGING.md`  
   - **完整打包指南**：包含打包流程、调试方法、故障排除 / Complete packaging guide with debugging and troubleshooting
-- `ARCHITECTURE.md`  
+- `docs/ARCHITECTURE.md`  
   - 系统架构与数据流的详细说明。
-- `Dev_Plan.md` & `IMPLEMENTATION_STATUS.md`  
-  - 开发计划与当前实现进度，适合作为贡献者参考。
+- `docs/Development-History.md`  
+  - 开发历史与实现状态记录。
 
 ---
 

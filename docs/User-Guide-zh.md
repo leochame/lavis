@@ -102,7 +102,7 @@
 ## 7. 获取帮助
 
 - 如果你在使用过程中遇到问题，可以：
-  - 查看根目录下的 `README.md` 和 `ARCHITECTURE.md`
+  - 查看根目录下的 `README.md` 和 `docs/ARCHITECTURE.md`
   - 向项目维护者提交 Issue（若已开源）
 
 

@@ -166,10 +166,7 @@ lavis/
 │   ├── User-Guide-en.md            # 用户使用说明（英文）
 │   ├── Developer-Build-and-Packaging-zh.md  # 构建与打包指南（中文）
 │   ├── Developer-Build-and-Packaging-en.md  # 构建与打包指南（英文）
-│   └── ARCHITECTURE.md (planned)   # 可以迁移现有架构文档
-├── ARCHITECTURE.md                 # 详细架构文档
-├── Dev_Plan.md                     # 开发计划
-└── IMPLEMENTATION_STATUS.md        # 实现状态
+│   └── ARCHITECTURE.md             # 详细架构文档
 ```
 
 ---

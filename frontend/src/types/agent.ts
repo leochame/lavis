@@ -1,11 +1,9 @@
 export interface PlanStep {
   id: number;
   description: string;
-  type: string;
+  type?: string; // 可选字段，不再强制要求
   status: 'PENDING' | 'IN_PROGRESS' | 'SUCCESS' | 'FAILED' | 'SKIPPED';
   resultSummary?: string;
-  definitionOfDone?: string;
-  complexity?: number;
 }
 
 export interface TaskPlan {

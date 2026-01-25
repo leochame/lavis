@@ -1,10 +1,10 @@
 package com.lavis.cognitive.planner;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lavis.cognitive.model.PlanStep;
 import com.lavis.cognitive.model.TaskPlan;
 import com.lavis.perception.ScreenCapturer;
+import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.agent.tool.ToolSpecifications;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.output.Response;
@@ -13,8 +13,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * 规划器服务 (Planner Service) - 战略层
@@ -34,7 +32,7 @@ import java.util.regex.Pattern;
 public class PlannerService {
 
     private final ScreenCapturer screenCapturer;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final PlanTools planTools;
 
     // LLM 模型
     private ChatLanguageModel chatModel;
@@ -42,86 +40,50 @@ public class PlannerService {
     // 全局历史 - 只记录高层对话
     private final List<ChatMessage> globalHistory = new ArrayList<>();
 
-    // 规划专用的 System Prompt - 【架构升级】里程碑级规划
+    // 规划专用的 System Prompt - 【架构升级】使用 Tool Call 方式
     private static final String PLANNER_SYSTEM_PROMPT = """
             You are a strategic planning expert acting as a CEO role responsible for breaking down user goals into milestone level execution steps
 
             ## Core Constraints Must Follow
             1. **No micro operations**: Do not output specific coordinates pixel positions or atomic actions such as click 300 200
-            2. **Direction only**: You are only responsible for what to do ,you are not responsible for how to do it
+            2. **Direction only**: You are only responsible for what to do, you are not responsible for how to do it
             3. **Milestone thinking**: Each step should be a verifiable business milestone not a single mouse operation
-            4. **Must define completion criteria**: Each step must include Definition of Done how to determine if the step is completed
 
-            ## High Level Semantic Instructions Milestone Types
-            - **LAUNCH_APP**: Launch and ensure application is ready such as launch WeChat wait for main interface to appear
-            - **NAVIGATE_TO**: Navigate to specific functional area such as enter settings page open personal profile
-            - **EXECUTE_WORKFLOW**: Execute complete business process such as complete form filling and submit edit and save document
-            - **VERIFY_STATE**: Verify current state such as confirm logged in confirm publish successful
+            ## Prohibited Operations
+            - Do not plan single clicks, leave to Executor to decide
+            - Do not plan single text inputs, leave to Executor to decide
+            - Do not include any coordinates or pixel positions
 
-            ## Prohibited Step Types
-            - CLICK: Do not plan single clicks leave to Executor to decide
-            - TYPE: Do not plan single inputs leave to Executor to decide
-            Any instruction containing coordinates
+            ## How to Create Plan
+            Use the `addPlanStep` tool to add each step to the plan. Call this tool multiple times to build the complete plan.
 
-            ## Output Format
-            Please output the plan in JSON format
-            {
-              "plan": [
-                {
-                  "id": 1,
-                  "desc": "Milestone description what to do not how to do it",
-                  "type": "LAUNCH_APP",
-                  "dod": "Completion state definition what to see to consider it done",
-                  "complexity": 1-5 complexity assessment
-                }
-              ]
-            }
-
-            ## Complexity Assessment Standards
-            - **1 Simple**: Single clear operation such as launching application
-            - **2 Relatively Simple**: Requires 2-3 interactions such as navigating to a page
-            - **3 Medium**: Requires 4-6 interactions such as searching and selecting result
-            - **4 Relatively Complex**: Requires multi step form filling or selection
-            - **5 Complex**: Complete workflow containing multiple sub steps
+            ## Step Description Guidelines
+            - Each step should be a clear milestone-level task
+            - Describe what to do, not how to do it
+            - Examples:
+              * Good: "Launch WeChat application and wait for main interface ready"
+              * Good: "Navigate to profile page"
+              * Good: "Complete and submit the form"
+              * Bad: "Click at coordinate (300, 200)"
+              * Bad: "Type text 'hello'"
 
             ## Example
             User Goal: Open WeChat send message to Zhang San
 
-            ## Output
-            {
-              "plan": [
-                {
-                  "id": 1,
-                  "desc": "Launch WeChat application and wait for main interface ready",
-                  "type": "LAUNCH_APP",
-                  "dod": "See WeChat main interface containing chat list and search box",
-                  "complexity": 1
-                },
-                {
-                  "id": 2,
-                  "desc": "Search and enter chat with Zhang San",
-                  "type": "NAVIGATE_TO",
-                  "dod": "Enter chat window with Zhang San see chat history and input box",
-                  "complexity": 3
-                },
-                {
-                  "id": 3,
-                  "desc": "Send message",
-                  "type": "EXECUTE_WORKFLOW",
-                  "dod": "Message sent see sent message in chat window",
-                  "complexity": 2
-                }
-              ]
-            }
+            You should call:
+            1. addPlanStep(id=1, desc="Launch WeChat application and wait for main interface ready")
+            2. addPlanStep(id=2, desc="Search and enter chat with Zhang San")
+            3. addPlanStep(id=3, desc="Send message")
 
             ## Important Notes
-            - **Only output JSON**: Do not output other content
+            - **Use tools to create plan**: Call `addPlanStep` tool for each step
             - **Step count is usually 2-5**: Do not be too fragmented
-            - **Each step must have clear dod completion state definition**: Each step must include Definition of Done how to determine if the step is completed
+            - **Start from id=1**: Step IDs should be sequential starting from 1
             """;
 
-    public PlannerService(ScreenCapturer screenCapturer) {
+    public PlannerService(ScreenCapturer screenCapturer, PlanTools planTools) {
         this.screenCapturer = screenCapturer;
+        this.planTools = planTools;
     }
 
     /**
@@ -143,7 +105,7 @@ public class PlannerService {
     }
 
     /**
-     * 生成任务计划
+     * 生成任务计划 - 使用 Tool Call 方式
      * 
      * @param userGoal       用户目标
      * @param withScreenshot 是否包含当前屏幕截图
@@ -159,6 +121,9 @@ public class PlannerService {
         TaskPlan plan = new TaskPlan(userGoal);
 
         try {
+            // 清空之前的步骤
+            planTools.clear();
+
             // 构建消息
             List<ChatMessage> messages = new ArrayList<>();
             messages.add(SystemMessage.from(PLANNER_SYSTEM_PROMPT));
@@ -170,10 +135,10 @@ public class PlannerService {
                         ## User Goal
                         %s
 
-                        ##Current Screen State
-                        Please refer to the current screen state in the attached image to create the plan
+                        ## Current Screen State
+                        Please refer to the current screen state in the attached image to create the plan.
 
-                        Please output the execution plan in JSON format
+                        Use the addPlanStep tool to create the execution plan.
                         """, userGoal);
 
                 messages.add(UserMessage.from(
@@ -181,23 +146,81 @@ public class PlannerService {
                         ImageContent.from(screenshot, "image/jpeg")));
             } else {
                 userPrompt = String.format("""
-                        ##User Goal
+                        ## User Goal
                         %s
 
-                        Please output the execution plan in JSON format
+                        Use the addPlanStep tool to create the execution plan.
                         """, userGoal);
 
                 messages.add(UserMessage.from(userPrompt));
             }
 
-            // 调用 LLM
-            Response<AiMessage> response = chatModel.generate(messages);
-            String responseText = response.content().text();
+            // 获取工具规格
+            List<dev.langchain4j.agent.tool.ToolSpecification> toolSpecs = 
+                    ToolSpecifications.toolSpecificationsFrom(planTools);
 
-            log.debug("📝 LLM 响应: {}", responseText);
+            // 工具调用循环（最多 10 次迭代）
+            int maxIterations = 10;
+            for (int iteration = 0; iteration < maxIterations; iteration++) {
+                log.debug("🔄 规划迭代 {}/{}", iteration + 1, maxIterations);
 
-            // 解析 JSON
-            List<PlanStep> steps = parseStepsFromResponse(responseText);
+                // 调用 LLM
+                Response<AiMessage> response = chatModel.generate(messages, toolSpecs);
+                AiMessage aiMessage = response.content();
+                messages.add(aiMessage);
+
+                log.debug("🤖 Planner 响应: {}", aiMessage);
+
+                // 检查是否有工具调用请求
+                if (!aiMessage.hasToolExecutionRequests()) {
+                    // 没有工具调用，说明规划完成或出错
+                    String textResponse = aiMessage.text();
+                    if (textResponse != null && !textResponse.isBlank()) {
+                        log.debug("📝 Planner 文本响应: {}", textResponse);
+                    }
+                    break;
+                }
+
+                // 执行工具调用
+                List<ToolExecutionRequest> toolRequests = aiMessage.toolExecutionRequests();
+                log.debug("🔧 执行 {} 个工具调用", toolRequests.size());
+
+                for (ToolExecutionRequest request : toolRequests) {
+                    String toolName = request.name();
+                    String toolArgs = request.arguments();
+
+                    log.debug("  → 调用工具: {}({})", toolName, toolArgs);
+
+                    if ("addPlanStep".equals(toolName)) {
+                        // 工具会在 PlanTools 中执行，步骤会被收集
+                        String result = planTools.addPlanStep(
+                                extractIntArg(toolArgs, "id"),
+                                extractStringArg(toolArgs, "desc")
+                        );
+                        log.debug("  ← 工具结果: {}", result);
+
+                        // 添加工具执行结果到消息列表
+                        dev.langchain4j.data.message.ToolExecutionResultMessage toolResult = 
+                                dev.langchain4j.data.message.ToolExecutionResultMessage.from(request, result);
+                        messages.add(toolResult);
+                    } else {
+                        log.warn("⚠️ 未知工具: {}", toolName);
+                    }
+                }
+            }
+
+            // 获取收集的步骤
+            List<PlanStep> steps = new ArrayList<>(planTools.getCollectedSteps());
+            
+            if (steps.isEmpty()) {
+                log.warn("⚠️ 未能生成任何步骤，创建默认步骤");
+                PlanStep fallbackStep = PlanStep.builder()
+                        .id(1)
+                        .description(userGoal)
+                        .build();
+                steps.add(fallbackStep);
+            }
+
             plan.addSteps(steps);
 
             // 记录到全局历史
@@ -206,15 +229,15 @@ public class PlannerService {
 
             log.info("✅ 计划生成完成: {} 个步骤", steps.size());
             for (PlanStep step : steps) {
-                log.info("   {} - {} [{}]", step.getId(), step.getDescription(), step.getType());
+                log.info("   {} - {}", step.getId(), step.getDescription());
             }
 
         } catch (Exception e) {
             log.error("❌ 计划生成失败: {}", e.getMessage(), e);
             // 创建一个简单的单步计划
             PlanStep fallbackStep = PlanStep.builder()
+                    .id(1)
                     .description(userGoal)
-                    .type(PlanStep.StepType.COMPLEX)
                     .build();
             plan.addStep(fallbackStep);
         }
@@ -223,141 +246,36 @@ public class PlannerService {
     }
 
     /**
-     * 从 LLM 响应中解析步骤
+     * 从工具参数 JSON 中提取整数参数
      */
-    private List<PlanStep> parseStepsFromResponse(String responseText) {
-        List<PlanStep> steps = new ArrayList<>();
-
+    private int extractIntArg(String argsJson, String key) {
         try {
-            // 提取 JSON 部分
-            String json = extractJson(responseText);
-
-            if (json != null) {
-                JsonNode root = objectMapper.readTree(json);
-                JsonNode planNode = root.get("plan");
-
-                if (planNode != null && planNode.isArray()) {
-                    for (JsonNode stepNode : planNode) {
-                        PlanStep step = PlanStep.builder()
-                                .id(stepNode.has("id") ? stepNode.get("id").asInt() : 0)
-                                .description(stepNode.has("desc") ? stepNode.get("desc").asText()
-                                        : stepNode.has("description") ? stepNode.get("description").asText() : "未知步骤")
-                                .type(parseStepType(stepNode.has("type") ? stepNode.get("type").asText() : "UNKNOWN"))
-                                // 【新增】解析完成状态定义
-                                .definitionOfDone(stepNode.has("dod") ? stepNode.get("dod").asText() : null)
-                                // 【新增】解析复杂度
-                                .complexity(stepNode.has("complexity") ? stepNode.get("complexity").asInt() : 3)
-                                .build();
-
-                        // 【新增】根据复杂度动态设置 maxRetries 和 timeout
-                        step.applyDynamicParameters();
-
-                        steps.add(step);
-                    }
-                }
-            }
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(argsJson);
+            com.fasterxml.jackson.databind.JsonNode value = root.get(key);
+            return value != null ? value.asInt() : 0;
         } catch (Exception e) {
-            log.warn("JSON 解析失败，尝试文本解析: {}", e.getMessage());
-            // 降级为文本解析
-            steps = parseStepsFromText(responseText);
+            log.warn("⚠️ 提取参数失败: key={}, args={}", key, argsJson);
+            return 0;
         }
-
-        // 如果解析失败，至少返回一个步骤
-        if (steps.isEmpty()) {
-            log.warn("未能解析出任何步骤，创建默认步骤");
-            steps.add(PlanStep.builder()
-                    .description(responseText.substring(0, Math.min(100, responseText.length())))
-                    .type(PlanStep.StepType.COMPLEX)
-                    .build());
-        }
-
-        return steps;
     }
 
     /**
-     * 从响应文本中提取 JSON
+     * 从工具参数 JSON 中提取字符串参数
      */
-    private String extractJson(String text) {
-        // 尝试匹配 ```json ... ``` 代码块
-        Pattern codeBlockPattern = Pattern.compile("```json\\s*([\\s\\S]*?)\\s*```");
-        Matcher matcher = codeBlockPattern.matcher(text);
-        if (matcher.find()) {
-            return matcher.group(1).trim();
-        }
-
-        // 尝试匹配 ``` ... ``` 代码块
-        Pattern genericBlockPattern = Pattern.compile("```\\s*([\\s\\S]*?)\\s*```");
-        matcher = genericBlockPattern.matcher(text);
-        if (matcher.find()) {
-            return matcher.group(1).trim();
-        }
-
-        // 尝试直接解析整个文本为 JSON
-        if (text.trim().startsWith("{")) {
-            return text.trim();
-        }
-
-        return null;
-    }
-
-    /**
-     * 从纯文本解析步骤（降级方案）
-     */
-    private List<PlanStep> parseStepsFromText(String text) {
-        List<PlanStep> steps = new ArrayList<>();
-
-        // 匹配 "1. xxx" 或 "- xxx" 格式
-        Pattern pattern = Pattern.compile("(?:^|\\n)\\s*(?:(\\d+)[.、)]|[-*])\\s*(.+?)(?=\\n|$)");
-        Matcher matcher = pattern.matcher(text);
-
-        int id = 1;
-        while (matcher.find()) {
-            String desc = matcher.group(2).trim();
-            if (!desc.isEmpty()) {
-                steps.add(PlanStep.builder()
-                        .id(id++)
-                        .description(desc)
-                        .type(guessStepType(desc))
-                        .build());
-            }
-        }
-
-        return steps;
-    }
-
-    /**
-     * 解析步骤类型
-     */
-    private PlanStep.StepType parseStepType(String typeStr) {
+    private String extractStringArg(String argsJson, String key) {
         try {
-            return PlanStep.StepType.valueOf(typeStr.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            return PlanStep.StepType.UNKNOWN;
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(argsJson);
+            com.fasterxml.jackson.databind.JsonNode value = root.get(key);
+            return value != null ? value.asText() : "";
+        } catch (Exception e) {
+            log.warn("⚠️ 提取参数失败: key={}, args={}", key, argsJson);
+            return "";
         }
     }
 
-    /**
-     * 根据描述猜测步骤类型（优先匹配里程碑类型）
-     */
-    private PlanStep.StepType guessStepType(String desc) {
-        desc = desc.toLowerCase();
 
-        // 优先匹配里程碑级类型
-        if (desc.contains("启动") || desc.contains("打开应用") || desc.contains("launch")) {
-            return PlanStep.StepType.LAUNCH_APP;
-        } else if (desc.contains("导航") || desc.contains("进入") || desc.contains("跳转") ||
-                desc.contains("navigate") || desc.contains("go to")) {
-            return PlanStep.StepType.NAVIGATE_TO;
-        } else if (desc.contains("完成") || desc.contains("提交") || desc.contains("发送") ||
-                desc.contains("workflow") || desc.contains("execute")) {
-            return PlanStep.StepType.EXECUTE_WORKFLOW;
-        } else if (desc.contains("确认") || desc.contains("验证") || desc.contains("检查") ||
-                desc.contains("verify")) {
-            return PlanStep.StepType.VERIFY_STATE;
-        }
-
-        return PlanStep.StepType.COMPLEX;
-    }
 
     /**
      * 更新计划状态（当步骤完成时调用）

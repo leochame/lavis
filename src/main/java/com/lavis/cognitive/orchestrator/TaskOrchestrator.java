@@ -365,11 +365,24 @@ public class TaskOrchestrator {
             cleanupGlobalContext();
             state = OrchestratorState.FAILED;
 
+            String errorMessage = "执行异常: " + e.getMessage();
             if (currentPlan != null) {
-                currentPlan.markFailed(e.getMessage());
+                currentPlan.markFailed(errorMessage);
+                
+                // 【WebSocket】通知前端执行异常
+                if (workflowEventService != null) {
+                    workflowEventService.onTaskExecutionException(errorMessage, currentPlan.getPlanId());
+                    // 同时发送计划失败事件
+                    workflowEventService.onPlanFailed(currentPlan, errorMessage);
+                }
+            } else {
+                // 即使没有计划，也要通知前端有错误发生
+                if (workflowEventService != null) {
+                    workflowEventService.onTaskExecutionException(errorMessage, "unknown");
+                }
             }
 
-            return OrchestratorResult.failed("执行异常: " + e.getMessage());
+            return OrchestratorResult.failed(errorMessage);
         }
     }
 
@@ -475,11 +488,11 @@ public class TaskOrchestrator {
         return switch (postMortem.getFailureReason()) {
             case ELEMENT_NOT_FOUND -> {
                 // 找不到元素：可能需要滚动或导航问题
-                // 如果是高复杂度任务，尝试 Re-plan；否则跳过
-                if (step.getComplexity() >= 4 && consecutiveFailures >= 1) {
+                // 连续失败多次则尝试 Re-plan；否则重试
+                if (consecutiveFailures >= 2) {
                     yield RecoveryDecision.REPLAN;
                 }
-                yield step.getComplexity() <= 2 ? RecoveryDecision.SKIP_STEP : RecoveryDecision.RETRY_STEP;
+                yield RecoveryDecision.RETRY_STEP;
             }
             case CLICK_MISSED -> {
                 // 点击未命中：可能是坐标问题，重试或让下一步处理
@@ -502,7 +515,7 @@ public class TaskOrchestrator {
                 if (consecutiveFailures >= 2) {
                     yield RecoveryDecision.REPLAN;
                 }
-                yield step.getComplexity() >= 4 ? RecoveryDecision.SKIP_STEP : RecoveryDecision.RETRY_STEP;
+                yield RecoveryDecision.RETRY_STEP;
             }
             default -> {
                 // 未知原因：基于连续失败次数决策

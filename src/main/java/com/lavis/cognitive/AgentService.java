@@ -91,13 +91,18 @@ public class AgentService {
             - After each operation you will receive updated screen screenshot
             - Always make decisions based on latest screenshot do not rely on old images in memory
             - If tool returns success but screenshot shows no changes may need to wait for loading
-            - If same operation repeated 3 times still ineffective try different strategy
+            - **Critical: Self-Awareness of Repeated Operations**
+              * Before executing any tool, review your conversation history to check if you've already tried the same operation
+              * If you notice you've executed the same tool with similar parameters multiple times (2-3 times) without success, STOP and try a different approach
+              * Common signs of ineffective repetition: same coordinates clicked multiple times, same tool called repeatedly, screen shows no changes after multiple attempts
+              * When you detect repetition, immediately switch strategy: adjust coordinates, try different action type, check for blocking elements, or wait longer
 
             ## Important Notes:
             - When user requests operations you must call corresponding tools to execute
             - Do not just describe what to do actually call tools to do it
             - After clicking text box wait a bit before entering text
             - When encountering popup dialog prioritize handling it
+            - **Always review your action history before executing tools to avoid repeating failed operations**
             """;
 
     // 工具执行后等待 UI 响应的时间（毫秒）
@@ -129,29 +134,8 @@ public class AgentService {
     }
 
     /**
-     * 发送纯文本消息 (支持工具调用)
-     * 
-     * @deprecated 建议使用 {@link #chatWithScreenshot(String)}，提供更强的视觉感知能力
-     */
-    @Deprecated(since = "2.0")
-    public String chat(String message) {
-        if (chatModel == null) {
-            return "❌ Agent 未初始化，请检查 API Key 配置";
-        }
-
-        log.info("📝 用户消息: {}", message);
-        return executeWithRetry(() -> {
-            UserMessage userMessage = UserMessage.from(message);
-            return processWithTools(userMessage, 0);
-        });
-    }
-
-    /**
      * 发送带截图的消息 (多模态 + 工具调用)
      * 截图会显示鼠标位置（红色十字）和上次点击位置（绿色圆环），便于 AI 反思
-     * 
-     * @param message 用户消息
-     * @return 执行结果
      */
     public String chatWithScreenshot(String message) {
         return chatWithScreenshot(message, 0); // 默认使用全局配置（0 表示无限制）
@@ -221,7 +205,7 @@ public class AgentService {
         log.debug("工具调用循环限制: {} 步", limit);
 
         for (int iteration = 0; iteration < limit; iteration++) {
-            log.info("🔄 工具调用迭代 {}/{}", iteration + 1, maxToolIterations);
+            log.info("🔄 工具调用迭代 {}/{}", iteration + 1, limit);
 
             // 调用模型
             Response<AiMessage> response = chatModel.generate(messages, toolExecutionService.getToolSpecifications());
@@ -229,6 +213,8 @@ public class AgentService {
             log.info("🤖 Agent 响应: {}", aiMessage);
             // 添加 AI 响应到消息列表
             messages.add(aiMessage);
+            // 【修复】保存 AI 响应到记忆（包括工具调用请求）
+            chatMemory.add(aiMessage);
 
             // 检查是否有工具调用请求
             if (!aiMessage.hasToolExecutionRequests()) {
@@ -237,9 +223,6 @@ public class AgentService {
                 if (textResponse != null && !textResponse.isBlank()) {
                     fullResponse.append(textResponse);
                 }
-
-                // 保存 AI 响应到记忆
-                chatMemory.add(aiMessage);
 
                 log.info("🤖 Agent 响应: {}", fullResponse);
                 return fullResponse.toString();
@@ -251,6 +234,7 @@ public class AgentService {
 
             StringBuilder toolResultsSummary = new StringBuilder();
             boolean hasVisualImpact = false; // 是否有可能影响屏幕的操作
+            boolean hasError = false; // 是否有工具执行失败
 
             for (ToolExecutionRequest request : toolRequests) {
                 String toolName = request.name();
@@ -262,11 +246,20 @@ public class AgentService {
                 String result = toolExecutionService.execute(toolName, toolArgs);
                 log.info("  ← 工具结果: {}", result.split("\n")[0]); // 只打印第一行
 
+                // 检测工具执行失败（仅用于日志记录，让模型通过上下文自己判断）
+                if (result != null && (result.contains("❌") || result.contains("失败") || 
+                    result.contains("错误") || result.contains("异常") || result.contains("Error"))) {
+                    hasError = true;
+                    log.warn("⚠️ 工具执行失败: {}", result.split("\n")[0]);
+                }
+
                 // 添加工具执行结果
                 ToolExecutionResultMessage toolResult = ToolExecutionResultMessage.from(
                         request,
                         result);
                 messages.add(toolResult);
+                // 【修复】保存工具执行结果到记忆
+                chatMemory.add(toolResult);
 
                 toolResultsSummary.append(String.format("[%s] %s\n", toolName, result.split("\n")[0]));
 
@@ -295,24 +288,36 @@ public class AgentService {
                     log.info("📸 重新截图完成，注入新的视觉观察");
 
                     // 构建观察消息，告诉模型这是操作后的新截图
+                    // 提示模型自己检查是否重复操作
                     String observationText = String.format("""
                             ## Screen Observation After Operation
 
-                            Last Step Execution Result
+                            Last Step Execution Result:
                             %s
 
-                            Please carefully observe current latest screenshot and judge
-                            1. Was operation successful Did screen change as expected
-                            2. If successful what should be done next
-                            3. If failed or no change how should it be adjusted
+                            Please carefully observe current latest screenshot and judge:
+                            1. Was operation successful? Did screen change as expected?
+                            2. If successful, what should be done next?
+                            3. If failed or no change, how should it be adjusted?
 
-                            **Note**: Always make decisions based on this latest screenshot
+                            **Important Self-Check Before Next Action:**
+                            - Review your conversation history: Have you already tried this same operation or similar operations multiple times?
+                            - If you notice you've executed the same tool with similar parameters 2-3 times without visible success, you MUST try a different approach:
+                              * Adjust coordinates (try 5-30 pixels offset)
+                              * Try a different action type (e.g., double-click instead of click)
+                              * Check if there's a popup, dialog, or loading state blocking the operation
+                              * Wait longer or check if the target element is actually accessible
+                            - Do NOT repeat the same operation if it hasn't worked after 2-3 attempts
+
+                            **Note**: Always make decisions based on this latest screenshot and your action history
                             """, toolResultsSummary.toString());
 
                     UserMessage observationMessage = UserMessage.from(
                             TextContent.from(observationText),
                             ImageContent.from(newScreenshot, "image/jpeg"));
                     messages.add(observationMessage);
+                    // 【修复】保存观察消息到记忆 - 这是关键修复！
+                    chatMemory.add(observationMessage);
                 } catch (Exception e) {
                     log.warn("截图失败，继续执行: {}", e.getMessage());
                 }

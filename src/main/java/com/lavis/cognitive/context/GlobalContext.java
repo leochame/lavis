@@ -98,8 +98,7 @@ public class GlobalContext {
     public void startMilestone(PlanStep step) {
         this.currentMilestone = new MilestoneRecord(
                 step.getId(),
-                step.getDescription(),
-                step.getDefinitionOfDone()
+                step.getDescription()
         );
         this.totalSteps++;
         log.info("🎯 开始里程碑 {}: {}", step.getId(), step.getDescription());
@@ -246,9 +245,6 @@ public class GlobalContext {
             sb.append("### Current Task\n");
             sb.append(String.format("Step %d %s\n", 
                     currentMilestone.getStepId(), currentMilestone.getDescription()));
-            if (currentMilestone.getDefinitionOfDone() != null) {
-                sb.append(String.format("Completion Criteria: %s\n", currentMilestone.getDefinitionOfDone()));
-            }
             sb.append("\n");
         }
         
@@ -323,16 +319,14 @@ public class GlobalContext {
     public static class MilestoneRecord {
         private final int stepId;
         private final String description;
-        private final String definitionOfDone;
         private final Instant startTime;
         private Instant endTime;
         private boolean success;
         private String result;
         
-        public MilestoneRecord(int stepId, String description, String definitionOfDone) {
+        public MilestoneRecord(int stepId, String description) {
             this.stepId = stepId;
             this.description = description;
-            this.definitionOfDone = definitionOfDone;
             this.startTime = Instant.now();
         }
         

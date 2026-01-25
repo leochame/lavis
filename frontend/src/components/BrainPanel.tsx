@@ -291,7 +291,7 @@ function StepItem({
       <div className="brain-step__content" onClick={onToggle}>
         <div className="brain-step__header">
           <span className="brain-step__number">{index + 1}</span>
-          <span className="brain-step__type">{step.type}</span>
+          {step.type && <span className="brain-step__type">{step.type}</span>}
           <span className={`brain-step__status brain-step__status--${step.status.toLowerCase()}`}>
             {getStatusLabel(step.status)}
           </span>
@@ -308,24 +308,10 @@ function StepItem({
         {/* Expanded details */}
         {isExpanded && (
           <div className="brain-step__details">
-            {step.definitionOfDone && (
-              <div className="brain-step__detail">
-                <span className="brain-step__detail-label">Definition of Done:</span>
-                <span className="brain-step__detail-value">{step.definitionOfDone}</span>
-              </div>
-            )}
             {step.resultSummary && (
               <div className="brain-step__detail">
                 <span className="brain-step__detail-label">Result:</span>
                 <span className="brain-step__detail-value">{step.resultSummary}</span>
-              </div>
-            )}
-            {step.complexity && (
-              <div className="brain-step__detail">
-                <span className="brain-step__detail-label">Complexity:</span>
-                <span className="brain-step__detail-value">
-                  {'●'.repeat(step.complexity)}{'○'.repeat(5 - step.complexity)}
-                </span>
               </div>
             )}
           </div>
