@@ -158,49 +158,71 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
   // 消息处理逻辑
   const handleMessage = useCallback((message: WorkflowEvent) => {
     const { type, data } = message;
+    console.log('🔍 [WS] 处理消息:', type, 'data:', data);
 
     switch (type) {
       case 'connected':
         // 保存服务器返回的 sessionId
-        // 注意：connected 消息的格式是 { type: "connected", sessionId: "...", message: "..." }
-        // 而不是 { type: "connected", data: { sessionId: "..." } }
-        const sessionIdValue = (message as unknown as { sessionId?: string }).sessionId || 
-                               (data?.sessionId as string | undefined);
+        // 消息格式：{ type: "connected", data: { sessionId: "...", message: "..." }, timestamp: ... }
+        console.log('✅ [WS] 收到 connected 消息:', message);
+        const sessionIdValue = data?.sessionId as string | undefined;
         if (sessionIdValue) {
+          console.log('✅ [WS] 保存 sessionId:', sessionIdValue);
           setSessionId(sessionIdValue);
+        } else {
+          console.warn('⚠️ [WS] connected 消息中未找到 sessionId，data:', data);
         }
         break;
 
       case 'plan_created':
         if (!data) {
-          console.warn('[WS] plan_created message missing data');
+          console.warn('[WS] ⚠️ plan_created message missing data');
           break;
         }
-        setWorkflow((prev) => ({
-          ...prev,
-          planId: data.planId as string,
-          userGoal: data.userGoal as string,
-          steps: (data.steps as PlanStepEvent[]) || [],
-          progress: 0,
-          status: 'planning',
-          currentStepId: null,
-        }));
+        console.log('📋 [WS] 处理 plan_created:', {
+          planId: data.planId,
+          userGoal: data.userGoal,
+          stepsCount: (data.steps as PlanStepEvent[])?.length || 0,
+          steps: data.steps
+        });
+        setWorkflow((prev) => {
+          const newState = {
+            ...prev,
+            planId: data.planId as string,
+            userGoal: data.userGoal as string,
+            steps: (data.steps as PlanStepEvent[]) || [],
+            progress: 0,
+            status: 'planning' as const,
+            currentStepId: null,
+          };
+          console.log('📋 [WS] 更新 workflow 状态为 planning:', newState);
+          return newState;
+        });
         break;
 
       case 'step_started':
         if (!data) {
-          console.warn('[WS] step_started message missing data');
+          console.warn('[WS] ⚠️ step_started message missing data');
           break;
         }
-        setWorkflow((prev) => ({
-          ...prev,
-          status: 'executing',
-          currentStepId: data.stepId as number,
-          progress: data.progress as number,
-          steps: prev.steps.map((step) =>
-            step.id === data.stepId ? { ...step, status: 'IN_PROGRESS' } : step
-          ),
-        }));
+        console.log('🔄 [WS] 处理 step_started:', {
+          stepId: data.stepId,
+          progress: data.progress,
+          description: data.description
+        });
+        setWorkflow((prev) => {
+          const newState = {
+            ...prev,
+            status: 'executing' as const,
+            currentStepId: data.stepId as number,
+            progress: data.progress as number,
+            steps: prev.steps.map((step) =>
+              step.id === data.stepId ? { ...step, status: 'IN_PROGRESS' } : step
+            ),
+          };
+          console.log('🔄 [WS] 更新 workflow 状态为 executing:', newState);
+          return newState;
+        });
         break;
 
       case 'step_completed':
@@ -370,21 +392,30 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
             ws.close();
             return;
         }
+        console.log('🔌 [WS] WebSocket 连接已建立:', url);
         setStatus('connected');
         retryCountRef.current = 0; // 重置重试计数
         // Subscribe to workflow updates
-        ws.send(JSON.stringify({ type: 'subscribe' }));
+        const subscribeMsg = JSON.stringify({ type: 'subscribe' });
+        console.log('📤 [WS] 发送订阅消息:', subscribeMsg);
+        ws.send(subscribeMsg);
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         if (isUnmountedRef.current) return;
         
+        console.log('🔌 [WS] WebSocket 连接关闭:', {
+          code: event.code,
+          reason: event.reason,
+          wasClean: event.wasClean
+        });
         setStatus('disconnected');
         
         // 增强交互：指数退避重连算法
         // 延时: 1s, 2s, 4s, 8s, 16s, max 30s
         const backoffDelay = Math.min(1000 * Math.pow(2, retryCountRef.current), 30000);
         retryCountRef.current++;
+        console.log(`🔄 [WS] ${backoffDelay}ms 后尝试重连 (重试次数: ${retryCountRef.current})`);
 
         reconnectTimeoutRef.current = window.setTimeout(() => {
           connectFn();
@@ -392,17 +423,26 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
       };
 
       ws.onerror = (error) => {
-        console.error('[WS] Error:', error);
+        console.error('❌ [WS] WebSocket 错误:', error);
         // onerror 之后通常会触发 onclose，所以重连逻辑放在 onclose
       };
 
       ws.onmessage = (event) => {
         try {
-          const message = JSON.parse(event.data) as WorkflowEvent;
+          const rawData = event.data;
+          console.log('📩 [WS] 收到原始消息:', rawData);
+          const message = JSON.parse(rawData) as WorkflowEvent;
+          console.log('📩 [WS] 解析后的消息:', {
+            type: message.type,
+            hasData: !!message.data,
+            dataKeys: message.data ? Object.keys(message.data) : [],
+            timestamp: message.timestamp,
+            fullMessage: message
+          });
           setLastEvent(message);
           handleMessage(message);
         } catch (e) {
-          console.error('[WS] Failed to parse message:', e);
+          console.error('[WS] ❌ 解析消息失败:', e, '原始数据:', event.data);
         }
       };
     } catch (e) {

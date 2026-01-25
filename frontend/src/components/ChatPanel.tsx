@@ -99,7 +99,7 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
   }, []);
 
   // WebSocket connection for real-time workflow updates
-  const { connected, status: wsStatus, workflow, resetWorkflow } = useWebSocket(agentApi.getWebSocketUrl());
+  const { connected, status: wsStatus, workflow, resetWorkflow, sendMessage } = useWebSocket(agentApi.getWebSocketUrl());
 
   // 自动滚动到底部（新消息到达时）
   useEffect(() => {
@@ -213,6 +213,14 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
     setIsLoading(true);
     resetWorkflow(); // Reset workflow state for new task
 
+    // 确保 WebSocket 连接保持活跃，继续监听后端状态
+    if (connected) {
+      // 发送订阅消息，确保后端知道前端正在监听
+      sendMessage('subscribe', {});
+      // 发送 ping 保持连接活跃
+      sendMessage('ping', {});
+    }
+
     try {
       const response = await agentApi.chat({ message: input });
       const assistantMessage: Message = {
@@ -236,6 +244,26 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
   };
 
   const isExecuting = workflow.status === 'executing' || status?.orchestrator_state?.includes('EXECUTING');
+  const isPlanning = workflow.status === 'planning';
+  const isWorking = isExecuting || isPlanning || isLoading;
+  
+  // 判断是否应该显示工作状态指示器：WebSocket 连接正常且后端正在工作
+  const shouldShowWorkingIndicator = connected && isWorking;
+  
+  // Debug: log working indicator state
+  useEffect(() => {
+    if (connected || isWorking) {
+      console.log('ChatPanel working indicator:', {
+        connected: String(connected),
+        isWorking: String(isWorking),
+        workflowStatus: String(workflow.status),
+        isExecuting: String(isExecuting),
+        isPlanning: String(isPlanning),
+        isLoading: String(isLoading),
+        shouldShowWorkingIndicator: String(shouldShowWorkingIndicator)
+      });
+    }
+  }, [connected, isWorking, workflow.status, isExecuting, isPlanning, isLoading, shouldShowWorkingIndicator]);
 
   // 根据 WebSocket 状态获取标题颜色
   const getWsStatusColor = () => {
@@ -269,6 +297,16 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
             }}
             title={getWsStatusTitle()}
           />
+          {/* 工作状态指示器 - 青烟/波纹效果 */}
+          {shouldShowWorkingIndicator && (
+            <div className="chat-panel__working-indicator">
+              <div className="chat-panel__smoke-ring chat-panel__smoke-ring--1"></div>
+              <div className="chat-panel__smoke-ring chat-panel__smoke-ring--2"></div>
+              <div className="chat-panel__smoke-ring chat-panel__smoke-ring--3"></div>
+              <div className="chat-panel__ripple chat-panel__ripple--1"></div>
+              <div className="chat-panel__ripple chat-panel__ripple--2"></div>
+            </div>
+          )}
           <button
             className={`chat-panel__screenshot ${showScreenshot ? 'chat-panel__screenshot--active' : ''}`}
             onClick={handleScreenshotClick}

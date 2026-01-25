@@ -26,6 +26,10 @@ interface CapsuleProps {
   isRecorderReady?: boolean;
   /** 手动开始录音 */
   onStartRecording?: () => void;
+  /** WebSocket 连接状态 */
+  wsConnected?: boolean;
+  /** 后端是否正在工作（执行或规划中） */
+  isWorking?: boolean;
 }
 
 export function Capsule({
@@ -37,6 +41,8 @@ export function Capsule({
   isWakeWordListening,
   isRecorderReady,
   onStartRecording,
+  wsConnected = false,
+  isWorking = false,
 }: CapsuleProps) {
   // 获取 TTS 播放状态
   const isTtsPlaying = useUIStore((s) => s.isTtsPlaying);
@@ -47,7 +53,12 @@ export function Capsule({
 
   // Debug: log state changes
   useEffect(() => {
-    console.log('Capsule state:', { voiceState, isWakeWordListening, isRecorderReady, isTtsPlaying });
+    console.log('Capsule state:', {
+      voiceState: typeof voiceState === 'object' ? JSON.stringify(voiceState) : voiceState,
+      isWakeWordListening,
+      isRecorderReady,
+      isTtsPlaying
+    });
   }, [voiceState, isWakeWordListening, isRecorderReady, isTtsPlaying]);
 
   /**
@@ -79,6 +90,30 @@ export function Capsule({
 
   // TTS 播放时显示声波纹路（覆盖 speaking 状态）
   const showVoiceRings = (capsuleState === 'listening' || capsuleState === 'speaking') || isTtsPlaying;
+  
+  // 工作状态指示器：WebSocket 连接正常且后端正在工作
+  // 注意：当处于 thinking/executing 状态时也应该显示，即使同时有语音状态
+  const showWorkingIndicator = wsConnected && isWorking && 
+    (capsuleState === 'thinking' || capsuleState === 'executing' || 
+     (capsuleState !== 'listening' && capsuleState !== 'speaking' && !isTtsPlaying));
+  
+  // Debug: log working indicator state
+  useEffect(() => {
+    const debugInfo = {
+      wsConnected: String(wsConnected),
+      isWorking: String(isWorking),
+      capsuleState: String(capsuleState),
+      isTtsPlaying: String(isTtsPlaying),
+      showWorkingIndicator: String(showWorkingIndicator),
+      statusOrchestrator: status?.orchestrator_state ? JSON.stringify(status.orchestrator_state) : 'null',
+      statusState: status?.state || 'null',
+      voiceState: voiceState ? JSON.stringify(voiceState) : 'null'
+    };
+    console.log('🔍 Capsule working indicator debug:', debugInfo);
+    console.log('   → showWorkingIndicator =', showWorkingIndicator, 
+                '(wsConnected:', wsConnected, '&& isWorking:', isWorking, 
+                '&& capsuleState in [thinking, executing] or not listening/speaking)');
+  }, [wsConnected, isWorking, capsuleState, isTtsPlaying, showWorkingIndicator, status, voiceState]);
 
   /**
    * 拖拽处理 - 使用 IPC 实现丝滑拖拽
@@ -214,6 +249,35 @@ export function Capsule({
           <div className="capsule__voice-ring" />
           <div className="capsule__voice-ring" />
         </div>
+      )}
+      
+      {/* 工作状态指示器 - 青烟和波纹效果 */}
+      {showWorkingIndicator && (
+        <>
+          <div className="capsule__working-indicator">
+            <div className="capsule__smoke-ring capsule__smoke-ring--1"></div>
+            <div className="capsule__smoke-ring capsule__smoke-ring--2"></div>
+            <div className="capsule__smoke-ring capsule__smoke-ring--3"></div>
+            <div className="capsule__ripple capsule__ripple--1"></div>
+            <div className="capsule__ripple capsule__ripple--2"></div>
+          </div>
+          {/* Debug: 添加一个可见的测试标记 */}
+          {process.env.NODE_ENV === 'development' && (
+            <div style={{
+              position: 'absolute',
+              top: '-30px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              color: '#00d4ff',
+              fontSize: '10px',
+              zIndex: 10000,
+              pointerEvents: 'none',
+              whiteSpace: 'nowrap'
+            }}>
+              WORKING
+            </div>
+          )}
+        </>
       )}
     </div>
   );

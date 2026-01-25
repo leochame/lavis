@@ -330,6 +330,7 @@
   width: 100%;
   height: 100%;
   background: transparent;
+  overflow: visible; /* 允许烟雾和波纹效果超出容器 */
 }
 
 .stage--chat {

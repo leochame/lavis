@@ -40,7 +40,7 @@ export default function App() {
   const globalVoice = useGlobalVoice(isStarted);
 
   // 初始化 WebSocket，传入 TTS 回调
-  useWebSocket(wsUrl, globalVoice.ttsCallbacks);
+  const { connected: wsConnected, workflow: wsWorkflow } = useWebSocket(wsUrl, globalVoice.ttsCallbacks);
 
 
   // Start heartbeat on mount
@@ -255,6 +255,24 @@ export default function App() {
             isWakeWordListening={globalVoice.isWakeWordListening}
             isRecorderReady={globalVoice.isRecorderReady}
             onStartRecording={globalVoice.startRecording}
+            wsConnected={wsConnected}
+            isWorking={(() => {
+              const working = wsWorkflow.status === 'executing' || 
+                wsWorkflow.status === 'planning' ||
+                status?.orchestrator_state?.includes('EXECUTING') ||
+                status?.orchestrator_state?.includes('PLANNING') ||
+                status?.orchestrator_state?.includes('THINKING');
+              // Debug log
+              if (wsConnected) {
+                console.log('🔍 App.tsx isWorking calculation:', {
+                  'wsWorkflow.status': wsWorkflow.status,
+                  'status?.orchestrator_state': status?.orchestrator_state ? JSON.stringify(status.orchestrator_state) : 'null',
+                  'isWorking': working,
+                  'wsConnected': wsConnected
+                });
+              }
+              return working;
+            })()}
           />
         )}
         {viewMode === 'chat' && (

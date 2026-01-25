@@ -312,6 +312,102 @@
   50% { opacity: 0.5; }
 }
 
+/* ==========================================
+   工作状态指示器 - 青烟和波纹效果
+   ========================================== */
+
+.chat-panel__working-indicator {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  margin-left: 8px;
+  pointer-events: none;
+}
+
+/* 青烟效果 - 从下往上飘散 */
+.chat-panel__smoke-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 255, 157, 0.6) 0%, rgba(0, 255, 157, 0) 70%);
+  opacity: 0;
+  animation: smoke-rise 2s ease-out infinite;
+}
+
+.chat-panel__smoke-ring--1 {
+  animation-delay: 0s;
+  width: 6px;
+  height: 6px;
+}
+
+.chat-panel__smoke-ring--2 {
+  animation-delay: 0.4s;
+  width: 8px;
+  height: 8px;
+}
+
+.chat-panel__smoke-ring--3 {
+  animation-delay: 0.8s;
+  width: 10px;
+  height: 10px;
+}
+
+@keyframes smoke-rise {
+  0% {
+    opacity: 0.8;
+    transform: translate(-50%, -50%) scale(0.5);
+  }
+  50% {
+    opacity: 0.4;
+    transform: translate(-50%, -100%) scale(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -180%) scale(1.8);
+  }
+}
+
+/* 波纹效果 - 从中心向外扩散 */
+.chat-panel__ripple {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 255, 157, 0.6);
+  opacity: 0;
+  animation: ripple-expand 1.5s ease-out infinite;
+}
+
+.chat-panel__ripple--1 {
+  animation-delay: 0s;
+}
+
+.chat-panel__ripple--2 {
+  animation-delay: 0.75s;
+}
+
+@keyframes ripple-expand {
+  0% {
+    width: 12px;
+    height: 12px;
+    opacity: 0.8;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    width: 32px;
+    height: 32px;
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
 .chat-panel__screenshot {
   background: none;
   border: 1px solid rgba(0, 243, 255, 0.2);

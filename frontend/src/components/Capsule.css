@@ -43,6 +43,9 @@
   /* 不使用系统拖拽，使用自定义 IPC 拖拽 */
   -webkit-app-region: no-drag;
   user-select: none;
+  
+  /* 允许子元素溢出，以便显示烟雾效果 */
+  overflow: visible;
 }
 
 /* 悬停效果 - 轻微放大 + 边框高亮 */
@@ -351,5 +354,111 @@
     width: 200%;
     height: 200%;
     opacity: 0;
+  }
+}
+
+/* ==========================================
+   工作状态指示器 - 青烟和波纹效果
+   当 WebSocket 连接正常且后端正在工作时显示
+   ========================================== */
+
+.capsule__working-indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 200px; /* 扩大容器以容纳烟雾和波纹 */
+  height: 200px;
+  pointer-events: none;
+  z-index: 1; /* 在 glow 之上，但在 core 之下 */
+  overflow: visible; /* 确保烟雾和波纹可以超出容器 */
+}
+
+/* 青烟效果 - 从中心向上飘散 */
+.capsule__smoke-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 212, 255, 0.9) 0%, rgba(0, 212, 255, 0.4) 50%, rgba(0, 212, 255, 0) 100%);
+  opacity: 0;
+  animation: capsule-smoke-rise 2.5s ease-out infinite;
+  pointer-events: none;
+}
+
+.capsule__smoke-ring--1 {
+  animation-delay: 0s;
+  width: 5px;
+  height: 5px;
+}
+
+.capsule__smoke-ring--2 {
+  animation-delay: 0.5s;
+  width: 7px;
+  height: 7px;
+}
+
+.capsule__smoke-ring--3 {
+  animation-delay: 1s;
+  width: 9px;
+  height: 9px;
+}
+
+@keyframes capsule-smoke-rise {
+  0% {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) scale(0.5);
+  }
+  30% {
+    opacity: 0.7;
+    transform: translate(-50%, -80%) scale(1);
+  }
+  60% {
+    opacity: 0.4;
+    transform: translate(-50%, -150%) scale(1.5);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -250%) scale(2.2);
+  }
+}
+
+/* 波纹效果 - 从中心向外扩散 */
+.capsule__ripple {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 212, 255, 0.5);
+  opacity: 0;
+  animation: capsule-ripple-expand 2s ease-out infinite;
+}
+
+.capsule__ripple--1 {
+  animation-delay: 0s;
+}
+
+.capsule__ripple--2 {
+  animation-delay: 1s;
+}
+
+@keyframes capsule-ripple-expand {
+  0% {
+    width: 56px;
+    height: 56px;
+    opacity: 0.8;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    width: 120px;
+    height: 120px;
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1);
   }
 }
