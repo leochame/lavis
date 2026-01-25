@@ -1,27 +1,33 @@
 package com.lavis.controller;
 
 import com.lavis.cognitive.AgentService;
-import com.lavis.cognitive.computeruse.ComputerUseAgent;
 import com.lavis.cognitive.orchestrator.TaskOrchestrator;
 import com.lavis.perception.ScreenCapturer;
-import com.lavis.ui.JavaFXInitializer;
-import com.lavis.ui.OverlayWindow;
+import com.lavis.service.llm.LlmFactory;
+import com.lavis.service.tts.AsyncTtsService;
+import com.lavis.service.tts.TtsDecisionService;
+import com.lavis.websocket.AgentWebSocketHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
 /**
- * Agent REST API 控制器
- * 提供 HTTP 接口与 Agent 交互
- * 
- * 【架构升级】统一使用 TaskOrchestrator 作为任务执行入口
+ * Agent REST API Controller
+ *
+ * Core architecture:
+ * 1. Fast System (/chat): Vision-based instant Q&A and single-step operations
+ * 2. Slow System (/task): Plan-Execute based complex task orchestration
+ * 3. System Control: Status, reset, stop, screenshot
  */
 @Slf4j
 @RestController
@@ -31,458 +37,373 @@ public class AgentController {
 
     private final AgentService agentService;
     private final ScreenCapturer screenCapturer;
-    private final JavaFXInitializer javaFXInitializer;
-    private final ComputerUseAgent computerUseAgent;
-    
-    // 任务历史记录 (最多保留 50 条)
+    private final LlmFactory llmFactory;
+    private final TtsDecisionService ttsDecisionService;
+    private final AsyncTtsService asyncTtsService;
+    private final AgentWebSocketHandler webSocketHandler;
+
+    // Task history
     private final Deque<TaskRecord> taskHistory = new ConcurrentLinkedDeque<>();
     private static final int MAX_HISTORY_SIZE = 50;
 
+    // ==========================================
+    // Core APIs
+    // ==========================================
+
     /**
-     * 发送消息给 Agent
+     * 1. Chat (Fast System)
+     * For: Visual Q&A, single-step commands, lightweight interactions
+     * Underlying: Text + Screenshot -> Agent -> Response
      */
     @PostMapping("/chat")
     public ResponseEntity<Map<String, Object>> chat(@RequestBody Map<String, String> request) {
         String message = request.get("message");
         if (message == null || message.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "消息不能为空"));
+            return ResponseEntity.badRequest().body(Map.of("error", "Message cannot be empty"));
         }
 
-        log.info("📝 收到聊天请求: {}", message);
-        
-        javaFXInitializer.updateState(OverlayWindow.AgentState.THINKING);
-        javaFXInitializer.addLog("👤 " + message);
-
-        long startTime = System.currentTimeMillis();
-        try {
-            String response = agentService.chat(message);
-            long duration = System.currentTimeMillis() - startTime;
-            
-            javaFXInitializer.updateState(OverlayWindow.AgentState.IDLE);
-            javaFXInitializer.addLog("🤖 " + truncate(response, 100));
-            
-            // 记录历史
-            addToHistory("chat", message, response, true, duration);
-
-            Map<String, Object> result = new HashMap<>();
-            result.put("success", true);
-            result.put("response", response);
-            result.put("duration_ms", duration);
-            return ResponseEntity.ok(result);
-        } catch (Exception e) {
-            log.error("处理消息失败", e);
-            javaFXInitializer.updateState(OverlayWindow.AgentState.ERROR);
-            javaFXInitializer.addLog("❌ 错误: " + e.getMessage());
-            addToHistory("chat", message, e.getMessage(), false, System.currentTimeMillis() - startTime);
-            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    /**
-     * 发送带截图的消息给 Agent
-     */
-    @PostMapping("/chat-with-screenshot")
-    public ResponseEntity<Map<String, Object>> chatWithScreenshot(@RequestBody Map<String, String> request) {
-        String message = request.get("message");
-        if (message == null || message.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "消息不能为空"));
-        }
-
-        log.info("📷 收到带截图的聊天请求: {}", message);
-        
-        javaFXInitializer.updateState(OverlayWindow.AgentState.THINKING);
-        javaFXInitializer.setThinkingText("分析屏幕...");
-        javaFXInitializer.addLog("👤 " + message);
+        log.info("💬 [Chat] Received message: {}", message);
 
         long startTime = System.currentTimeMillis();
         try {
             String response = agentService.chatWithScreenshot(message);
             long duration = System.currentTimeMillis() - startTime;
-            
-            javaFXInitializer.updateState(OverlayWindow.AgentState.IDLE);
-            javaFXInitializer.setThinkingText("");
-            javaFXInitializer.addLog("🤖 " + truncate(response, 100));
-            
-            addToHistory("vision", message, response, true, duration);
 
-            Map<String, Object> result = new HashMap<>();
-            result.put("success", true);
-            result.put("response", response);
-            result.put("duration_ms", duration);
-            return ResponseEntity.ok(result);
+            addToHistory("chat", message, response, true, duration);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "response", response,
+                    "duration_ms", duration
+            ));
         } catch (Exception e) {
-            log.error("处理消息失败", e);
-            javaFXInitializer.updateState(OverlayWindow.AgentState.ERROR);
-            javaFXInitializer.setThinkingText("");
-            javaFXInitializer.addLog("❌ 错误: " + e.getMessage());
-            addToHistory("vision", message, e.getMessage(), false, System.currentTimeMillis() - startTime);
-            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+            return handleError("chat", message, startTime, e);
         }
     }
 
     /**
-     * 执行自动化任务
-     * 
-     * 【架构升级】统一使用 TaskOrchestrator 执行，实现 M-E-R 闭环
-     * 这个接口现在等同于 /execute-plan，保留是为了向后兼容
+     * 2. Execute Task (Slow System)
+     * For: Complex workflows, multi-step operations, tasks requiring self-correction
+     * Underlying: TaskOrchestrator (Planner -> Executor -> Reflector)
      */
-    @PostMapping("/execute")
+    @PostMapping("/task")
     public ResponseEntity<Map<String, Object>> executeTask(@RequestBody Map<String, String> request) {
-        String task = request.get("task");
-        if (task == null || task.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "任务描述不能为空"));
+        String goal = request.get("goal");
+        // Support legacy parameter name "task"
+        if (goal == null || goal.isBlank()) goal = request.get("task");
+
+        if (goal == null || goal.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Task goal cannot be empty"));
         }
 
-        log.info("🚀 收到执行任务请求: {}", task);
-        
-        javaFXInitializer.updateState(OverlayWindow.AgentState.EXECUTING);
-        javaFXInitializer.setThinkingText("规划任务中...");
-        javaFXInitializer.addLog("🎯 任务: " + task);
+        log.info("🚀 [Task] Received task: {}", goal);
 
         long startTime = System.currentTimeMillis();
         try {
-            // 【统一入口】使用 TaskOrchestrator 执行任务
             TaskOrchestrator orchestrator = agentService.getTaskOrchestrator();
-            TaskOrchestrator.OrchestratorResult result = orchestrator.executeGoal(task);
+            TaskOrchestrator.OrchestratorResult result = orchestrator.executeGoal(goal);
             long duration = System.currentTimeMillis() - startTime;
-            
-            javaFXInitializer.updateState(result.isSuccess() ? 
-                OverlayWindow.AgentState.SUCCESS : OverlayWindow.AgentState.ERROR);
-            javaFXInitializer.setThinkingText("");
-            
-            addToHistory("execute", task, result.getMessage(), result.isSuccess(), duration);
+
+            addToHistory("task", goal, result.getMessage(), result.isSuccess(), duration);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", result.isSuccess());
             response.put("message", result.getMessage());
-            response.put("partial", result.isPartial());
             response.put("duration_ms", duration);
-            
-            // 添加计划详情
+
+            // Attach execution details
             if (result.getPlan() != null) {
                 response.put("plan_summary", result.getPlan().generateSummary());
-                response.put("total_steps", result.getPlan().getSteps().size());
-                response.put("progress_percent", result.getPlan().getProgressPercent());
+                response.put("steps_total", result.getPlan().getSteps().size());
             }
-            
-            // 添加 GlobalContext 信息
-            if (orchestrator.getGlobalContext() != null) {
-                response.put("execution_summary", orchestrator.getGlobalContext().getExecutionSummary());
-            }
-            
+            response.put("execution_summary", orchestrator.getExecutionSummary());
+
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("执行任务失败", e);
-            javaFXInitializer.updateState(OverlayWindow.AgentState.ERROR);
-            javaFXInitializer.setThinkingText("");
-            addToHistory("execute", task, e.getMessage(), false, System.currentTimeMillis() - startTime);
-            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+            return handleError("task", goal, startTime, e);
         }
     }
 
+    // ==========================================
+    // System Control
+    // ==========================================
+
     /**
-     * 获取当前屏幕截图 (Base64)
+     * Emergency stop
+     */
+    @PostMapping("/stop")
+    public ResponseEntity<Map<String, Object>> stop() {
+        var orchestrator = agentService.getTaskOrchestrator();
+        boolean interrupted = false;
+        if (orchestrator != null) {
+            orchestrator.interrupt();
+            interrupted = true;
+        }
+
+        log.info("🛑 Emergency stop triggered by user");
+        return ResponseEntity.ok(Map.of(
+                "status", interrupted ? "Stop command sent" : "Orchestrator unavailable",
+                "interrupted", interrupted));
+    }
+
+    /**
+     * Global reset (memory, orchestrator, history)
+     */
+    @PostMapping("/reset")
+    public ResponseEntity<Map<String, String>> reset() {
+        // 1. Reset conversation memory
+        agentService.resetConversation();
+
+        // 2. Reset orchestrator state
+        var orchestrator = agentService.getTaskOrchestrator();
+        if (orchestrator != null) {
+            orchestrator.reset();
+        }
+
+        log.info("🔄 System state fully reset");
+        return ResponseEntity.ok(Map.of("status", "System reset"));
+    }
+
+    /**
+     * Get full system status
+     */
+    @GetMapping("/status")
+    public ResponseEntity<Map<String, Object>> getStatus() {
+        Map<String, Object> status = new HashMap<>();
+
+        // Basic service status
+        status.put("available", agentService.isAvailable());
+        status.put("model", agentService.getModelInfo());
+
+        // Orchestrator state
+        var orchestrator = agentService.getTaskOrchestrator();
+        if (orchestrator != null) {
+            status.put("orchestrator_state", orchestrator.getState());
+            if (orchestrator.getCurrentPlan() != null) {
+                var plan = orchestrator.getCurrentPlan();
+                status.put("current_plan_progress", plan.getProgressPercent());
+                status.put("current_plan", plan);
+            }
+        }
+
+        return ResponseEntity.ok(status);
+    }
+
+    // ==========================================
+    // Utilities
+    // ==========================================
+
+    /**
+     * Screen capture (for debugging)
      */
     @GetMapping("/screenshot")
     public ResponseEntity<Map<String, Object>> getScreenshot() {
         try {
             String base64 = screenCapturer.captureScreenAsBase64();
-            
-            Map<String, Object> result = new HashMap<>();
-            result.put("success", true);
-            result.put("image", base64);
-            result.put("width", screenCapturer.getScreenSize().width);
-            result.put("height", screenCapturer.getScreenSize().height);
-            return ResponseEntity.ok(result);
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "image", base64,
+                    "size", screenCapturer.getScreenSize()
+            ));
         } catch (IOException e) {
-            log.error("截图失败", e);
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
         }
     }
 
-    /**
-     * 获取 Agent 状态
-     */
-    @GetMapping("/status")
-    public ResponseEntity<Map<String, Object>> getStatus() {
-        Map<String, Object> status = new HashMap<>();
-        status.put("available", agentService.isAvailable());
-        status.put("model", agentService.getModelInfo());
-        status.put("uiInitialized", javaFXInitializer.isInitialized());
-        status.put("historyCount", taskHistory.size());
-        return ResponseEntity.ok(status);
-    }
-
-    /**
-     * 重置对话历史
-     */
-    @PostMapping("/reset")
-    public ResponseEntity<Map<String, String>> resetConversation() {
-        agentService.resetConversation();
-        javaFXInitializer.addLog("🔄 对话已重置");
-        return ResponseEntity.ok(Map.of("status", "对话历史已重置"));
-    }
-
-    /**
-     * 获取任务历史
-     */
     @GetMapping("/history")
-    public ResponseEntity<Map<String, Object>> getHistory(
-            @RequestParam(defaultValue = "20") int limit) {
-        List<TaskRecord> records = new ArrayList<>();
-        int count = 0;
-        for (TaskRecord record : taskHistory) {
-            if (count >= limit) break;
-            records.add(record);
-            count++;
-        }
-        
-        Map<String, Object> result = new HashMap<>();
-        result.put("total", taskHistory.size());
-        result.put("records", records);
-        return ResponseEntity.ok(result);
+    public ResponseEntity<List<TaskRecord>> getHistory() {
+        return ResponseEntity.ok(new ArrayList<>(taskHistory));
     }
 
-    /**
-     * 清空任务历史
-     */
     @DeleteMapping("/history")
-    public ResponseEntity<Map<String, String>> clearHistory() {
+    public ResponseEntity<Void> clearHistory() {
         taskHistory.clear();
-        javaFXInitializer.addLog("🗑️ 历史记录已清空");
-        return ResponseEntity.ok(Map.of("status", "历史记录已清空"));
+        return ResponseEntity.ok().build();
     }
-    
+
+    // ==========================================
+    // Voice Chat (语音对话)
+    // ==========================================
+
     /**
-     * 【新架构】使用 Plan-Execute 模式执行复杂任务
-     * 
-     * 这是双层大脑架构的 API：
-     * - Planner 负责拆解任务为步骤
-     * - Executor 逐步执行（独立上下文，自我修正）
+     * 语音对话接口 (Voice Chat) - 异步 TTS 版本
+     *
+     * 流程优化：
+     * 1. STT 完成后，立即并行启动：
+     *    - LLM 生成回复
+     *    - TTS 决策判断（基于用户问题）
+     * 2. LLM 完成后立即返回 HTTP 响应（文字先行）
+     * 3. 异步：根据决策结果 + 回复内容，生成 TTS 并通过 WebSocket 推送
+     *
+     * 请求格式：multipart/form-data
+     * @param audioFile 用户录音文件 (WAV/MP3/M4A)
+     * @param wsSessionId WebSocket Session ID（用于推送 TTS 音频）
+     *
+     * 响应格式：
+     * {
+     *   "success": true,
+     *   "user_text": "用户说的文本",
+     *   "agent_text": "Agent 的回复文本",
+     *   "request_id": "唯一请求ID",
+     *   "audio_pending": true  // 告知前端音频稍后通过 WS 推送
+     * }
      */
-    @PostMapping("/execute-plan")
-    public ResponseEntity<Map<String, Object>> executePlanTask(@RequestBody Map<String, String> request) {
-        String goal = request.get("goal");
-        if (goal == null || goal.isBlank()) {
-            goal = request.get("task");
-        }
-        if (goal == null || goal.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "目标描述不能为空"));
+    @PostMapping(value = "/voice-chat", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, Object>> voiceChat(
+            @RequestParam("file") MultipartFile audioFile,
+            @RequestParam(value = "ws_session_id", required = false) String wsSessionId,
+            @RequestParam(value = "screenshot", required = false) MultipartFile screenshot
+    ) {
+        if (audioFile == null || audioFile.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Audio file is required"));
         }
 
-        log.info("🚀 [Plan-Execute] 收到任务请求: {}", goal);
-        
-        javaFXInitializer.updateState(OverlayWindow.AgentState.EXECUTING);
-        javaFXInitializer.setThinkingText("规划任务中...");
-        javaFXInitializer.addLog("🎯 [Plan-Execute] 目标: " + goal);
+        log.info("🎤 [Voice Chat] Received audio file: {}", audioFile.getOriginalFilename());
+
+        // 生成唯一请求 ID
+        String requestId = UUID.randomUUID().toString();
+        long startTime = System.currentTimeMillis();
+
+        try {
+            // 1. STT: 音频 → 文本
+            String userText = llmFactory.getSttModel().transcribe(audioFile);
+            log.info("User transcribed text: {}", userText);
+
+            // 2. Check if user needs voice feedback (runs in parallel with LLM)
+            // This is based on user intent, not LLM response content
+            CompletableFuture<Boolean> needsVoiceFeedbackFuture = asyncTtsService.checkNeedsVoiceFeedbackAsync(
+                userText, ttsDecisionService
+            );
+
+            // 3. LLM generates response
+            String agentText = agentService.chatWithScreenshot(userText);
+            log.info("Agent response: {}", agentText);
+
+            // 4. Get voice feedback decision (should be done by now, as it's fast)
+            boolean needsVoiceFeedback = needsVoiceFeedbackFuture.join();
+            log.info("Voice feedback decision: needsVoiceFeedback={}", needsVoiceFeedback);
+
+            // 5. Determine WebSocket Session ID
+            String sessionId = wsSessionId;
+            if (sessionId == null || sessionId.isBlank()) {
+                // If frontend didn't pass it, try to get the first available session
+                sessionId = webSocketHandler.getFirstSessionId();
+            }
+
+            // 6. If user needs voice feedback and has valid WebSocket connection, generate TTS async
+            // AsyncTtsService will determine whether to speak original text or generate a summary
+            boolean audioPending = false;
+            if (needsVoiceFeedback && sessionId != null && webSocketHandler.isSessionActive(sessionId)) {
+                asyncTtsService.generateAndPush(sessionId, agentText, requestId);
+                audioPending = true;
+                log.info("TTS generation started asynchronously for requestId: {}", requestId);
+            } else if (needsVoiceFeedback) {
+                log.warn("Voice feedback needed but no active WebSocket session, skipping TTS");
+            }
+
+            long duration = System.currentTimeMillis() - startTime;
+            addToHistory("voice-chat", userText, agentText, true, duration);
+
+            // 7. Return text response immediately
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("user_text", userText);
+            response.put("agent_text", agentText);
+            response.put("request_id", requestId);
+            response.put("audio_pending", audioPending);
+            response.put("duration_ms", duration);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("Voice chat failed", e);
+            return handleError("voice-chat", audioFile.getOriginalFilename(), startTime, e);
+        }
+    }
+
+    // ==========================================
+    // TTS API (Text-to-Speech Proxy)
+    // ==========================================
+
+    /**
+     * TTS 代理端点
+     * 前端调用此端点将文本转换为音频，配置统一在后端管理
+     * 
+     * 请求格式：
+     * {
+     *   "text": "要转换的文本"
+     * }
+     * 
+     * 响应格式：
+     * {
+     *   "success": true,
+     *   "audio": "Base64 编码的音频数据",
+     *   "format": "mp3"
+     * }
+     */
+    @PostMapping("/tts")
+    public ResponseEntity<Map<String, Object>> textToSpeech(@RequestBody Map<String, String> request) {
+        String text = request.get("text");
+        if (text == null || text.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Text cannot be empty"));
+        }
+
+        log.info("🎙️ [TTS] Received text to convert: {} chars", text.length());
 
         long startTime = System.currentTimeMillis();
         try {
-            String result = agentService.executePlanTask(goal);
+            // 使用后端配置的 TTS 模型生成音频
+            String audioBase64 = llmFactory.getTtsModel().textToSpeech(text);
             long duration = System.currentTimeMillis() - startTime;
-            
-            boolean success = result.startsWith("✅");
-            javaFXInitializer.updateState(success ? 
-                OverlayWindow.AgentState.SUCCESS : OverlayWindow.AgentState.ERROR);
-            javaFXInitializer.setThinkingText("");
-            javaFXInitializer.addLog(success ? "✅ 任务完成" : "⚠️ 任务部分完成或失败");
-            
-            addToHistory("plan-execute", goal, result, success, duration);
 
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", success);
-            response.put("result", result);
-            response.put("duration_ms", duration);
-            
-            // 获取计划详情
-            var orchestrator = agentService.getTaskOrchestrator();
-            if (orchestrator != null && orchestrator.getCurrentPlan() != null) {
-                response.put("plan_summary", orchestrator.getCurrentPlan().generateSummary());
-                response.put("execution_summary", orchestrator.getExecutionSummary());
-            }
-            
-            return ResponseEntity.ok(response);
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "audio", audioBase64,
+                    "format", "mp3",
+                    "duration_ms", duration
+            ));
         } catch (Exception e) {
-            log.error("Plan-Execute 任务失败", e);
-            javaFXInitializer.updateState(OverlayWindow.AgentState.ERROR);
-            javaFXInitializer.setThinkingText("");
-            addToHistory("plan-execute", goal, e.getMessage(), false, System.currentTimeMillis() - startTime);
-            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+            log.error("TTS generation failed", e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "error", e.getMessage(),
+                    "success", false
+            ));
         }
-    }
-    
-    /**
-     * 重置调度器状态
-     */
-    @PostMapping("/orchestrator/reset")
-    public ResponseEntity<Map<String, String>> resetOrchestrator() {
-        var orchestrator = agentService.getTaskOrchestrator();
-        if (orchestrator != null) {
-            orchestrator.reset();
-        }
-        javaFXInitializer.addLog("🔄 调度器已重置");
-        return ResponseEntity.ok(Map.of("status", "调度器已重置"));
-    }
-    
-    /**
-     * 获取调度器状态
-     */
-    @GetMapping("/orchestrator/status")
-    public ResponseEntity<Map<String, Object>> getOrchestratorStatus() {
-        var orchestrator = agentService.getTaskOrchestrator();
-        Map<String, Object> status = new HashMap<>();
-        
-        if (orchestrator != null) {
-            status.put("state", orchestrator.getState().name());
-            status.put("summary", orchestrator.getExecutionSummary());
-            
-            if (orchestrator.getCurrentPlan() != null) {
-                var plan = orchestrator.getCurrentPlan();
-                status.put("plan_id", plan.getPlanId());
-                status.put("goal", plan.getUserGoal());
-                status.put("total_steps", plan.getSteps().size());
-                status.put("progress_percent", plan.getProgressPercent());
-                status.put("plan_status", plan.getStatus().name());
-            }
-        } else {
-            status.put("state", "NOT_INITIALIZED");
-        }
-        
-        return ResponseEntity.ok(status);
     }
 
-    /**
-     * 显示 Overlay UI
-     */
-    @PostMapping("/ui/show")
-    public ResponseEntity<Map<String, String>> showUI() {
-        javaFXInitializer.showOverlay();
-        return ResponseEntity.ok(Map.of("status", "UI已显示"));
+    // ==========================================
+    // Private helper methods
+    // ==========================================
+
+    private ResponseEntity<Map<String, Object>> handleError(String type, String input, long startTime, Exception e) {
+        log.error("{} execution failed", type, e);
+        addToHistory(type, input, e.getMessage(), false, System.currentTimeMillis() - startTime);
+        return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
     }
 
-    /**
-     * 隐藏 Overlay UI
-     */
-    @PostMapping("/ui/hide")
-    public ResponseEntity<Map<String, String>> hideUI() {
-        javaFXInitializer.hideOverlay();
-        return ResponseEntity.ok(Map.of("status", "UI已隐藏"));
-    }
-    
-    // ==================== Gemini Computer Use API ====================
-    
-    /**
-     * 使用 Gemini Computer Use 模式执行任务
-     * 
-     * 这是基于 Google Gemini Computer Use API 的实现：
-     * - 使用预定义的 Computer Use 操作（click_at, type_text_at, scroll_document 等）
-     * - 坐标使用归一化范围（0-1000）
-     * - 支持 safety_decision 安全确认机制
-     * 
-     * @see <a href="https://ai.google.dev/gemini-api/docs/computer-use">Gemini Computer Use</a>
-     */
-    @PostMapping("/computer-use")
-    public ResponseEntity<Map<String, Object>> executeComputerUseTask(@RequestBody Map<String, Object> request) {
-        String task = (String) request.get("task");
-        if (task == null || task.isBlank()) {
-            task = (String) request.get("query");
-        }
-        if (task == null || task.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "任务描述不能为空"));
-        }
-        
-        @SuppressWarnings("unchecked")
-        List<String> excludedFunctions = request.containsKey("excluded_functions") 
-                ? (List<String>) request.get("excluded_functions") 
-                : List.of();
-        
-        log.info("🖥️ [Computer Use] 收到任务请求: {}", task);
-        
-        javaFXInitializer.updateState(OverlayWindow.AgentState.EXECUTING);
-        javaFXInitializer.setThinkingText("Computer Use 执行中...");
-        javaFXInitializer.addLog("🖥️ [Computer Use] 任务: " + task);
-        
-        long startTime = System.currentTimeMillis();
-        try {
-            ComputerUseAgent.AgentResult result = computerUseAgent.executeTask(task, excludedFunctions);
-            long duration = System.currentTimeMillis() - startTime;
-            
-            javaFXInitializer.updateState(result.isSuccess() ? 
-                    OverlayWindow.AgentState.SUCCESS : 
-                    (result.isCancelled() ? OverlayWindow.AgentState.IDLE : OverlayWindow.AgentState.ERROR));
-            javaFXInitializer.setThinkingText("");
-            
-            addToHistory("computer-use", task, 
-                    result.isSuccess() ? result.getReasoning() : result.getErrorMessage(), 
-                    result.isSuccess(), duration);
-            
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", result.isSuccess());
-            response.put("cancelled", result.isCancelled());
-            response.put("reasoning", result.getReasoning());
-            response.put("error", result.getErrorMessage());
-            response.put("duration_ms", duration);
-            
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Computer Use 任务失败", e);
-            javaFXInitializer.updateState(OverlayWindow.AgentState.ERROR);
-            javaFXInitializer.setThinkingText("");
-            addToHistory("computer-use", task, e.getMessage(), false, System.currentTimeMillis() - startTime);
-            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
-        }
-    }
-    
-    /**
-     * 中断 Computer Use 执行
-     */
-    @PostMapping("/computer-use/interrupt")
-    public ResponseEntity<Map<String, String>> interruptComputerUse() {
-        computerUseAgent.interrupt();
-        javaFXInitializer.addLog("⚠️ Computer Use 执行已中断");
-        return ResponseEntity.ok(Map.of("status", "Computer Use 执行已中断"));
-    }
-
-    /**
-     * 添加到历史记录
-     */
     private void addToHistory(String type, String input, String output, boolean success, long durationMs) {
         TaskRecord record = new TaskRecord(
-            UUID.randomUUID().toString(),
-            type,
-            input,
-            output,
-            success,
-            durationMs,
-            LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                UUID.randomUUID().toString(),
+                type,
+                input,
+                output,
+                success,
+                durationMs,
+                LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
         );
-        
         taskHistory.addFirst(record);
-        
-        // 限制历史大小
-        while (taskHistory.size() > MAX_HISTORY_SIZE) {
+        if (taskHistory.size() > MAX_HISTORY_SIZE) {
             taskHistory.removeLast();
         }
     }
 
-    /**
-     * 截断字符串
-     */
-    private String truncate(String str, int maxLen) {
-        if (str == null) return "";
-        return str.length() > maxLen ? str.substring(0, maxLen) + "..." : str;
-    }
-
-    /**
-     * 任务记录
-     */
     public record TaskRecord(
-        String id,
-        String type,
-        String input,
-        String output,
-        boolean success,
-        long durationMs,
-        String timestamp
+            String id,
+            String type,
+            String input,
+            String output,
+            boolean success,
+            long durationMs,
+            String timestamp
     ) {}
 }

@@ -1,0 +1,421 @@
+.workflow-panel {
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 16px;
+  border: 1px solid rgba(0, 243, 255, 0.15);
+  box-shadow: 
+    inset 0 0 30px rgba(0, 0, 0, 0.4),
+    0 0 20px rgba(0, 0, 0, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.workflow-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 243, 255, 0.5), transparent);
+}
+
+/* Header */
+.workflow-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(0, 243, 255, 0.1);
+}
+
+.workflow-header__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workflow-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff3333;
+  box-shadow: 0 0 8px #ff3333;
+}
+
+.workflow-status-dot--connected {
+  background: #00ff9d;
+  box-shadow: 0 0 8px #00ff9d;
+  animation: pulse-dot 2s infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.workflow-header__title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #00f3ff;
+  text-shadow: 0 0 5px rgba(0, 243, 255, 0.4);
+  font-family: 'Courier New', monospace;
+}
+
+.workflow-stop-btn {
+  background: rgba(255, 51, 51, 0.15);
+  border: 1px solid rgba(255, 51, 51, 0.4);
+  border-radius: 3px;
+  padding: 4px 12px;
+  color: #ff3333;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-transform: uppercase;
+}
+
+.workflow-stop-btn:hover {
+  background: rgba(255, 51, 51, 0.25);
+  border-color: #ff3333;
+  box-shadow: 0 0 10px rgba(255, 51, 51, 0.3);
+}
+
+/* Goal */
+.workflow-goal {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  background: rgba(0, 243, 255, 0.05);
+  border-left: 2px solid #00f3ff;
+  border-radius: 0 4px 4px 0;
+}
+
+.workflow-goal__label {
+  font-size: 10px;
+  color: rgba(0, 243, 255, 0.6);
+  font-weight: 700;
+  letter-spacing: 1px;
+  font-family: monospace;
+}
+
+.workflow-goal__text {
+  font-size: 12px;
+  color: #e0e0e0;
+  flex: 1;
+}
+
+/* Progress */
+.workflow-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.workflow-progress__bar {
+  flex: 1;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: visible;
+  position: relative;
+}
+
+.workflow-progress__fill {
+  height: 100%;
+  background: #00f3ff;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+  box-shadow: 0 0 10px #00f3ff;
+}
+
+.workflow-progress__glow {
+  position: absolute;
+  top: -4px;
+  width: 10px;
+  height: 10px;
+  background: #00f3ff;
+  border-radius: 50%;
+  transform: translateX(-50%);
+  box-shadow: 0 0 15px #00f3ff, 0 0 30px rgba(0, 243, 255, 0.5);
+  transition: left 0.3s ease;
+}
+
+.workflow-progress__text {
+  font-size: 11px;
+  font-weight: 700;
+  color: #00f3ff;
+  min-width: 36px;
+  text-align: right;
+  font-family: monospace;
+  text-shadow: 0 0 5px rgba(0, 243, 255, 0.5);
+}
+
+/* Steps */
+.workflow-steps {
+  display: flex;
+  flex-direction: column;
+  max-height: 250px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.workflow-steps::-webkit-scrollbar {
+  width: 3px;
+}
+
+.workflow-steps::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.workflow-steps::-webkit-scrollbar-thumb {
+  background: rgba(0, 243, 255, 0.3);
+  border-radius: 2px;
+}
+
+/* Step Item */
+.workflow-step {
+  display: flex;
+  gap: 12px;
+  position: relative;
+  padding: 8px 0;
+}
+
+.workflow-step__connector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 24px;
+  flex-shrink: 0;
+}
+
+.workflow-step__dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(30, 30, 30, 0.8);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  transition: all 0.3s;
+}
+
+.workflow-step__icon {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.workflow-step__line {
+  width: 2px;
+  flex: 1;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.workflow-step__line--top {
+  margin-bottom: 4px;
+}
+
+.workflow-step__line--bottom {
+  margin-top: 4px;
+}
+
+.workflow-step__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.workflow-step__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.workflow-step__number {
+  font-size: 10px;
+  font-family: monospace;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.workflow-step__type {
+  font-size: 9px;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+  color: rgba(255, 255, 255, 0.4);
+  font-family: monospace;
+  text-transform: uppercase;
+}
+
+.workflow-step__time {
+  font-size: 9px;
+  color: rgba(0, 243, 255, 0.5);
+  font-family: monospace;
+  margin-left: auto;
+}
+
+.workflow-step__description {
+  font-size: 12px;
+  color: #c0c0c0;
+  line-height: 1.4;
+}
+
+.workflow-step__result {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 4px;
+  font-style: italic;
+}
+
+/* Step States */
+.workflow-step--pending .workflow-step__dot {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.workflow-step--pending .workflow-step__description {
+  opacity: 0.5;
+}
+
+.workflow-step--active .workflow-step__dot {
+  border-color: #00f3ff;
+  box-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+}
+
+.workflow-step--active .workflow-step__icon {
+  color: #00f3ff;
+}
+
+.workflow-step--active .workflow-step__number {
+  color: #00f3ff;
+}
+
+.workflow-step--active .workflow-step__line--top {
+  background: linear-gradient(to bottom, rgba(255,255,255,0.1), #00f3ff);
+}
+
+.workflow-step--success .workflow-step__dot {
+  border-color: #00ff9d;
+  background: rgba(0, 255, 157, 0.1);
+}
+
+.workflow-step--success .workflow-step__icon {
+  color: #00ff9d;
+}
+
+.workflow-step--success .workflow-step__line {
+  background: #00ff9d;
+}
+
+.workflow-step--success .workflow-step__description {
+  color: #00ff9d;
+}
+
+.workflow-step--failed .workflow-step__dot {
+  border-color: #ff3333;
+  background: rgba(255, 51, 51, 0.1);
+}
+
+.workflow-step--failed .workflow-step__icon {
+  color: #ff3333;
+}
+
+.workflow-step--failed .workflow-step__description {
+  color: #ff6666;
+}
+
+.workflow-step--skipped .workflow-step__dot {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.workflow-step--skipped .workflow-step__icon {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.workflow-step--skipped .workflow-step__description {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+/* Pulse animation for active step */
+.workflow-step__pulse {
+  position: absolute;
+  left: 2px;
+  top: 8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(0, 243, 255, 0.3);
+  animation: step-pulse 2s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes step-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(2.5);
+    opacity: 0;
+  }
+}
+
+/* Complete/Failed Status */
+.workflow-complete,
+.workflow-failed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px;
+  margin-top: 12px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  font-family: monospace;
+  text-transform: uppercase;
+}
+
+.workflow-complete {
+  background: rgba(0, 255, 157, 0.1);
+  border: 1px solid rgba(0, 255, 157, 0.3);
+  color: #00ff9d;
+  text-shadow: 0 0 10px rgba(0, 255, 157, 0.5);
+}
+
+.workflow-complete__icon {
+  font-size: 14px;
+  animation: rotate-diamond 3s linear infinite;
+}
+
+@keyframes rotate-diamond {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.workflow-failed {
+  background: rgba(255, 51, 51, 0.1);
+  border: 1px solid rgba(255, 51, 51, 0.3);
+  color: #ff3333;
+  text-shadow: 0 0 10px rgba(255, 51, 51, 0.5);
+}
+
+.workflow-failed__icon {
+  font-size: 14px;
+  animation: blink-warning 1s ease-in-out infinite;
+}
+
+@keyframes blink-warning {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+

@@ -1,0 +1,156 @@
+# ====================================
+# Lavis - macOS AI Agent Configuration
+# ====================================
+# 
+# Usage Instructions:
+# 1. Copy this file to application.properties
+# 2. Fill in your API Keys and configuration information
+# 3. application.properties is in .gitignore and will not be committed to the repository
+#
+# ====================================
+
+spring.application.name=lavis
+
+# Server
+server.port=8080
+
+app.llm.default-model=modela
+app.llm.default-stt-model=whisper
+app.llm.default-tts-model=tts
+
+
+# ====================================
+# Chat Models - Gemini (via LangChain4j)
+# ====================================
+# Using LangChain4j GoogleAiGeminiChatModel with custom baseUrl (relay)
+# Supports: tool calling, multimodal (text + images), system instructions
+# Docs: https://docs.newapi.pro/zh/docs/api/ai-model/chat/gemini/geminirelayv1beta-391536411
+app.llm.models.modela.provider=GEMINI
+app.llm.models.modela.base-url=https://api.jieai.shop/v1
+app.llm.models.modela.api-key=${MODELA_API_KEY:sk-N8Ra8IXzokz5qAkAy48zXQE3DSPRYKnHYVGQJXmzu2IZbq7J}
+app.llm.models.modela.model-name=gemini-3-flash-preview
+app.llm.models.modela.temperature=0.4
+app.llm.models.modela.timeout-seconds=180
+app.llm.models.modela.max-retries=3
+
+app.llm.models.modelb.provider=GEMINI
+app.llm.models.modelb.base-url=https://api.jieai.shop/v1
+app.llm.models.modelb.api-key=${MODELB_API_KEY:sk-N8Ra8IXzokz5qAkAy48zXQE3DSPRYKnHYVGQJXmzu2IZbq7J}
+app.llm.models.modelb.model-name=gemini-3-flash-preview
+app.llm.models.modelb.temperature=0.4
+app.llm.models.modelb.timeout-seconds=60
+app.llm.models.modelb.max-retries=3
+
+app.llm.models.modelc.provider=GEMINI
+app.llm.models.modelc.base-url=https://api.jieai.shop/v1
+app.llm.models.modelc.api-key=${MODELC_API_KEY:sk-N8Ra8IXzokz5qAkAy48zXQE3DSPRYKnHYVGQJXmzu2IZbq7J}
+app.llm.models.modelc.model-name=gemini-3-flash-preview
+app.llm.models.modelc.temperature=0.4
+app.llm.models.modelc.timeout-seconds=60
+app.llm.models.modelc.max-retries=3
+
+# ====================================
+# Voice: STT (Speech-to-Text)
+# ====================================
+# Option 1: Gemini-flash STT (recommended)
+# Using Gemini generateContent API with inlineData base64 audio upload
+# Supports: audio/webm, audio/wav, audio/mpeg, audio/mp4, etc.
+app.llm.models.whisper.type=STT
+app.llm.models.whisper.provider=GEMINI
+app.llm.models.whisper.base-url=https://api.jieai.shop/v1
+app.llm.models.whisper.api-key=${WHISPER_API_KEY:your-gemini-api-key-here}
+app.llm.models.whisper.model-name=gemini-3-flash-preview
+app.llm.models.whisper.timeout-seconds=60
+
+# Option 2: Qwen ASR (DashScope)
+# Using Alibaba Cloud DashScope OpenAI-compatible API
+# app.llm.models.whisper.type=STT
+# app.llm.models.whisper.provider=OPENAI
+# app.llm.models.whisper.base-url=https://dashscope.aliyuncs.com/compatible-mode/v1
+# app.llm.models.whisper.api-key=${WHISPER_API_KEY:your-dashscope-api-key-here}
+# app.llm.models.whisper.model-name=qwen3-asr-flash
+# app.llm.models.whisper.timeout-seconds=60
+
+# ====================================
+# Voice: TTS (Text-to-Speech) - Qwen TTS
+# ====================================
+# Using Alibaba Cloud DashScope OpenAI-compatible API
+app.llm.models.tts.type=TTS
+app.llm.models.tts.provider=OPENAI
+app.llm.models.tts.base-url=https://dashscope.aliyuncs.com/compatible-mode/v1
+app.llm.models.tts.api-key=${TTS_API_KEY:your-dashscope-api-key-here}
+app.llm.models.tts.model-name=qwen3-tts-flash
+app.llm.models.tts.voice=Cherry
+app.llm.models.tts.format=mp3
+app.llm.models.tts.timeout-seconds=60
+
+
+# ====================================
+# Agent Configuration
+# ====================================
+# Model alias used by the Agent (corresponds to the key in app.llm.models.*)
+agent.model.alias=modela
+# Retry configuration
+agent.retry.max=3
+agent.retry.delay.ms=2000
+agent.max.tool.iterations=30
+
+# Planner and Executor can use different models (leave empty to use agent.model.alias)
+# planner.model.alias=modela
+# executor.model.alias=executor
+
+# [Critical] Wait time (in milliseconds) after tool execution for UI response
+# This time must be long enough to allow screen changes to complete before taking screenshots
+# Recommended at least 1000ms to wait for animations and network requests to complete
+agent.tool.wait.ms=1000
+
+# Reflection loop configuration
+reflection.max.iterations=5
+reflection.delay.ms=1000
+
+# ====================================
+# Micro-Executor Configuration
+# ====================================
+# Maximum number of corrections per step
+executor.max.corrections=5
+# Single action timeout (in seconds)
+executor.action.timeout.seconds=30
+# [Critical] Wait time (in milliseconds) after tool execution for UI response
+# Reflection phase needs to capture the "post-action" screen, must wait for animations/network to complete
+# Recommended at least 1000ms, complex pages may require longer
+executor.tool.wait.ms=1000
+
+# ====================================
+# Screenshot Configuration  
+# ====================================
+# Screenshot compression width (reducing can decrease token consumption)
+screenshot.target.width=1280
+# Screenshot quality (0.0-1.0)
+screenshot.quality=1.0
+
+# ====================================
+# Logging
+# ====================================
+logging.level.com.lavis=INFO
+logging.level.dev.langchain4j=WARN
+logging.pattern.console=%d{HH:mm:ss} %clr(%-5level) %cyan(%logger{20}) - %msg%n
+
+# ====================================
+# JavaFX
+# ====================================
+spring.main.allow-bean-definition-overriding=true
+
+# ====================================
+# Gemini Computer Use Configuration
+# (https://ai.google.dev/gemini-api/docs/computer-use)
+# ====================================
+# Computer Use dedicated model
+gemini.computer.use.model=gemini-2.5-computer-use-preview-10-2025
+# Maximum iteration count
+gemini.computer.use.max.iterations=30
+# Keep the last N rounds of screenshots (reduce token consumption)
+gemini.computer.use.max.screenshots=3
+# Default browser
+computer.use.default.browser=Google Chrome
+# Delay after action (in milliseconds)
+computer.use.action.delay.ms=300

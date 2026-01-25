@@ -1,0 +1,350 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* 调试：给 app 添加红色边框 */
+.app {
+  width: 100%;
+  height: 100%;
+  overflow: visible; /* 改为 visible 以便调试 */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  /* 不要在这里设置 drag，让子元素自己控制 */
+  -webkit-app-region: no-drag;
+  background: transparent;
+  /* 调试边框 */
+  /* border: 2px solid red; */
+}
+
+.app--web {
+  background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%);
+}
+
+/* Web 模式下的噪点纹理 */
+.app--web::before {
+  /* Noise texture overlay for film effect */
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+
+/* Electron 模式下不需要噪点纹理 */
+.app--electron::before {
+  display: none;
+}
+
+/* Start overlay */
+.start-overlay {
+  width: 100vw;
+  height: 100vh;
+  min-height: 500px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%);
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+  overflow-y: auto;
+  padding: 40px 20px;
+  -webkit-app-region: no-drag;
+}
+
+.start-overlay__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  text-align: center;
+  color: white;
+  animation: fadeIn 0.6s ease-out;
+  max-width: 480px;
+  width: 100%;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.start-overlay__capsule {
+  position: relative;
+  margin-bottom: 16px;
+  z-index: 1;
+}
+
+/* 启动页的 Capsule 样式覆盖 - 收缩 glow 范围 */
+.start-overlay__capsule .capsule {
+  position: relative;
+  top: auto;
+  left: auto;
+  transform: none;
+}
+
+.start-overlay__capsule .capsule__glow {
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+}
+
+.start-overlay h1 {
+  font-size: 48px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -1px;
+}
+
+.start-overlay__subtitle {
+  font-size: 18px;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0;
+}
+
+/* 麦克风按钮 - 方案 A */
+.start-overlay__mic-button {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ff4d4f 0%, #ff6b6b 50%, #ff8787 100%);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  box-shadow: 
+    0 4px 24px rgba(255, 77, 79, 0.4),
+    0 8px 48px rgba(255, 77, 79, 0.2);
+  margin-top: 24px;
+  z-index: 2;
+}
+
+.start-overlay__mic-button::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  right: -6px;
+  bottom: -6px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 77, 79, 0.4);
+  animation: mic-pulse-ring 2s ease-out infinite;
+}
+
+.start-overlay__mic-button::after {
+  content: '';
+  position: absolute;
+  top: -12px;
+  left: -12px;
+  right: -12px;
+  bottom: -12px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 77, 79, 0.2);
+  animation: mic-pulse-ring 2s ease-out infinite 0.5s;
+}
+
+.start-overlay__mic-button:hover {
+  transform: scale(1.1);
+  box-shadow: 
+    0 6px 32px rgba(255, 77, 79, 0.5),
+    0 12px 64px rgba(255, 77, 79, 0.3);
+}
+
+.start-overlay__mic-button:active {
+  transform: scale(0.95);
+}
+
+.start-overlay__mic-button:disabled {
+  background: linear-gradient(135deg, #555 0%, #666 100%);
+  box-shadow: 0 4px 16px rgba(100, 100, 100, 0.3);
+  cursor: not-allowed;
+}
+
+.start-overlay__mic-button:disabled::before,
+.start-overlay__mic-button:disabled::after {
+  animation: none;
+  border-color: rgba(100, 100, 100, 0.3);
+}
+
+/* 麦克风图标 SVG */
+.start-overlay__mic-icon {
+  width: 36px;
+  height: 36px;
+  fill: white;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
+
+/* 麦克风脉冲动画 */
+@keyframes mic-pulse-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+/* 麦克风按钮下方的提示文字 */
+.start-overlay__mic-hint {
+  font-size: 15px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0;
+}
+
+.start-overlay__hint {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0;
+}
+
+/* 旧按钮样式保留用于降级场景 */
+.start-overlay__button {
+  background: linear-gradient(135deg, #646cff 0%, #535bf2 100%);
+  color: white;
+  border: none;
+  padding: 16px 48px;
+  font-size: 18px;
+  font-weight: 500;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 20px rgba(100, 108, 255, 0.3);
+}
+
+.start-overlay__button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(100, 108, 255, 0.4);
+}
+
+.start-overlay__button:active {
+  transform: translateY(0);
+}
+
+/* Warning styles for missing configuration */
+.start-overlay__warning {
+  background: rgba(255, 152, 0, 0.15);
+  border: 1px solid rgba(255, 152, 0, 0.4);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-top: 24px;
+  text-align: left;
+  max-width: 400px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.start-overlay__warning > p:first-child {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  color: #ff9800;
+}
+
+.start-overlay__warning-detail {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.8);
+  margin: 8px 0;
+  line-height: 1.5;
+}
+
+.start-overlay__warning code {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 13px;
+}
+
+.start-overlay__code {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 13px;
+  color: #90caf9;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.start-overlay__warning a {
+  color: #90caf9;
+  text-decoration: underline;
+}
+
+.start-overlay__warning a:hover {
+  color: #64b5f6;
+}
+
+.start-overlay__button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.start-overlay__button:disabled:hover {
+  transform: none;
+  box-shadow: 0 4px 20px rgba(100, 108, 255, 0.3);
+}
+
+/* Stage container for capsule/chat transition */
+.stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 1;
+  /* 不使用系统拖拽 */
+  -webkit-app-region: no-drag;
+  width: 100%;
+  height: 100%;
+}
+
+.stage--capsule {
+  /* 胶囊模式：全屏容器，胶囊居中 */
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: visible; /* 允许烟雾和波纹效果超出容器 */
+}
+
+.stage--chat {
+  /* 聊天模式：不允许拖拽，限制最大尺寸 */
+  -webkit-app-region: no-drag;
+  width: 100%;
+  height: 100%;
+  max-width: 960px;
+  max-height: 720px;
+}
+
+body {
+  background: transparent;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}

@@ -1,0 +1,232 @@
+.task-panel {
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 16px;
+  border: 1px solid rgba(0, 243, 255, 0.1);
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.3);
+}
+
+.task-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  border-bottom: 1px solid rgba(0, 243, 255, 0.1);
+  padding-bottom: 8px;
+}
+
+.task-panel__header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #00f3ff;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-family: 'Courier New', Courier, monospace;
+  text-shadow: 0 0 5px rgba(0, 243, 255, 0.3);
+}
+
+.task-panel__stop {
+  background: rgba(255, 51, 51, 0.1);
+  border: 1px solid rgba(255, 51, 51, 0.3);
+  border-radius: 4px;
+  padding: 4px 10px;
+  color: #ff3333;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-transform: uppercase;
+}
+
+.task-panel__stop:hover:not(:disabled) {
+  background: rgba(255, 51, 51, 0.2);
+  border-color: #ff3333;
+  box-shadow: 0 0 10px rgba(255, 51, 51, 0.2);
+}
+
+.task-panel__stop:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  border-color: transparent;
+}
+
+.task-panel__stop--active {
+  background: rgba(255, 51, 51, 0.2);
+  color: #ff3333;
+  border-color: #ff3333;
+  animation: pulse-red 2s ease-in-out infinite;
+}
+
+@keyframes pulse-red {
+  0%, 100% { box-shadow: 0 0 5px rgba(255, 51, 51, 0.2); }
+  50% { box-shadow: 0 0 15px rgba(255, 51, 51, 0.5); }
+}
+
+.task-panel__status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 0;
+  color: rgba(0, 243, 255, 0.6);
+  font-size: 13px;
+  font-family: monospace;
+}
+
+.task-panel__spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(0, 243, 255, 0.2);
+  border-top-color: #00f3ff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.task-panel__progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.task-panel__progress-bar {
+  flex: 1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+
+.task-panel__progress-fill {
+  height: 100%;
+  background: #00f3ff;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+  box-shadow: 0 0 10px #00f3ff;
+}
+
+.task-panel__progress-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: #00f3ff;
+  min-width: 40px;
+  text-align: right;
+  font-family: monospace;
+}
+
+.task-panel__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* Scrollbar for steps */
+.task-panel__steps::-webkit-scrollbar {
+  width: 4px;
+}
+.task-panel__steps::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+.task-panel__steps::-webkit-scrollbar-thumb {
+  background: rgba(0, 243, 255, 0.2);
+  border-radius: 2px;
+}
+
+.task-panel__step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
+  border-left: 2px solid transparent;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.task-panel__step--PENDING {
+  opacity: 0.5;
+  border-left-color: rgba(255, 255, 255, 0.2);
+}
+
+.task-panel__step--IN_PROGRESS {
+  background: rgba(0, 243, 255, 0.05);
+  border-left-color: #00f3ff;
+  border-top: 1px solid rgba(0, 243, 255, 0.1);
+  border-bottom: 1px solid rgba(0, 243, 255, 0.1);
+  border-right: 1px solid rgba(0, 243, 255, 0.1);
+}
+
+.task-panel__step--SUCCESS {
+  opacity: 0.8;
+  border-left-color: #00ff9d;
+  background: rgba(0, 255, 157, 0.05);
+}
+
+.task-panel__step--FAILED {
+  border-left-color: #ff3333;
+  background: rgba(255, 51, 51, 0.05);
+}
+
+.task-panel__step-number {
+  font-size: 11px;
+  font-family: monospace;
+  color: rgba(255, 255, 255, 0.4);
+  width: 20px;
+}
+
+.task-panel__step--IN_PROGRESS .task-panel__step-number {
+  color: #00f3ff;
+  font-weight: bold;
+}
+
+.task-panel__step-text {
+  font-size: 12px;
+  color: #e0e0e0;
+  flex: 1;
+  font-family: 'Fira Code', monospace;
+}
+
+.task-panel__step--SUCCESS .task-panel__step-text {
+  color: #00ff9d;
+  text-decoration: none; /* No strikethrough for cleaner look */
+}
+
+.task-panel__step-status-icon {
+  font-size: 12px;
+}
+
+.task-panel__step-pulse {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(0, 243, 255, 0.1), transparent);
+  animation: shimmer 2s infinite;
+  pointer-events: none;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.task-panel__completed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 0;
+  color: #00ff9d;
+  font-size: 13px;
+  font-family: monospace;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}

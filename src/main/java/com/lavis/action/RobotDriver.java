@@ -39,10 +39,10 @@ public class RobotDriver {
 
     // 鼠标移动速度因子 (1.0 = 正常，2.0 = 快速，0.5 = 慢速)
     // 【优化】提高默认速度，减少拖沓感
-    private double mouseSpeedFactor = 3.5;
+    private double mouseSpeedFactor = 5.0;
     
     // 基础步间延迟 (毫秒) - 【优化】大幅减少步间延迟
-    private static final int BASE_STEP_DELAY_MS = 0;
+    private static final int BASE_STEP_DELAY_MS = 1;
     
     // 拖拽操作的额外延迟 - 【优化】减少拖拽延迟
     private static final int DRAG_STEP_DELAY_MS = 1;
@@ -70,21 +70,21 @@ public class RobotDriver {
      * @return 安全的逻辑屏幕坐标
      */
     public Point convertToRobotCoordinates(int x, int y) {
-        return convertToRobotCoordinates(x, y, ScreenCapturer.SafeZoneConfig.DEFAULT);
+        return convertToRobotCoordinates(x, y, ScreenCapturer.SafeZone.DEFAULT);
     }
     
     /**
      * 使用自定义安全配置转换坐标
      */
     public Point convertToRobotCoordinates(int x, int y, 
-                                           ScreenCapturer.SafeZoneConfig safeConfig) {
+                                           ScreenCapturer.SafeZone safeZone) {
         Dimension screenSize = screenCapturer.getScreenSize();
         
         // 安全边界
-        int minX = safeConfig.leftMargin;
-        int maxX = screenSize.width - safeConfig.rightMargin;
-        int minY = safeConfig.topMargin;
-        int maxY = screenSize.height - safeConfig.bottomMargin;
+        int minX = safeZone.left;
+        int maxX = screenSize.width - safeZone.right;
+        int minY = safeZone.top;
+        int maxY = screenSize.height - safeZone.bottom;
         
         // 钳位
         int safeX = Math.max(minX, Math.min(x, maxX));
@@ -104,12 +104,12 @@ public class RobotDriver {
      */
     public boolean isCoordinateSafe(int x, int y) {
         Dimension screenSize = screenCapturer.getScreenSize();
-        ScreenCapturer.SafeZoneConfig config = ScreenCapturer.SafeZoneConfig.DEFAULT;
+        ScreenCapturer.SafeZone zone = ScreenCapturer.SafeZone.DEFAULT;
         
-        return x >= config.leftMargin 
-            && x <= screenSize.width - config.rightMargin
-            && y >= config.topMargin 
-            && y <= screenSize.height - config.bottomMargin;
+        return x >= zone.left 
+            && x <= screenSize.width - zone.right
+            && y >= zone.top 
+            && y <= screenSize.height - zone.bottom;
     }
 
     /**
@@ -133,8 +133,11 @@ public class RobotDriver {
         if (humanLikeMode) {
             // 【增强】拟人化移动 - 使用增强的贝塞尔曲线
             double distance = beforePos.distance(targetPos);
-            int steps = BezierMouseUtils.calculateRecommendedSteps(distance, mouseSpeedFactor);
-            
+            // 如果距离很长，减少步数或延迟，避免移动耗时过长
+            double dynamicSpeedFactor = distance > 500 ? mouseSpeedFactor * 1.5 : mouseSpeedFactor;
+
+            int steps = BezierMouseUtils.calculateRecommendedSteps(distance, dynamicSpeedFactor);
+
             java.util.List<Point> path = BezierMouseUtils.generatePath(
                     beforePos, targetPos, steps,
                     BezierMouseUtils.EasingType.HUMAN_LIKE, true);
@@ -146,13 +149,12 @@ public class RobotDriver {
                 
                 // 【增强】随机延迟，模拟人类速度变化
                 int stepDelay = BezierMouseUtils.generateStepDelay(i, path.size(), BASE_STEP_DELAY_MS);
-                if (stepDelay > 0) {
-                    robot.delay(stepDelay);
-                }
+                robot.delay(Math.max(1, stepDelay));
             }
             
             // 确保最后精准落在目标点
             robot.mouseMove(targetPos.x, targetPos.y);
+            robot.delay(30);
         } else {
             // 机械瞬间移动
             robot.mouseMove(targetPos.x, targetPos.y);
@@ -397,16 +399,6 @@ public class RobotDriver {
         log.info("🎯 {}", result.getMessage());
         return result;
     }
-
-    /**
-     * 设置鼠标移动速度因子
-     * @param factor 速度因子 (1.0 = 正常，2.0 = 快速，0.5 = 慢速)
-     */
-    public void setMouseSpeedFactor(double factor) {
-        this.mouseSpeedFactor = Math.max(0.2, Math.min(factor, 5.0));
-        log.info("🖱️ 鼠标速度因子设置为: {}", this.mouseSpeedFactor);
-    }
-    
     /**
      * 设置是否启用拟人化移动
      */
