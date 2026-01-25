@@ -1,6 +1,11 @@
 ## Lavis Developer Build & Packaging Guide
 
-> This document targets **developers**, describing how to build and debug Lavis locally, and how to package the backend with **GraalVM Native Image** and the frontend with Electron.
+> This document targets **developers**, describing how to build and debug Lavis locally, and how to package the backend with **GraalVM Native Image** (advanced option) and the frontend with Electron.
+>
+> **Important Notes**:
+> - **Default Packaging**: The project uses JAR files for backend packaging by default. See `frontend/PACKAGING.md` for details.
+> - **GraalVM Native Image**: This is an optional advanced option for AOT compilation and stronger code protection.
+> - **Production Recommendation**: For most use cases, the JAR packaging method described in `frontend/PACKAGING.md` is sufficient.
 
 ---
 
@@ -52,7 +57,10 @@ java -jar target/lavis-0.0.1-SNAPSHOT.jar
 
 ---
 
-## 3. Backend Packaging with GraalVM Native Image
+## 3. Backend Packaging with GraalVM Native Image (Advanced Option)
+
+> **Note**: This is an optional advanced option. The project uses JAR files for packaging by default (see `frontend/PACKAGING.md`).  
+> Consider using GraalVM Native Image only if you need AOT compilation, stronger code protection, or specific performance optimizations.
 
 ### 3.1 Concept & Benefits
 
@@ -134,7 +142,22 @@ Artifacts will be located under `frontend/dist-electron/`, for example:
 
 ---
 
-## 5. End-to-End Packaging Flow (Recommended for Production)
+## 5. End-to-End Packaging Flow
+
+### 5.1 Default Method (Recommended): JAR Packaging
+
+The project uses JAR files for backend packaging by default, which is the simplest and most stable approach:
+
+```bash
+cd frontend
+npm run package
+```
+
+For detailed instructions, see `frontend/PACKAGING.md`.
+
+### 5.2 Advanced Method: GraalVM Native Image
+
+If you need to use GraalVM Native Image for backend packaging:
 
 1. Build the backend as a native image executable (e.g. `lavis-backend`) using GraalVM.
 2. Test the binary on macOS to ensure all APIs work correctly.
@@ -143,7 +166,8 @@ Artifacts will be located under `frontend/dist-electron/`, for example:
    - Listen for app exit events and gracefully shut down the backend process.
 4. Run `npm run electron:build` to package the app into `.dmg` / `.app` for distribution.
 
-> The current repository may not fully automate “backend embedded in Electron”; this is the recommended architecture direction.
+> **Note**: The current repository may not fully automate "backend embedded in Electron with Native Image"; this is the recommended architecture direction.  
+> To use Native Image, you'll need to manually modify the Electron main process code to support launching the binary instead of the JAR.
 
 ---
 

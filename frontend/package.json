@@ -11,12 +11,9 @@
     "preview": "vite preview",
     "electron:dev": "node scripts/electron-dev.js",
     "electron:dev:attach": "wait-on http://localhost:5173 || wait-on http://localhost:5174 || wait-on http://localhost:5175 && electron .",
-    "electron:build": "npm run build && npm run build:electron && electron-builder",
-    "package": "./scripts/build.sh",
-    "package:mac": "./scripts/build.sh mac",
-    "package:win": "./scripts/build.sh win",
-    "package:linux": "./scripts/build.sh linux",
-    "package:all": "./scripts/build.sh all"
+    "package": "node scripts/package.js",
+    "package:mac": "electron-builder --config electron-builder.config.js --mac",
+    "package:all": "electron-builder --config electron-builder.config.js --mac --win --linux"
   },
   "dependencies": {
     "@picovoice/porcupine-web": "^4.0.0",
@@ -42,7 +39,7 @@
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
     "electron": "^40.0.0",
-    "electron-builder": "^26.4.0",
+    "electron-builder": "^25.1.8",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
@@ -52,26 +49,5 @@
     "typescript-eslint": "^8.46.4",
     "vite": "^7.2.4",
     "wait-on": "^8.0.5"
-  },
-  "build": {
-    "appId": "com.lavis.ai",
-    "productName": "Lavis AI",
-    "directories": {
-      "output": "dist-electron"
-    },
-    "files": [
-      "dist/**/*",
-      "electron/**/*"
-    ],
-    "mac": {
-      "category": "public.app-category.productivity",
-      "target": "dmg"
-    },
-    "win": {
-      "target": "nsis"
-    },
-    "linux": {
-      "target": "AppImage"
-    }
   }
 }

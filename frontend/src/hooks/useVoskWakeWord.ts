@@ -430,6 +430,48 @@ export function useVoskWakeWord({
   }, [onWake]);
 
   /**
+   * 解析资源路径，兼容 Electron 和 Web 环境
+   * 处理打包后的路径问题
+   */
+  const resolveModelPath = useCallback((publicPath: string): string => {
+    // 已经是完整 URL，直接返回
+    if (
+      publicPath.startsWith('http://') ||
+      publicPath.startsWith('https://') ||
+      publicPath.startsWith('file://') ||
+      publicPath.startsWith('data:')
+    ) {
+      return publicPath;
+    }
+
+    // Electron file 协议处理 - 需要指向正确的资源目录
+    if (window.location.protocol === 'file:') {
+      const currentUrl = window.location.href;
+      const asarMatch = currentUrl.match(/^(file:\/\/.*?)(\/[^/]+\.asar)(\/.*)/);
+
+      if (asarMatch) {
+        // 在 asar 包内，模型文件被解压到 app.asar.unpacked/dist/models/
+        // 因为 vosk-browser 需要直接访问文件系统来解压 .tar.gz
+        const [, prefix, asarPath] = asarMatch;
+        const normalized = publicPath.replace(/^\//, '');
+        // 使用 .unpacked 目录，因为模型文件在 asarUnpack 中
+        const resolved = `${prefix}${asarPath}.unpacked/dist/${normalized}`;
+        console.log(`[Vosk] Resolved asar path: ${resolved}`);
+        return resolved;
+      }
+
+      // 非 asar 环境（开发模式），使用相对路径
+      const normalized = publicPath.replace(/^\//, '');
+      const resolved = new URL(normalized, window.location.href).toString();
+      console.log(`[Vosk] Resolved dev path: ${resolved}`);
+      return resolved;
+    }
+
+    // Web 环境：直接使用 publicPath
+    return publicPath;
+  }, []);
+
+  /**
    * 加载 Vosk 模块和模型
    */
   const loadVosk = useCallback(async () => {
@@ -444,7 +486,10 @@ export function useVoskWakeWord({
         throw new Error('Vosk module not loaded');
       }
       
-      const model = await voskRef.current.createModel(modelPath);
+      // 解析模型路径（处理打包后的路径问题）
+      const resolvedModelPath = resolveModelPath(modelPath);
+      console.log(`[Vosk] Loading model from: ${modelPath} -> ${resolvedModelPath}`);
+      const model = await voskRef.current.createModel(resolvedModelPath);
       modelRef.current = model;
 
       // 设置日志级别（0=INFO, 1=WARN, 2=ERROR）
@@ -454,6 +499,7 @@ export function useVoskWakeWord({
         // Ignore log level setting errors
       }
 
+      console.log('[Vosk] ✅ Model loaded successfully');
       setIsModelLoaded(true);
       return model;
     } catch (err) {
@@ -473,7 +519,7 @@ export function useVoskWakeWord({
       setError(errorMessage);
       throw err;
     }
-  }, [modelPath]);
+  }, [modelPath, resolveModelPath]);
 
   /**
    * 初始化语音识别
@@ -485,6 +531,7 @@ export function useVoskWakeWord({
     }
 
     try {
+      console.log('[Vosk] 🎤 Requesting microphone access...');
       // 获取麦克风权限
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -496,6 +543,7 @@ export function useVoskWakeWord({
         }
       });
       mediaStreamRef.current = stream;
+      console.log('[Vosk] ✅ Microphone access granted');
 
       // 创建 AudioContext
       const AudioContextClass = window.AudioContext ||
@@ -505,10 +553,12 @@ export function useVoskWakeWord({
 
       // 获取实际采样率（可能与请求的不同）
       const sampleRate = audioContext.sampleRate;
+      console.log(`[Vosk] AudioContext created with sample rate: ${sampleRate} Hz`);
 
       // 创建识别器 - 不使用 Grammar 限制，让模型自由识别
       // 原因：Grammar 限制会导致模型只能识别 Grammar 中的词，如果模型不认识唤醒词中的某个词，
       // 就会返回 [unk]，导致识别失败。改为自由识别后再匹配唤醒词，准确度更高。
+      console.log(`[Vosk] Creating recognizer for wake word: "${wakeWord}"`);
       const recognizer = new modelRef.current.KaldiRecognizer(sampleRate);
       recognizerRef.current = recognizer;
 
@@ -538,6 +588,9 @@ export function useVoskWakeWord({
         }
 
         if (text) {
+          // 输出识别到的文本（用于调试）
+          console.log(`[Vosk] 🎤 Recognized: "${text}"`);
+          
           // 检查是否匹配唤醒词
           // 支持大小写不敏感和空格变化（例如："hi lavis", "Hi Lavis", "hi lavis" 等）
           const normalizeText = (str: string) => 
@@ -559,6 +612,7 @@ export function useVoskWakeWord({
             
           // 音近词匹配：处理 Vosk 对不常见词的误识别（如 "lavis" -> "lay reese"）
           let isPhoneticMatch = false;
+          let matchType = '';
               
           if (!isExactMatch && !isPartialMatch && !startsWithWakeWord) {
             // 策略1: 检查整体音近匹配（映射表中的完整短语）
@@ -568,6 +622,7 @@ export function useVoskWakeWord({
             // 检查识别结果是否完全匹配映射表中的某个短语
             if (similarPhrases.includes(normalizedText)) {
               isPhoneticMatch = true;
+              matchType = 'phonetic-mapping';
             }
             // 检查识别结果是否包含映射表中的短语，或映射表中的短语包含识别结果
             else if (similarPhrases.some(phrase => {
@@ -577,10 +632,14 @@ export function useVoskWakeWord({
                      (soundex(normalizedText.replace(/\s+/g, '')) === soundex(phrase.replace(/\s+/g, '')));
             })) {
               isPhoneticMatch = true;
+              matchType = 'phonetic-mapping-partial';
             }
             // 策略2: 词级匹配（改进的算法，支持 Soundex 和更宽松的匹配）
             else {
               isPhoneticMatch = wordLevelMatch(normalizedText, normalizedWakeWord);
+              if (isPhoneticMatch) {
+                matchType = 'word-level';
+              }
             }
             
             // 策略3: 如果以上都失败，尝试 Soundex 整体匹配
@@ -589,15 +648,22 @@ export function useVoskWakeWord({
               const wakeSoundex = soundex(normalizedWakeWord.replace(/\s+/g, ''));
               if (textSoundex && wakeSoundex && textSoundex === wakeSoundex) {
                 isPhoneticMatch = true;
+                matchType = 'soundex';
               }
             }
+          } else {
+            if (isExactMatch) matchType = 'exact';
+            else if (isPartialMatch) matchType = 'partial';
+            else if (startsWithWakeWord) matchType = 'starts-with';
           }
           
           // 综合判断
           if (isExactMatch || isPartialMatch || startsWithWakeWord || isPhoneticMatch) {
+            console.log(`[Vosk] ✅ Wake word matched! (${matchType}) "${text}" -> "${wakeWord}"`);
             onWakeRef.current?.();
           } else {
-            // 未匹配，不执行任何操作
+            // 未匹配，输出调试信息
+            console.log(`[Vosk] ❌ No match: "${text}" vs "${wakeWord}"`);
           }
         }
       });
@@ -640,6 +706,7 @@ export function useVoskWakeWord({
       processor.connect(gainNode);
       gainNode.connect(audioContext.destination);
 
+      console.log('[Vosk] ✅ Recognizer initialized and listening');
       setIsListening(true);
       setError(null);
 
@@ -666,6 +733,8 @@ export function useVoskWakeWord({
    * 停止监听
    */
   const stopListening = useCallback(() => {
+    console.log('[Vosk] 🛑 Stopping wake word detection...');
+    
     // 断开音频处理
     if (processorRef.current) {
       processorRef.current.disconnect();
@@ -694,6 +763,7 @@ export function useVoskWakeWord({
       recognizerRef.current = null;
     }
 
+    console.log('[Vosk] ✅ Wake word detection stopped');
     setIsListening(false);
   }, []);
 
@@ -702,10 +772,13 @@ export function useVoskWakeWord({
    */
   const startListening = useCallback(async () => {
     if (isListening) {
+      console.log('[Vosk] Already listening, skipping start');
       return;
     }
 
     try {
+      console.log(`[Vosk] 🚀 Starting wake word detection for: "${wakeWord}"`);
+      
       // 如果模型未加载，先加载
       if (!modelRef.current) {
         await loadVosk();
@@ -719,7 +792,7 @@ export function useVoskWakeWord({
       setError(`启动监听失败: ${errorMsg}`);
       setIsListening(false);
     }
-  }, [isListening, loadVosk, initRecognizer]);
+  }, [isListening, loadVosk, initRecognizer, wakeWord]);
 
   // 根据 enabled 状态自动启动/停止
   useEffect(() => {

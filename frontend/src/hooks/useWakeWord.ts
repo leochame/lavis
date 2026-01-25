@@ -213,6 +213,8 @@ export function useWakeWord({
         }];
       }
 
+      console.log(`[Porcupine] Wake word configured: ${wakeWordLabel}`);
+
       // 检测回调
       const detectionCallback = () => {
         onWakeRef.current?.();

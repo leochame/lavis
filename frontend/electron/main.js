@@ -39,18 +39,18 @@ const http = __importStar(require("http"));
 const backend_manager_1 = require("./backend-manager");
 let mainWindow = null;
 let tray = null;
-// Allow multiple hints for "dev mode" so that Electron shell loads the Vite dev server.
-// - NODE_ENV=development (preferred)
-// - ELECTRON_DEV=1 (fallback we set in electron-dev.js)
-// - VITE_DEV_SERVER_URL (common in other toolchains)
-const isDev = process.env.NODE_ENV === 'development' ||
+// 使用 app.isPackaged 作为主要判断依据，这是最可靠的方式
+// 环境变量作为开发模式的辅助判断
+const isDev = !electron_1.app.isPackaged ||
+    process.env.NODE_ENV === 'development' ||
     process.env.ELECTRON_DEV === '1' ||
     !!process.env.VITE_DEV_SERVER_URL;
 const isMac = process.platform === 'darwin';
 // ENV: set ELECTRON_OPAQUE=1 to force opaque framed window for debugging on devices/GPUs
 const preferTransparent = isMac && process.env.ELECTRON_OPAQUE !== '1';
 // ENV: ELECTRON_DEVTOOLS=1 to allow toggling DevTools (default off to avoid "像浏览器")
-const allowDevTools = process.env.ELECTRON_DEVTOOLS === '1';
+// 开发模式下默认允许 DevTools
+const allowDevTools = isDev || process.env.ELECTRON_DEVTOOLS === '1';
 // 统一窗口尺寸定义
 // - Idle: 隐藏或极小（80x80，与 capsule 相同）
 // - Listening: Mini 模式 (200x60px) - 语音唤醒/监听中
@@ -169,18 +169,22 @@ function createWindow() {
     else {
         mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
     }
-    // 仅在显式允许时，提供快捷键手动打开/关闭 DevTools，避免默认弹出
-    if (allowDevTools) {
-        mainWindow.webContents.on('before-input-event', (event, input) => {
-            const isToggle = input.key?.toLowerCase() === 'i' &&
-                input.control &&
-                (input.meta || input.alt);
-            if (isToggle) {
-                mainWindow?.webContents.toggleDevTools();
-                event.preventDefault();
-            }
-        });
+    // 如果设置了环境变量，自动打开开发者工具
+    if (process.env.ELECTRON_DEVTOOLS === '1' || process.env.OPEN_DEVTOOLS === '1') {
+        mainWindow.webContents.openDevTools();
+        console.log('🔧 DevTools opened via environment variable');
     }
+    // 提供快捷键手动打开/关闭 DevTools
+    // 支持 Cmd+Alt+I (macOS) 或 Ctrl+Alt+I (Windows/Linux)
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+        const isToggle = input.key?.toLowerCase() === 'i' &&
+            input.control &&
+            (input.meta || input.alt);
+        if (isToggle && allowDevTools) {
+            mainWindow?.webContents.toggleDevTools();
+            event.preventDefault();
+        }
+    });
     mainWindow.on('closed', () => {
         mainWindow = null;
         stopAlwaysOnTopEnforcer();
@@ -449,6 +453,15 @@ electron_1.ipcMain.on('show-context-menu', () => {
         },
         { type: 'separator' },
         {
+            label: '开发者工具',
+            click: () => {
+                if (mainWindow) {
+                    mainWindow.webContents.openDevTools();
+                }
+            },
+        },
+        { type: 'separator' },
+        {
             label: '设置',
             click: () => {
                 resizeWindowByMode('chat');
@@ -700,17 +713,23 @@ electron_1.app.whenReady().then(async () => {
     });
     // 启动后端服务
     console.log('🚀 Starting backend service...');
-    const backendStarted = await (0, backend_manager_1.startBackend)();
-    if (!backendStarted) {
+    const backendResult = await (0, backend_manager_1.startBackend)();
+    if (!backendResult.success) {
         console.error('❌ Failed to start backend service');
+        if (backendResult.error) {
+            console.error('Error details:', backendResult.error);
+        }
         // 在开发模式下显示警告，但继续启动
         if (!electron_1.app.isPackaged) {
             console.warn('⚠️ Development mode: Please ensure the backend JAR is built (mvn package)');
             console.warn('⚠️ Or start the backend manually: mvn spring-boot:run');
         }
         else {
-            // 生产模式下显示错误对话框
-            electron_1.dialog.showErrorBox('Backend Error', 'Failed to start the backend service. Please check the logs or reinstall the application.');
+            // 生产模式下显示错误对话框，包含详细错误信息
+            const errorMessage = backendResult.error
+                ? `Failed to start the backend service.\n\n${backendResult.error}\n\nPlease check the console logs or reinstall the application.`
+                : 'Failed to start the backend service. Please check the logs or reinstall the application.';
+            electron_1.dialog.showErrorBox('Backend Error', errorMessage);
         }
     }
     else {
@@ -731,6 +750,12 @@ electron_1.app.whenReady().then(async () => {
         else {
             mainWindow.show();
             mainWindow.focus();
+        }
+    });
+    // Register global hotkey for DevTools (Cmd+Shift+I or Ctrl+Shift+I)
+    electron_1.globalShortcut.register('CommandOrControl+Shift+I', () => {
+        if (mainWindow) {
+            mainWindow.webContents.toggleDevTools();
         }
     });
     createWindow();

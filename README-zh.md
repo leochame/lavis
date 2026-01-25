@@ -88,7 +88,7 @@ open /Applications/Lavis\ AI.app/Contents/Resources/backend/application.properti
 
 > **后端自动启动**: Java 后端已内嵌在应用中，会在应用启动时自动运行。如果后端启动失败，请检查日志或重新安装应用。
 
-> **获取打包版本**: 如果你需要打包应用，请参考 `docs/Developer-Build-and-Packaging.md` 中的打包指南。打包脚本会自动下载 JRE、编译后端、构建前端并生成 DMG 安装包。
+> **获取打包版本**: 如果你需要打包应用，请参考 `frontend/PACKAGING.md` 中的打包指南。打包脚本会自动下载 JRE、编译后端、构建前端并生成 DMG 安装包。
 
 ---
 
@@ -127,7 +127,7 @@ cp src/main/resources/application.properties.example src/main/resources/applicat
 ./mvnw spring-boot:run
 ```
 
-> 想要使用 GraalVM Native Image 进行 AOT 编译和更强的防逆向能力，请参考 `docs/Developer-Build-and-Packaging.md`。
+> 想要使用 GraalVM Native Image 进行 AOT 编译和更强的防逆向能力，请参考 `docs/Developer-Build-and-Packaging-zh.md`（中文）或 `docs/Developer-Build-and-Packaging-en.md`（English）。
 
 #### 3. 启动前端
 
@@ -164,7 +164,8 @@ lavis/
 ├── docs/                           # 文档
 │   ├── User-Guide-zh.md            # 用户使用说明（中文）
 │   ├── User-Guide-en.md            # 用户使用说明（英文）
-│   ├── Developer-Build-and-Packaging.md  # 构建与打包指南
+│   ├── Developer-Build-and-Packaging-zh.md  # 构建与打包指南（中文）
+│   ├── Developer-Build-and-Packaging-en.md  # 构建与打包指南（英文）
 │   └── ARCHITECTURE.md (planned)   # 可以迁移现有架构文档
 ├── ARCHITECTURE.md                 # 详细架构文档
 ├── Dev_Plan.md                     # 开发计划

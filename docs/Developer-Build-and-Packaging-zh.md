@@ -1,6 +1,11 @@
 ## Lavis 开发者构建与打包指南
 
-> 本文面向 **开发者**，说明如何在本地构建、调试 Lavis，以及如何使用 **GraalVM Native Image** 打包后端、Electron 打包前端。
+> 本文面向 **开发者**，说明如何在本地构建、调试 Lavis，以及如何使用 **GraalVM Native Image**（高级选项）打包后端、Electron 打包前端。
+>
+> **重要提示**：
+> - **默认打包方式**：项目默认使用 JAR 文件打包后端，详见 `frontend/PACKAGING.md`
+> - **GraalVM Native Image**：本节介绍的是可选的高级选项，用于 AOT 编译和更强的代码保护
+> - **生产环境推荐**：大多数情况下，使用 `frontend/PACKAGING.md` 中的 JAR 打包方式即可满足需求
 
 ---
 
@@ -54,7 +59,10 @@ java -jar target/lavis-0.0.1-SNAPSHOT.jar
 
 ---
 
-## 3. 使用 GraalVM Native Image 打包后端
+## 3. 使用 GraalVM Native Image 打包后端（高级选项）
+
+> **注意**：这是可选的高级选项。项目默认使用 JAR 文件打包（见 `frontend/PACKAGING.md`）。  
+> 仅在需要 AOT 编译、更强的代码保护或特定性能优化时，才考虑使用 GraalVM Native Image。
 
 ### 3.1 概念与优势
 
@@ -139,7 +147,22 @@ npm run electron:build
 
 ---
 
-## 5. 端到端打包流程（生产环境推荐）
+## 5. 端到端打包流程
+
+### 5.1 默认方式（推荐）：使用 JAR 打包
+
+项目默认使用 JAR 文件打包后端，这是最简单、最稳定的方式：
+
+```bash
+cd frontend
+npm run package
+```
+
+详细说明请参考 `frontend/PACKAGING.md`。
+
+### 5.2 高级方式：使用 GraalVM Native Image
+
+如果需要使用 GraalVM Native Image 打包后端：
 
 1. 使用 GraalVM 将后端打包为 Native Image，可执行文件如 `lavis-backend`。
 2. 在 macOS 上测试该二进制，确保所有 API 正常工作。
@@ -148,7 +171,8 @@ npm run electron:build
    - 监听应用退出事件，优雅关闭后端进程。
 4. 使用 `npm run electron:build` 打包为 `.dmg` 或 `.app` 进行分发。
 
-> 当前仓库中尚未完全自动化「Electron 内嵌后端进程」的逻辑，上述为推荐架构方向。
+> **注意**：当前仓库中尚未完全自动化「Electron 内嵌 Native Image 后端进程」的逻辑，上述为推荐架构方向。  
+> 如需使用 Native Image，需要手动修改 Electron 主进程代码以支持启动二进制文件而非 JAR。
 
 ---
 

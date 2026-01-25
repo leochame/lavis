@@ -9,7 +9,9 @@ interface ElectronAPI {
     removeAllListeners: (channel: string) => void;
   };
   platform?: {
-    resizeWindow: (mode: 'capsule' | 'chat') => Promise<void>;
+    resizeWindow: (mode: 'capsule' | 'chat' | 'idle' | 'listening' | 'expanded') => Promise<void>;
+    resizeWindowMini?: () => Promise<void>;
+    resizeWindowFull?: () => Promise<void>;
     minimizeWindow: () => Promise<void>;
     hideWindow: () => Promise<void>;
     setAlwaysOnTop: (flag: boolean) => Promise<void>;
@@ -19,6 +21,11 @@ interface ElectronAPI {
     openExternalUrl: (url: string) => void;
     checkMicrophonePermission: () => Promise<boolean>;
     registerGlobalShortcut?: (accelerator: string, action: 'toggle-window') => Promise<boolean>;
+    dragStart?: (mouseX: number, mouseY: number) => Promise<void>;
+    dragMove?: (mouseX: number, mouseY: number) => Promise<void>;
+    dragEnd?: () => Promise<void>;
+    getWindowPosition?: () => Promise<{ x: number; y: number }>;
+    setWindowPosition?: (x: number, y: number, animate?: boolean) => Promise<void>;
   };
   backend?: {
     request: (method: 'GET' | 'POST' | 'PUT' | 'DELETE', endpoint: string, data?: unknown, port?: number) => Promise<{ status: number; data: unknown }>;

@@ -27,6 +27,9 @@ public class LavisApplication {
 
     public static void main(String[] args) {
         // FIX: Explicitly disable headless mode so java.awt.Robot can work
+        // Hide Java icon from macOS Dock while keeping AWT functional
+        System.setProperty("apple.awt.UIElement", "true");
+
         new SpringApplicationBuilder(LavisApplication.class)
                 .headless(false)
                 .run(args);

@@ -1,4 +1,4 @@
-export type WindowMode = 'capsule' | 'chat';
+export type WindowMode = 'capsule' | 'chat' | 'idle' | 'listening' | 'expanded';
 
 export type SnapPosition = 'left' | 'right' | 'top' | 'bottom' | null;
 

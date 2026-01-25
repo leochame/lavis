@@ -34,3 +34,5 @@ build/
 
 ### Application Config ###
 src/main/resources/application.properties
+/frontend/jre/
+/frontend/dist-electron/

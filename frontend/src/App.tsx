@@ -40,7 +40,7 @@ export default function App() {
   const globalVoice = useGlobalVoice(isStarted);
 
   // 初始化 WebSocket，传入 TTS 回调
-  const { sessionId: wsSessionId, connected: wsConnected } = useWebSocket(wsUrl, globalVoice.ttsCallbacks);
+  useWebSocket(wsUrl, globalVoice.ttsCallbacks);
 
 
   // Start heartbeat on mount

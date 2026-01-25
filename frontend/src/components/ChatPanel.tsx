@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
+import type { CSSProperties, ForwardRefExoticComponent, ReactNode, RefAttributes } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 // 使用动态导入以兼容 CommonJS 模块
-import type { FixedSizeList as FixedSizeListType } from 'react-window';
 import { agentApi } from '../api/agentApi';
 import { BrainPanel } from './BrainPanel';
 import { VoicePanel } from './VoicePanel';
@@ -19,6 +19,23 @@ interface Message {
   content: string;
   timestamp: number;
 }
+
+type FixedSizeListHandle = {
+  scrollToItem: (index: number, align?: 'auto' | 'smart' | 'start' | 'center' | 'end') => void;
+};
+
+type FixedSizeListProps = {
+  height: number;
+  width: number | string;
+  itemCount: number;
+  itemSize: number;
+  style?: CSSProperties;
+  children: (props: { index: number; style: CSSProperties }) => ReactNode;
+};
+
+type FixedSizeListComponent = ForwardRefExoticComponent<
+  FixedSizeListProps & RefAttributes<FixedSizeListHandle>
+>;
 
 interface ChatPanelProps {
   onClose: () => void;
@@ -36,8 +53,8 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
   const [isCapturing, setIsCapturing] = useState(false);
   const [showVoicePanel, setShowVoicePanel] = useState(false);
   const [showBrain, setShowBrain] = useState(true); // 默认显示思维透视
-  const [FixedSizeList, setFixedSizeList] = useState<typeof FixedSizeListType | null>(null);
-  const listRef = useRef<FixedSizeListType | null>(null);
+  const [FixedSizeList, setFixedSizeList] = useState<FixedSizeListComponent | null>(null);
+  const listRef = useRef<FixedSizeListHandle | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   
   // 【内存安全】获取窗口状态，在 Listening/Idle 模式下停止渲染复杂组件
@@ -48,7 +65,15 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
   useEffect(() => {
     import('react-window').then((module) => {
       // react-window 是 CommonJS 模块，可能需要从 default 或命名导出中获取
-      const ListComponent = (module as any).FixedSizeList || (module as any).default?.FixedSizeList || module.default;
+      const typedModule = module as unknown as {
+        FixedSizeList?: FixedSizeListComponent;
+        default?: FixedSizeListComponent | { FixedSizeList?: FixedSizeListComponent };
+      };
+      const ListComponent =
+        typedModule.FixedSizeList ||
+        (typedModule.default && typeof typedModule.default === 'object'
+          ? (typedModule.default as { FixedSizeList?: FixedSizeListComponent }).FixedSizeList
+          : typedModule.default);
       if (ListComponent) {
         setFixedSizeList(() => ListComponent);
       }
@@ -302,7 +327,7 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
                   width="100%"
                   style={{ padding: '20px' }}
                 >
-                  {({ index, style }) => {
+                  {({ index, style }: { index: number; style: CSSProperties }) => {
                     // 如果是加载中的消息
                     if (index === messages.length) {
                       return (

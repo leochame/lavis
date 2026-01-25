@@ -58,24 +58,139 @@ function getResourcePath(): string {
 
 /**
  * 获取 JRE 路径
+ * 支持多种 JRE 目录结构，增强健壮性
  */
 function getJrePath(): string {
   const resourcePath = getResourcePath();
   const platform = process.platform;
+  const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
 
   if (app.isPackaged) {
-    // 生产模式 - JRE 在 Resources/jre 目录
-    const jrePath = path.join(resourcePath, 'jre');
+    // 生产模式 - JRE 在 Resources/jre/${os}-${arch} 目录
+    let osDir = '';
+    if (platform === 'darwin') {
+      osDir = 'mac';
+    } else if (platform === 'win32') {
+      osDir = 'win';
+    } else {
+      osDir = 'linux';
+    }
+
+    const jreBasePath = path.join(resourcePath, 'jre', `${osDir}-${arch}`);
+    logCallback('info', `Looking for JRE in: ${jreBasePath}`);
+
+    // 定义所有可能的 Java 可执行文件路径
+    const possiblePaths: string[] = [];
 
     if (platform === 'darwin') {
-      return path.join(jrePath, 'Contents', 'Home', 'bin', 'java');
+      // macOS 可能的路径结构
+      possiblePaths.push(
+        // 直接的 Contents/Home 结构
+        path.join(jreBasePath, 'Contents', 'Home', 'bin', 'java'),
+        // 直接的 bin 目录
+        path.join(jreBasePath, 'bin', 'java'),
+      );
+
+      // 查找 jdk-*.jdk 或 jdk* 目录
+      if (fs.existsSync(jreBasePath)) {
+        try {
+          const entries = fs.readdirSync(jreBasePath);
+          for (const entry of entries) {
+            if (entry.endsWith('.jdk') || entry.startsWith('jdk') || entry.startsWith('zulu')) {
+              possiblePaths.push(
+                path.join(jreBasePath, entry, 'Contents', 'Home', 'bin', 'java'),
+                path.join(jreBasePath, entry, 'bin', 'java'),
+              );
+            }
+          }
+        } catch (e) {
+          logCallback('warn', `Failed to scan JRE directory: ${e}`);
+        }
+      }
     } else if (platform === 'win32') {
-      return path.join(jrePath, 'bin', 'java.exe');
+      possiblePaths.push(
+        path.join(jreBasePath, 'bin', 'java.exe'),
+      );
+
+      // 查找子目录
+      if (fs.existsSync(jreBasePath)) {
+        try {
+          const entries = fs.readdirSync(jreBasePath);
+          for (const entry of entries) {
+            if (entry.startsWith('jdk') || entry.startsWith('jre') || entry.startsWith('zulu')) {
+              possiblePaths.push(path.join(jreBasePath, entry, 'bin', 'java.exe'));
+            }
+          }
+        } catch (e) {
+          logCallback('warn', `Failed to scan JRE directory: ${e}`);
+        }
+      }
     } else {
-      return path.join(jrePath, 'bin', 'java');
+      // Linux
+      possiblePaths.push(
+        path.join(jreBasePath, 'bin', 'java'),
+      );
+
+      if (fs.existsSync(jreBasePath)) {
+        try {
+          const entries = fs.readdirSync(jreBasePath);
+          for (const entry of entries) {
+            if (entry.startsWith('jdk') || entry.startsWith('jre') || entry.startsWith('zulu')) {
+              possiblePaths.push(path.join(jreBasePath, entry, 'bin', 'java'));
+            }
+          }
+        } catch (e) {
+          logCallback('warn', `Failed to scan JRE directory: ${e}`);
+        }
+      }
     }
+
+    // 尝试找到存在的路径
+    for (const possiblePath of possiblePaths) {
+      logCallback('info', `Checking Java path: ${possiblePath}`);
+      if (fs.existsSync(possiblePath)) {
+        logCallback('info', `Found Java at: ${possiblePath}`);
+        return possiblePath;
+      }
+    }
+
+    // 如果都不存在，返回最可能的默认路径（用于错误提示）
+    const defaultPath = platform === 'darwin'
+      ? path.join(jreBasePath, 'Contents', 'Home', 'bin', 'java')
+      : platform === 'win32'
+        ? path.join(jreBasePath, 'bin', 'java.exe')
+        : path.join(jreBasePath, 'bin', 'java');
+
+    logCallback('warn', `No Java found, using default path: ${defaultPath}`);
+    return defaultPath;
   } else {
-    // 开发模式 - 使用系统 Java
+    // 开发模式 - 优先使用项目内的 JRE，否则使用系统 Java
+    let osDir = '';
+    if (platform === 'darwin') {
+      osDir = 'mac';
+    } else if (platform === 'win32') {
+      osDir = 'win';
+    } else {
+      osDir = 'linux';
+    }
+
+    // 检查项目内是否有 JRE
+    const projectJrePath = path.join(resourcePath, 'frontend', 'jre', `${osDir}-${arch}`);
+    if (fs.existsSync(projectJrePath)) {
+      const javaPath = platform === 'darwin'
+        ? path.join(projectJrePath, 'Contents', 'Home', 'bin', 'java')
+        : platform === 'win32'
+          ? path.join(projectJrePath, 'bin', 'java.exe')
+          : path.join(projectJrePath, 'bin', 'java');
+
+      if (fs.existsSync(javaPath)) {
+        logCallback('info', `Using project JRE: ${javaPath}`);
+        return javaPath;
+      }
+    }
+
+    // 使用系统 Java
+    logCallback('info', 'Using system Java');
     return 'java';
   }
 }
@@ -150,41 +265,80 @@ async function waitForBackend(timeoutMs: number = STARTUP_TIMEOUT): Promise<bool
 
 /**
  * 启动后端进程
+ * @returns Promise<{success: boolean, error?: string}>
  */
-export async function startBackend(): Promise<boolean> {
+export async function startBackend(): Promise<{success: boolean, error?: string}> {
   if (isShuttingDown) {
     logCallback('warn', 'Cannot start backend during shutdown');
-    return false;
+    return {success: false, error: 'Cannot start backend during shutdown'};
   }
 
   // 检查是否已经在运行
   if (await isBackendRunning()) {
     logCallback('info', 'Backend is already running');
     startHealthCheck();
-    return true;
+    return {success: true};
   }
 
   const javaPath = getJrePath();
   const jarPath = getJarPath();
+  const resourcePath = getResourcePath();
 
+  logCallback('info', `Resource path: ${resourcePath}`);
   logCallback('info', `Java path: ${javaPath}`);
   logCallback('info', `JAR path: ${jarPath}`);
 
   // 检查文件是否存在
   if (app.isPackaged) {
     if (!fs.existsSync(javaPath)) {
-      logCallback('error', `Java not found at: ${javaPath}`);
-      return false;
+      // 尝试列出目录内容以帮助调试
+      const jreBaseDir = path.dirname(path.dirname(javaPath));
+      let debugInfo = `Java executable not found at: ${javaPath}\n\nResource path: ${resourcePath}\nJRE base directory: ${jreBaseDir}\n`;
+      
+      if (fs.existsSync(jreBaseDir)) {
+        try {
+          const entries = fs.readdirSync(jreBaseDir, { recursive: true });
+          debugInfo += `\nFound in JRE directory:\n${entries.slice(0, 20).join('\n')}`;
+        } catch (e) {
+          debugInfo += `\nCould not list JRE directory: ${e}`;
+        }
+      } else {
+        debugInfo += `\nJRE base directory does not exist.`;
+      }
+      
+      debugInfo += `\n\nPlease check if the JRE was properly packaged.`;
+      logCallback('error', debugInfo);
+      return {success: false, error: debugInfo};
+    }
+    
+    // 检查 Java 可执行文件权限（macOS/Linux）
+    if (process.platform !== 'win32') {
+      try {
+        const stats = fs.statSync(javaPath);
+        if (!stats.isFile()) {
+          const errorMsg = `Java path exists but is not a file: ${javaPath}`;
+          logCallback('error', errorMsg);
+          return {success: false, error: errorMsg};
+        }
+        // 尝试添加执行权限（如果需要）
+        fs.chmodSync(javaPath, 0o755);
+      } catch (e) {
+        const errorMsg = `Cannot access Java executable: ${javaPath}\nError: ${e}`;
+        logCallback('error', errorMsg);
+        return {success: false, error: errorMsg};
+      }
     }
   }
 
   if (!fs.existsSync(jarPath)) {
-    logCallback('error', `JAR not found at: ${jarPath}`);
+    const resourcePath = getResourcePath();
+    const errorMsg = `JAR file not found at: ${jarPath}\n\nResource path: ${resourcePath}\n\nPlease check if the backend JAR was properly packaged.`;
+    logCallback('error', errorMsg);
 
     if (!app.isPackaged) {
       logCallback('info', 'Development mode: Please run "mvn package" to build the JAR first');
     }
-    return false;
+    return {success: false, error: errorMsg};
   }
 
   // 启动 Java 进程
@@ -198,24 +352,52 @@ export async function startBackend(): Promise<boolean> {
 
   logCallback('info', `Starting backend: ${javaPath} ${javaArgs.join(' ')}`);
 
+  // 计算 JAVA_HOME
+  let javaHome: string | undefined;
+  if (app.isPackaged) {
+    // 生产模式：从 java 可执行文件路径推导 JAVA_HOME
+    const platform = process.platform;
+    if (platform === 'darwin') {
+      // macOS: java 在 Contents/Home/bin/java，所以 JAVA_HOME 是 Contents/Home
+      const binDir = path.dirname(javaPath);
+      const homeDir = path.dirname(binDir);
+      javaHome = homeDir;
+    } else {
+      // Windows/Linux: java 在 bin/java，所以 JAVA_HOME 是 bin 的父目录
+      javaHome = path.dirname(path.dirname(javaPath));
+    }
+  } else {
+    // 开发模式：使用系统 JAVA_HOME
+    javaHome = process.env.JAVA_HOME;
+  }
+
+  // 收集错误信息
+  const errorMessages: string[] = [];
+
   try {
+    const spawnEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+    };
+
+    if (javaHome) {
+      spawnEnv.JAVA_HOME = javaHome;
+      logCallback('info', `JAVA_HOME: ${javaHome}`);
+    }
+
     backendProcess = spawn(javaPath, javaArgs, {
       cwd: path.dirname(jarPath),
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false,
-      env: {
-        ...process.env,
-        // 确保使用正确的 Java 环境
-        JAVA_HOME: app.isPackaged ? path.dirname(path.dirname(javaPath)) : process.env.JAVA_HOME,
-      },
+      env: spawnEnv,
     });
 
-    // 收集日志
+    // 收集日志和错误
     backendProcess.stdout?.on('data', (data) => {
       const lines = data.toString().split('\n').filter((l: string) => l.trim());
       lines.forEach((line: string) => {
         if (line.includes('ERROR') || line.includes('Exception')) {
           logCallback('error', line);
+          errorMessages.push(line);
         } else if (line.includes('WARN')) {
           logCallback('warn', line);
         } else {
@@ -225,16 +407,23 @@ export async function startBackend(): Promise<boolean> {
     });
 
     backendProcess.stderr?.on('data', (data) => {
-      logCallback('error', data.toString());
+      const errorText = data.toString();
+      logCallback('error', errorText);
+      errorMessages.push(errorText);
     });
 
     backendProcess.on('error', (error) => {
-      logCallback('error', `Failed to start backend: ${error.message}`);
+      const errorMsg = `Failed to start backend: ${error.message}`;
+      logCallback('error', errorMsg);
+      errorMessages.push(errorMsg);
       backendProcess = null;
     });
 
     backendProcess.on('exit', (code, signal) => {
       logCallback('info', `Backend exited with code ${code}, signal ${signal}`);
+      if (code !== 0 && code !== null) {
+        errorMessages.push(`Backend process exited with code ${code}`);
+      }
       backendProcess = null;
 
       // 如果不是正常关闭，尝试重启
@@ -253,15 +442,20 @@ export async function startBackend(): Promise<boolean> {
       logCallback('info', '✅ Backend started successfully');
       restartAttempts = 0;
       startHealthCheck();
-      return true;
+      return {success: true};
     } else {
-      logCallback('error', 'Backend failed to start within timeout');
+      const recentErrors = errorMessages.slice(-5);
+      const errorMsg = recentErrors.length > 0 
+        ? `Backend failed to start within timeout.\n\nRecent errors:\n${recentErrors.join('\n')}`
+        : 'Backend failed to start within timeout. The backend process may have crashed or failed to respond.';
+      logCallback('error', errorMsg);
       await stopBackend();
-      return false;
+      return {success: false, error: errorMsg};
     }
   } catch (error) {
-    logCallback('error', `Failed to spawn backend process: ${error}`);
-    return false;
+    const errorMsg = `Failed to spawn backend process: ${error}`;
+    logCallback('error', errorMsg);
+    return {success: false, error: errorMsg};
   }
 }
 

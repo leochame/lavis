@@ -101,7 +101,7 @@ export function Capsule({
     const startY = e.screenY;
 
     // 通知主进程开始拖拽
-    window.electron?.platform?.dragStart(startX, startY);
+    window.electron?.platform?.dragStart?.(startX, startY);
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       if (!isDraggingRef.current) return;
@@ -109,13 +109,13 @@ export function Capsule({
       hasDraggedRef.current = true;
 
       // 使用屏幕坐标
-      window.electron?.platform?.dragMove(moveEvent.screenX, moveEvent.screenY);
+      window.electron?.platform?.dragMove?.(moveEvent.screenX, moveEvent.screenY);
     };
 
     const handleMouseUp = () => {
       if (isDraggingRef.current) {
         isDraggingRef.current = false;
-        window.electron?.platform?.dragEnd();
+        window.electron?.platform?.dragEnd?.();
       }
 
       document.removeEventListener('mousemove', handleMouseMove);
