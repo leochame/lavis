@@ -17,26 +17,33 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.awt.Dimension;
+import java.io.IOException;
 import java.time.Instant;
 import java.util.*;
 
 /**
  * 微观执行器服务 (Micro-Executor Service) - 战术层
  * 
- * 【架构升级】实现 M-E-R (记忆-执行-反思) 完整闘环
+ * 【架构升级】实现合并的 OODA 循环 (Observe-Orient-Decide-Act)
  * 
  * 核心特性：
  * 1. 【Memory 记忆】从 GlobalContext 读取"前情提要"，知道"我在哪"、"我刚才做了什么"
- * 2. 【Execution 执行】基于当前观测和记忆做出决策，执行原子操作
- * 3. 【Reflection 反思】Tool Execution -> Wait -> Re-capture -> 强制反思
+ * 2. 【执行-反思合并】在同一轮 LLM 调用中完成观察、决策、行动和反思
+ *    - 观察：获取当前屏幕截图
+ *    - 决策：LLM 基于截图和上下文做出决策
+ *    - 行动：执行工具（如点击、输入等）
+ *    - 反思：在下一轮观察时，LLM 看到新截图后自然反思上一步是否成功
+ * 3. 【幻觉抑制】通过 Prompt 约束，禁止 LLM 在执行动作的同一轮宣布完成
  * 4. 【锚点定位】基于视觉锚点定位目标，而非盲目坐标点击
  * 5. 【验尸报告】失败时返回详细的 PostMortem，供 Planner 决策
- * 6. 【微观上下文隔离】执行完成后销毁上下文，只将结果同步回 GlobalContext
+ * 6. 【兜底机制】检测重复无效操作，防止死循环
+ * 7. 【微观上下文隔离】执行完成后销毁上下文，只将结果同步回 GlobalContext
  * 
  * 设计哲学：
  * - 这是一个"熟练工"，而非"机械臂"
  * - 能自行解决琐碎问题，无需事事上报给 Planner
  * - 只有真正搞不定时才上报异常（带验尸报告）
+ * - 效率优先：合并反思阶段，减少 LLM 调用次数，提高执行速度
  */
 @Slf4j
 @Service
@@ -44,9 +51,9 @@ public class MicroExecutorService {
 
     private final ScreenCapturer screenCapturer;
     private final ToolExecutionService toolExecutionService;
-    private final List<ToolSpecification> reflectionToolSpecs;
     // 在类成员变量区域添加
     private final ObjectMapper objectMapper = new ObjectMapper();
+    
     /** 调度器触发的中断标记 */
     private volatile boolean interrupted = false;
 
@@ -82,21 +89,26 @@ public class MicroExecutorService {
         sb.append(String.format("""
                 You are a tactical execution expert acting as a skilled worker role responsible for completing the specific execution of milestone level tasks
 
-                ## Core Concept M-E-R Loop
-                You have complete memory execution reflection loop capability
-                1. **Memory**: You know where I am what I just did
-                2. **Execution**: Make decisions based on current observation and memory
-                3. **Reflection**: Observe screen changes after each operation and judge if successful
+                ## Core Concept: OODA Loop (Observe-Orient-Decide-Act)
+                You operate in a continuous loop:
+                1. **Observe**: You receive a screenshot showing the current screen state
+                2. **Orient**: You understand where you are and what you just did (from memory/context)
+                3. **Decide**: You decide what action to take next (or if the task is complete)
+                4. **Act**: You execute the action using tools
+                5. **Reflect**: In the NEXT turn, when you see a new screenshot, you naturally reflect on whether your previous action succeeded
 
                 ## Coordinate System Strict Compliance Required
-                Screen size %d x %d pixels logical screen coordinates
-                - X coordinate range 0 to %d
-                - Y coordinate range 0 to %d
-
+                **CRITICAL: You MUST use Gemini normalized coordinates (0-1000), NOT screen pixel coordinates!**
+                
+                Screen size: %d x %d pixels (logical screen)
+                **Gemini coordinate range: X: 0 to 1000, Y: 0 to 1000**
+                
                 **Important**: 
-                The coordinates shown in the screenshot are the coordinates you need to use
-                Red cross marker shows current mouse position and its coordinates
-                Green circle marker shows last click position
+                - The coordinates shown in the screenshot (red cross and green circle) are in Gemini format (0-1000)
+                - ALL tool calls (click, doubleClick, rightClick, drag, moveMouse) MUST use Gemini coordinates [x, y] where x and y are integers between 0 and 1000
+                - DO NOT use screen pixel coordinates (0-%d, 0-%d) - they will be rejected
+                - Red cross marker shows current mouse position in Gemini coordinates
+                - Green circle marker shows last click position in Gemini coordinates
 
                 ## Visual Marker Description
                 - [Red cross + coordinates]: Current mouse position
@@ -120,7 +132,16 @@ public class MicroExecutorService {
                 - Execute only one action at a time single step principle
                 - Always make decisions based on latest screenshot
                 - Do not explain too much execute operations directly
-                - If target state is achieved in screenshot report task completed
+                
+                ## CRITICAL RULE: Action and Reflection Separation
+                **STRICT RULE: Do NOT assume your action succeeded immediately.**
+                - If you decide to click or type, you MUST NOT call 'completeMilestone' in the same turn.
+                - You must wait for the NEXT turn to see the visual changes before marking completion.
+                - Each screenshot you receive is AFTER the previous action has been executed.
+                - When you see a new screenshot, observe the changes from your last action, then decide:
+                  * If the task is clearly completed (you see success indicators), call 'completeMilestone'.
+                  * If the task is not completed, continue with the next action.
+                - This prevents hallucination: you cannot "predict" success, you must "confirm" it visually.
 
                 """, logicalSize.width, logicalSize.height, logicalSize.width, logicalSize.height));
 
@@ -140,11 +161,9 @@ public class MicroExecutorService {
         return generateExecutorSystemPrompt(null);
     }
 
-    public MicroExecutorService(ScreenCapturer screenCapturer, ToolExecutionService toolExecutionService,
-            List<ToolSpecification> reflectionToolSpecs) {
+    public MicroExecutorService(ScreenCapturer screenCapturer, ToolExecutionService toolExecutionService) {
         this.screenCapturer = screenCapturer;
         this.toolExecutionService = toolExecutionService;
-        this.reflectionToolSpecs = reflectionToolSpecs;
     }
 
     /**
@@ -156,12 +175,14 @@ public class MicroExecutorService {
     }
 
     /**
-     * 执行单个步骤（核心方法 - M-E-R 闘环）
+     * 执行单个步骤（核心方法 - 合并的 OODA 循环）
      * 
-     * 【架构升级】实现完整的 记忆-执行-反思 闭环：
+     * 【架构升级】合并执行和反思阶段：
      * 1. Memory: 从 GlobalContext 读取"前情提要"
-     * 2. Execution: 基于当前观测和记忆做出决策
-     * 3. Reflection: 执行后强制反思，判断是否成功
+     * 2. Observe: 获取当前屏幕截图
+     * 3. Orient & Decide: LLM 基于截图和上下文做出决策
+     * 4. Act: 执行工具（如点击、输入等）
+     * 5. Reflect: 在下一轮观察时，LLM 看到新截图后自然反思上一步是否成功
      * 
      * @param step 要执行的步骤（里程碑级）
      * @return 执行结果（含验尸报告）
@@ -171,7 +192,7 @@ public class MicroExecutorService {
     }
 
     /**
-     * 执行单个步骤（核心方法 - M-E-R 闘环）- 带 GlobalContext
+     * 执行单个步骤（核心方法 - 合并的 OODA 循环）- 带 GlobalContext
      * 
      * @param step          要执行的步骤（里程碑级）
      * @param globalContext 全局上下文（宏观记忆）
@@ -180,6 +201,45 @@ public class MicroExecutorService {
     public ExecutionResult executeStep(PlanStep step, GlobalContext globalContext) {
         log.info("🎯 MicroExecutor 开始执行里程碑 {}: {}", step.getId(), step.getDescription());
 
+        // 前置检查
+        ExecutionResult preCheckResult = performPreChecks(step);
+        if (preCheckResult != null) {
+            return preCheckResult;
+        }
+
+        // 初始化执行上下文
+        ExecutionContext context = initializeExecutionContext(step, globalContext);
+
+        // 执行 OODA 循环
+        while (context.isWithinLimits()) {
+            if (interrupted) {
+                return handleInterruption(step, context);
+            }
+
+            try {
+                ExecutionResult loopResult = executeOODALoop(step, context);
+                if (loopResult != null) {
+                    return loopResult; // 成功或需要中断
+                }
+                context.incrementCorrections();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return createFailedResult(step, "执行被中断", context.getLastScreenState(), 
+                        context.getAttemptedStrategies(), PlanStep.PostMortem.FailureReason.UNKNOWN, globalContext);
+            } catch (Exception e) {
+                log.error("步骤执行异常: {}", e.getMessage(), e);
+                context.handleException(e);
+            }
+        }
+
+        // 达到最大重试或超时 - 生成验尸报告
+        return createFailureResult(step, context, globalContext);
+    }
+
+    /**
+     * 执行前置检查
+     */
+    private ExecutionResult performPreChecks(PlanStep step) {
         if (chatModel == null) {
             return ExecutionResult.failed("MicroExecutor 未初始化", null);
         }
@@ -190,235 +250,333 @@ public class MicroExecutorService {
         }
 
         step.markStarted();
-
-        // 根据步骤复杂度动态设置参数
-        int effectiveMaxRetries = step.getMaxRetries();
-        int effectiveTimeoutSeconds = step.getTimeoutSeconds();
-        log.info("   📊 最大重试: {}, 超时: {}秒",
-                effectiveMaxRetries, effectiveTimeoutSeconds);
-
-        Instant deadline = Instant.now().plusSeconds(effectiveTimeoutSeconds);
-
-        // ========== Memory: 创建微观上下文，注入宏观记忆 ==========
-        List<ChatMessage> localContext = new ArrayList<>();
-        // 【关键】使用带 GlobalContext 的 System Prompt
-        localContext.add(SystemMessage.from(generateExecutorSystemPrompt(globalContext)));
-
-        // 记录尝试过的策略（用于验尸报告）
-        List<String> attemptedStrategies = new ArrayList<>();
-        String lastScreenState = "初始状态";
-        String lastActionSummary = null;
-
-        // 执行循环
-        int corrections = 0;
-        String lastActionResult = null;
-
-        while (corrections < effectiveMaxRetries && Instant.now().isBefore(deadline)) {
-            if (interrupted) {
-                step.markFailed("用户中断任务");
-                return ExecutionResult.failed("用户中断任务", null);
-            }
-
-            try {
-                // ========== Execution: 观察-决策-行动 ==========
-
-                // 1. 观察：获取当前屏幕截图
-                String screenshot = screenCapturer.captureScreenWithCursorAsBase64();
-
-                // 2. 决策：构建提示词，让 LLM 决策
-                String userPrompt = buildMERPrompt(step, corrections, lastActionResult, globalContext);
-
-                UserMessage userMessage = UserMessage.from(
-                        TextContent.from(userPrompt),
-                        ImageContent.from(screenshot, "image/jpeg"));
-                localContext.add(userMessage);
-
-                // 调用 LLM 决策
-                Response<AiMessage> response = chatModel.generate(localContext,
-                        toolExecutionService.getToolSpecifications());
-                AiMessage aiMessage = response.content();
-                localContext.add(aiMessage);
-
-                // 检查是否需要执行工具
-                if (!aiMessage.hasToolExecutionRequests()) {
-                    // LLM 认为任务完成或无法完成
-                    String text = aiMessage.text();
-                    if (text != null && isTaskCompleted(text, step)) {
-                        step.markSuccess(text);
-                        log.info("✅ 里程碑 {} 达成: {}", step.getId(), text);
-
-                        // 【新增】更新 GlobalContext
-                        if (globalContext != null) {
-                            globalContext.updateFromExecution(text, "任务完成", true);
-                        }
-
-                        return ExecutionResult.success(text, attemptedStrategies);
-                    } else {
-                        // 可能需要继续
-                        corrections++;
-                        attemptedStrategies.add("LLM 无操作建议: " + (text != null ? truncate(text, 50) : "无"));
-                        continue;
-                    }
-                }
-
-                // 3. 行动：执行工具（单步原则）
-                List<ToolExecutionRequest> toolRequests = aiMessage.toolExecutionRequests();
-                StringBuilder actionResults = new StringBuilder();
-
-                for (ToolExecutionRequest request : toolRequests) {
-                    String toolName = request.name();
-                    String toolArgs = request.arguments();
-
-                    log.info("  🔧 执行工具: {}({})", toolName, toolArgs);
-                    String result = toolExecutionService.execute(toolName, toolArgs);
-                    actionResults.append(result).append("\n");
-
-                    // 记录策略
-                    String strategyRecord = String.format("%s(%s) -> %s",
-                            toolName, toolArgs.length() > 30 ? toolArgs.substring(0, 30) + "..." : toolArgs,
-                            result.split("\n")[0]);
-                    attemptedStrategies.add(strategyRecord);
-                    lastActionSummary = strategyRecord;
-
-                    // 添加工具结果到本地上下文
-                    ToolExecutionResultMessage toolResult = ToolExecutionResultMessage.from(request, result);
-                    localContext.add(toolResult);
-                }
-
-                lastActionResult = actionResults.toString();
-
-                // ========== Reflection: 等待-重新截图-简化反思 ==========
-
-                // 等待 UI 响应
-                log.info("⏳ 等待 UI 响应 {}ms...", toolWaitMs);
-                Thread.sleep(toolWaitMs);
-
-                // 【关键】重新截图并进行反思
-                String newScreenshot = screenCapturer.captureScreenWithCursorAsBase64();
-
-                // 构建反思提示
-                String reflectionPrompt = buildToolBasedReflectionPrompt(step, lastActionResult);
-                UserMessage reflectionMessage = UserMessage.from(
-                        TextContent.from(reflectionPrompt),
-                        ImageContent.from(newScreenshot, "image/jpeg"));
-                localContext.add(reflectionMessage);
-
-                // 调用 LLM 进行反思
-                Response<AiMessage> reflectionResponse = chatModel.generate(localContext, reflectionToolSpecs);
-                AiMessage reflectionAi = reflectionResponse.content();
-                localContext.add(reflectionAi);
-
-                // ========== 简化的反思逻辑 ==========
-                // 判断标准：如果 LLM 调用了 completeMilestone 工具 → 任务成功
-                //          其他情况（无工具调用或其他工具）→ 继续下一轮循环
-
-                if (reflectionAi.hasToolExecutionRequests()) {
-                    ToolExecutionRequest req = reflectionAi.toolExecutionRequests().get(0);
-
-                    if ("completeMilestone".equals(req.name())) {
-                        // ✅ LLM 调用了 completeMilestone，视为任务成功
-                        String summary = extractArg(req, "summary");
-                        String successMessage = summary != null ? summary : "任务已完成";
-                        
-                        step.markSuccess(successMessage);
-                        log.info("✅ 里程碑 {} 达成: {}", step.getId(), successMessage);
-                        
-                        if (globalContext != null) {
-                            globalContext.updateFromExecution(successMessage, lastActionSummary, true);
-                        }
-                        return ExecutionResult.success(successMessage, attemptedStrategies);
-                    } else {
-                        // 调用了其他工具（理论上不存在），继续下一轮
-                        log.warn("⚠️ 反思阶段调用了未知工具: {}，继续循环", req.name());
-                        lastScreenState = "调用了非预期工具: " + req.name();
-                    }
-                } else {
-                    // LLM 输出了文本分析但未调用工具，视为任务未完成，继续下一轮
-                    String reflectionText = reflectionAi.text();
-                    log.info("📝 反思分析（继续执行）: {}", truncate(reflectionText, 100));
-                    lastScreenState = "继续执行: " + truncate(reflectionText, 50);
-                    
-                    if (globalContext != null) {
-                        globalContext.addActionSummary(lastActionSummary, "继续", true);
-                    }
-                }
-
-                corrections++;
-
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return createFailedResult(step, "执行被中断", lastScreenState, attemptedStrategies,
-                        PlanStep.PostMortem.FailureReason.UNKNOWN, globalContext);
-            } catch (Exception e) {
-                log.error("步骤执行异常: {}", e.getMessage(), e);
-                corrections++;
-                lastActionResult = "执行异常: " + e.getMessage();
-                attemptedStrategies.add("异常: " + e.getMessage());
-            }
-        }
-
-        // 达到最大重试或超时 - 生成验尸报告
-        PlanStep.PostMortem.FailureReason failureReason = corrections >= effectiveMaxRetries
-                ? PlanStep.PostMortem.FailureReason.INFINITE_LOOP
-                : PlanStep.PostMortem.FailureReason.TIMEOUT;
-
-        String reason = corrections >= effectiveMaxRetries ? "达到最大修正次数 (" + effectiveMaxRetries + ")" : "执行超时";
-
-        return createFailedResult(step, reason, lastScreenState, attemptedStrategies, failureReason, globalContext);
+        return null; // 检查通过
     }
 
     /**
-     * 构建反思阶段的 Prompt（简化版）
-     * 
-     * 简化逻辑：
-     * - 如果任务完成 → 调用 completeMilestone 工具
-     * - 如果任务未完成 → 直接输出文本分析（不调用工具）
+     * 初始化执行上下文
      */
-    private String buildToolBasedReflectionPrompt(PlanStep step, String lastActionResult) {
-        return String.format("""
-                ## Reflection Checkpoint
-                
-                You just executed operation
-                %s
-                
-                Now please carefully observe the latest screen screenshot and judge if the task is completed
-                
-                ## Task Information
-                - Current Milestone %s
-                
-                ## Visual Success Indicators
-                - To judge task success you should see in screenshot
-                - Target state has been achieved such as opened correct application entered correct page
-                - Success prompt appears such as Success Completed green checkmark
-                - URL title bar displays expected content
-                - Element that needed operation has disappeared or state has changed
-                
-                ## Incomplete Indicators
-                When encountering the following situations do not judge as success:
-                - Interface has no changes
-                - Error text appears such as Error Failed
-                - Interface stays at Loading
-                - Click position deviated from target
-                - Unexpected dialog popped up
-                
-                ## Response Instructions
-                
-                Please respond according to the following rules
-                
-                ### If task is completed
-                Call completeMilestone tool summary parameter describes success evidence you see in screenshot
-                
-                ### If task is not completed
-                Do not call any tools directly output text analysis
-                1. What is the current screen state
-                2. What is still missing to complete
-                3. What should be done next
-                
-                Please make a judgment
-                """,
-                lastActionResult,
-                step.getDescription());
+    private ExecutionContext initializeExecutionContext(PlanStep step, GlobalContext globalContext) {
+        int effectiveMaxRetries = step.getMaxRetries();
+        int effectiveTimeoutSeconds = step.getTimeoutSeconds();
+        log.info("   📊 最大重试: {}, 超时: {}秒", effectiveMaxRetries, effectiveTimeoutSeconds);
+
+        Instant deadline = Instant.now().plusSeconds(effectiveTimeoutSeconds);
+        List<ChatMessage> localContext = new ArrayList<>();
+        localContext.add(SystemMessage.from(generateExecutorSystemPrompt(globalContext)));
+
+        return new ExecutionContext(effectiveMaxRetries, deadline, localContext, globalContext);
     }
+
+    /**
+     * 执行单次 OODA 循环
+     * @return 如果任务完成或需要中断，返回结果；否则返回 null 继续循环
+     */
+    private ExecutionResult executeOODALoop(PlanStep step, ExecutionContext context) throws InterruptedException, IOException {
+        // 1. Observe: 获取当前屏幕截图
+        String screenshot = screenCapturer.captureScreenWithCursorAsBase64();
+        String currentScreenHash = String.valueOf(screenshot.hashCode());
+
+        // 2. Orient & Decide: LLM 决策
+        AiMessage aiMessage = performLLMDecision(step, context, screenshot);
+
+        // 3. 检查是否有工具调用
+        if (!aiMessage.hasToolExecutionRequests()) {
+            return handleNoToolCall(step, context, aiMessage);
+        }
+
+        // 4. Act: 执行工具
+        ToolExecutionResult toolResult = executeTools(step, context, aiMessage, currentScreenHash);
+        if (toolResult.isTaskCompleted()) {
+            return toolResult.getResult();
+        }
+
+        // 如果检测到重复操作，需要增加修正计数
+        if (toolResult.hasDuplicateOperation()) {
+            context.incrementCorrections();
+            return null; // 继续下一轮循环
+        }
+
+        // 5. 等待 UI 响应
+        waitForUIResponse(toolResult.hasActions());
+
+        return null; // 继续下一轮循环
+    }
+
+    /**
+     * 执行 LLM 决策
+     */
+    private AiMessage performLLMDecision(PlanStep step, ExecutionContext context, String screenshot) {
+        String userPrompt = buildMERPrompt(step, context.getCorrections(), 
+                context.getLastActionResult(), context.getGlobalContext());
+
+        UserMessage userMessage = UserMessage.from(
+                TextContent.from(userPrompt),
+                ImageContent.from(screenshot, "image/jpeg"));
+        context.getLocalContext().add(userMessage);
+
+        Response<AiMessage> response = chatModel.generate(context.getLocalContext(),
+                toolExecutionService.getToolSpecifications());
+        AiMessage aiMessage = response.content();
+        context.getLocalContext().add(aiMessage);
+
+        return aiMessage;
+    }
+
+    /**
+     * 处理无工具调用的情况
+     */
+    private ExecutionResult handleNoToolCall(PlanStep step, ExecutionContext context, AiMessage aiMessage) {
+        String text = aiMessage.text();
+        if (text != null && isTaskCompleted(text, step)) {
+            return handleTaskCompletion(step, context, text);
+        } else {
+            context.addStrategy("LLM 无操作建议: " + (text != null ? truncate(text, 50) : "无"));
+            return null; // 继续循环
+        }
+    }
+
+    /**
+     * 处理任务完成
+     */
+    private ExecutionResult handleTaskCompletion(PlanStep step, ExecutionContext context, String message) {
+        step.markSuccess(message);
+        log.info("✅ 里程碑 {} 达成: {}", step.getId(), message);
+
+        if (context.getGlobalContext() != null) {
+            context.getGlobalContext().updateFromExecution(message, "任务完成", true);
+        }
+
+        return ExecutionResult.success(message, context.getAttemptedStrategies());
+    }
+
+    /**
+     * 执行工具
+     */
+    private ToolExecutionResult executeTools(PlanStep step, ExecutionContext context, 
+            AiMessage aiMessage, String currentScreenHash) {
+        List<ToolExecutionRequest> toolRequests = aiMessage.toolExecutionRequests();
+        StringBuilder actionResults = new StringBuilder();
+        String currentToolCallSignature = null;
+        boolean hasDuplicateOperation = false;
+
+        for (ToolExecutionRequest request : toolRequests) {
+            String toolName = request.name();
+            String toolArgs = request.arguments();
+            currentToolCallSignature = toolName + ":" + toolArgs;
+
+            // 检测重复无效操作
+            if (isDuplicateOperation(context, currentToolCallSignature, currentScreenHash)) {
+                handleDuplicateOperation(context, toolName);
+                hasDuplicateOperation = true;
+                continue; // 跳过执行，进入下一轮
+            }
+
+            log.info("  🔧 执行工具: {}({})", toolName, toolArgs);
+
+            // 检查是否是任务完成信号
+            if ("completeMilestone".equals(toolName)) {
+                ExecutionResult result = handleMilestoneCompletion(step, context, request);
+                return new ToolExecutionResult(true, result, actionResults.toString(), currentToolCallSignature, false);
+            }
+
+            // 执行工具
+            String result = toolExecutionService.execute(toolName, toolArgs);
+            actionResults.append(result).append("\n");
+
+            // 记录策略
+            String strategyRecord = formatStrategyRecord(toolName, toolArgs, result);
+            context.addStrategy(strategyRecord);
+            context.setLastActionSummary(strategyRecord);
+
+            // 添加工具结果到上下文
+            ToolExecutionResultMessage toolResult = ToolExecutionResultMessage.from(request, result);
+            context.getLocalContext().add(toolResult);
+        }
+
+        // 更新上下文状态（只有在没有重复操作时才更新，避免覆盖）
+        if (!hasDuplicateOperation) {
+            context.updateAfterToolExecution(actionResults.toString(), currentToolCallSignature, currentScreenHash);
+        }
+
+        return new ToolExecutionResult(false, null, actionResults.toString(), currentToolCallSignature, hasDuplicateOperation);
+    }
+
+    /**
+     * 检测是否为重复无效操作
+     */
+    private boolean isDuplicateOperation(ExecutionContext context, String currentSignature, String currentScreenHash) {
+        String lastSignature = context.getLastToolCallSignature();
+        String lastScreenHash = context.getLastScreenHash();
+        
+        return lastSignature != null && currentSignature.equals(lastSignature)
+                && lastScreenHash != null && currentScreenHash.equals(lastScreenHash);
+    }
+
+    /**
+     * 处理重复无效操作
+     */
+    private void handleDuplicateOperation(ExecutionContext context, String toolName) {
+        log.warn("⚠️ 检测到重复无效操作: {}，屏幕状态未变化", toolName);
+        context.getLocalContext().add(UserMessage.from(
+                "System Alert: You just tried that exact same operation and the screen didn't change. " +
+                "You MUST change your strategy (e.g. adjust coordinates, try double click, wait longer, or try a different approach)."));
+        context.addStrategy("重复操作检测: " + toolName);
+    }
+
+    /**
+     * 处理里程碑完成
+     */
+    private ExecutionResult handleMilestoneCompletion(PlanStep step, ExecutionContext context, 
+            ToolExecutionRequest request) {
+        String summary = extractArg(request, "summary");
+        String successMessage = summary != null ? summary : "任务已完成";
+
+        step.markSuccess(successMessage);
+        log.info("✅ 里程碑 {} 达成: {}", step.getId(), successMessage);
+
+        if (context.getGlobalContext() != null) {
+            context.getGlobalContext().updateFromExecution(successMessage, context.getLastActionSummary(), true);
+        }
+
+        return ExecutionResult.success(successMessage, context.getAttemptedStrategies());
+    }
+
+    /**
+     * 格式化策略记录
+     */
+    private String formatStrategyRecord(String toolName, String toolArgs, String result) {
+        String argsPreview = toolArgs.length() > 30 ? toolArgs.substring(0, 30) + "..." : toolArgs;
+        String resultPreview = result.split("\n")[0];
+        return String.format("%s(%s) -> %s", toolName, argsPreview, resultPreview);
+    }
+
+    /**
+     * 等待 UI 响应
+     */
+    private void waitForUIResponse(boolean hasActions) throws InterruptedException {
+        if (hasActions) {
+            log.info("⏳ 等待 UI 响应 {}ms...", toolWaitMs);
+            Thread.sleep(toolWaitMs);
+        }
+    }
+
+    /**
+     * 处理中断
+     */
+    private ExecutionResult handleInterruption(PlanStep step, ExecutionContext context) {
+        step.markFailed("用户中断任务");
+        return ExecutionResult.failed("用户中断任务", null);
+    }
+
+    /**
+     * 创建失败结果
+     */
+    private ExecutionResult createFailureResult(PlanStep step, ExecutionContext context, GlobalContext globalContext) {
+        int corrections = context.getCorrections();
+        int maxRetries = context.getMaxRetries();
+
+        PlanStep.PostMortem.FailureReason failureReason = corrections >= maxRetries
+                ? PlanStep.PostMortem.FailureReason.INFINITE_LOOP
+                : PlanStep.PostMortem.FailureReason.TIMEOUT;
+
+        String reason = corrections >= maxRetries
+                ? "达到最大修正次数 (" + maxRetries + ")"
+                : "执行超时";
+
+        return createFailedResult(step, reason, context.getLastScreenState(), 
+                context.getAttemptedStrategies(), failureReason, globalContext);
+    }
+
+    /**
+     * 执行上下文 - 封装执行循环中的状态
+     */
+    private static class ExecutionContext {
+        private final int maxRetries;
+        private final Instant deadline;
+        private final List<ChatMessage> localContext;
+        private final GlobalContext globalContext;
+        private final List<String> attemptedStrategies = new ArrayList<>();
+
+        private int corrections = 0;
+        private String lastActionResult = null;
+        private String lastToolCallSignature = null;
+        private String lastScreenHash = null;
+        private String lastActionSummary = null;
+        private String lastScreenState = "初始状态";
+
+        public ExecutionContext(int maxRetries, Instant deadline, List<ChatMessage> localContext, 
+                GlobalContext globalContext) {
+            this.maxRetries = maxRetries;
+            this.deadline = deadline;
+            this.localContext = localContext;
+            this.globalContext = globalContext;
+        }
+
+        public boolean isWithinLimits() {
+            return corrections < maxRetries && Instant.now().isBefore(deadline);
+        }
+
+        public void incrementCorrections() {
+            corrections++;
+        }
+
+        public void addStrategy(String strategy) {
+            attemptedStrategies.add(strategy);
+        }
+
+        public void updateAfterToolExecution(String actionResult, String toolSignature, String screenHash) {
+            this.lastActionResult = actionResult;
+            this.lastToolCallSignature = toolSignature;
+            this.lastScreenHash = screenHash;
+        }
+
+        public void handleException(Exception e) {
+            corrections++;
+            lastActionResult = "执行异常: " + e.getMessage();
+            attemptedStrategies.add("异常: " + e.getMessage());
+        }
+
+        // Getters
+        public int getCorrections() { return corrections; }
+        public int getMaxRetries() { return maxRetries; }
+        public Instant getDeadline() { return deadline; }
+        public List<ChatMessage> getLocalContext() { return localContext; }
+        public GlobalContext getGlobalContext() { return globalContext; }
+        public List<String> getAttemptedStrategies() { return attemptedStrategies; }
+        public String getLastActionResult() { return lastActionResult; }
+        public String getLastToolCallSignature() { return lastToolCallSignature; }
+        public String getLastScreenHash() { return lastScreenHash; }
+        public String getLastActionSummary() { return lastActionSummary; }
+        public String getLastScreenState() { return lastScreenState; }
+        public void setLastActionSummary(String summary) { this.lastActionSummary = summary; }
+    }
+
+    /**
+     * 工具执行结果
+     */
+    private static class ToolExecutionResult {
+        private final boolean taskCompleted;
+        private final ExecutionResult result;
+        private final String actionResults;
+        private final String toolSignature;
+        private final boolean hasDuplicateOperation;
+
+        public ToolExecutionResult(boolean taskCompleted, ExecutionResult result, 
+                String actionResults, String toolSignature, boolean hasDuplicateOperation) {
+            this.taskCompleted = taskCompleted;
+            this.result = result;
+            this.actionResults = actionResults;
+            this.toolSignature = toolSignature;
+            this.hasDuplicateOperation = hasDuplicateOperation;
+        }
+
+        public boolean isTaskCompleted() { return taskCompleted; }
+        public ExecutionResult getResult() { return result; }
+        public boolean hasActions() { return actionResults != null && !actionResults.isEmpty(); }
+        public boolean hasDuplicateOperation() { return hasDuplicateOperation; }
+    }
+
 
     /**
      * 辅助方法：截断字符串

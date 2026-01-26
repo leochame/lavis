@@ -17,15 +17,11 @@ import java.util.Map;
  * app:
  *   llm:
  *     models:
- *       modela:
+ *       fast-model:
  *         provider: OPENAI
  *         base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
  *         api-key: ${ALIYUN_KEY}
  *         model-name: qwen-max
- *       modelb:
- *         provider: GEMINI
- *         api-key: ${GEMINI_KEY}
- *         model-name: gemini-2.0-flash
  * </pre>
  */
 @Data
@@ -35,7 +31,7 @@ public class LlmProperties {
     
     /**
      * 模型配置映射
-     * Key: 模型别名 (如 modela, modelb)
+     * Key: 模型别名 (如 fast-model)
      * Value: 模型配置
      */
     private Map<String, ModelConfig> models = new HashMap<>();

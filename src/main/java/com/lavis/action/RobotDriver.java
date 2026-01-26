@@ -28,8 +28,8 @@ public class RobotDriver {
     private final ScreenCapturer screenCapturer;
 
     // 默认操作延迟 (毫秒)
-    private static final int DEFAULT_DELAY = 100;
-    private static final int TYPE_DELAY = 50;
+    private static final int DEFAULT_DELAY = 50;
+    private static final int TYPE_DELAY = 0;  // 删除打字延迟
 
     // 允许的最大偏差（像素）
     private static final int MAX_ALLOWED_DEVIATION = 10;
@@ -38,14 +38,23 @@ public class RobotDriver {
     private boolean humanLikeMode = true;
 
     // 鼠标移动速度因子 (1.0 = 正常，2.0 = 快速，0.5 = 慢速)
-    // 【优化】提高默认速度，减少拖沓感
-    private double mouseSpeedFactor = 5.0;
+    // 【优化】大幅提高速度，减少拖沓感
+    private double mouseSpeedFactor = 10.0;
     
     // 基础步间延迟 (毫秒) - 【优化】大幅减少步间延迟
     private static final int BASE_STEP_DELAY_MS = 1;
     
     // 拖拽操作的额外延迟 - 【优化】减少拖拽延迟
     private static final int DRAG_STEP_DELAY_MS = 1;
+    
+    // 鼠标移动后的稳定等待时间（毫秒）
+    // 【重要】确保系统有时间处理事件队列并更新鼠标位置
+    // 快速移动后需要更长时间让系统同步状态
+    private static final int STABILIZATION_DELAY_MS = 30;
+    
+    // 强制修正后的额外等待时间（毫秒）
+    // 确保强制修正指令被系统处理完成
+    private static final int FORCE_CORRECTION_DELAY_MS = 15;
 
     public RobotDriver(ScreenCapturer screenCapturer) throws AWTException {
         this.robot = new Robot();
@@ -129,10 +138,12 @@ public class RobotDriver {
 
         // 转换为安全坐标（边界检查）
         Point targetPos = convertToRobotCoordinates(x, y);
+        
+        // 计算移动距离（用于动态调整等待时间）
+        double distance = beforePos.distance(targetPos);
 
         if (humanLikeMode) {
             // 【增强】拟人化移动 - 使用增强的贝塞尔曲线
-            double distance = beforePos.distance(targetPos);
             // 如果距离很长，减少步数或延迟，避免移动耗时过长
             double dynamicSpeedFactor = distance > 500 ? mouseSpeedFactor * 1.5 : mouseSpeedFactor;
 
@@ -154,14 +165,20 @@ public class RobotDriver {
             
             // 确保最后精准落在目标点
             robot.mouseMove(targetPos.x, targetPos.y);
-            robot.delay(30);
+            // 【重要】强制修正后等待系统处理完成
+            // 快速移动可能导致事件队列积压，需要足够时间让系统同步
+            robot.delay(FORCE_CORRECTION_DELAY_MS);
         } else {
             // 机械瞬间移动
             robot.mouseMove(targetPos.x, targetPos.y);
         }
 
-        // 等待移动完成 - 【优化】减少等待时间
-        delay(humanLikeMode ? 2 : 20);
+        // 【重要】稳定等待时间 - 确保系统完成所有事件处理并更新鼠标位置
+        // 根据移动距离动态调整：距离越长，需要更多时间让系统同步
+        int stabilizationDelay = humanLikeMode ? 
+            (int) Math.max(STABILIZATION_DELAY_MS, distance * 0.05) : 
+            STABILIZATION_DELAY_MS;
+        delay(stabilizationDelay);
 
         // 验证移动是否成功
         Point afterPos = getMouseLocation();
@@ -209,7 +226,7 @@ public class RobotDriver {
      */
     public void click() {
         robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
-        robot.delay(10);
+        robot.delay(5);
         robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
         log.info("鼠标左键单击");
     }
@@ -231,7 +248,7 @@ public class RobotDriver {
             log.warn("⚠️ 移动有偏差，但仍尝试点击");
         }
 
-        delay(50);
+        delay(20);
         click();
 
         // 获取点击后的实际位置
@@ -245,7 +262,7 @@ public class RobotDriver {
         result.setActualLogicalCoord(actualPos);
         result.setDeviationX(moveResult.getDeviationX());
         result.setDeviationY(moveResult.getDeviationY());
-        result.setExecutionTimeMs(moveResult.getExecutionTimeMs() + 50);
+        result.setExecutionTimeMs(moveResult.getExecutionTimeMs() + 20);
         result.setSuccess(moveResult.isSuccess());
 
         if (moveResult.isSuccess()) {
@@ -267,7 +284,7 @@ public class RobotDriver {
      */
     public void doubleClick() {
         click();
-        delay(50);
+        delay(30);
         click();
         log.info("鼠标左键双击");
     }
@@ -277,7 +294,7 @@ public class RobotDriver {
      */
     public void doubleClickAt(int x, int y) {
         moveTo(x, y);
-        delay(50);
+        delay(20);
         doubleClick();
     }
 
@@ -295,7 +312,7 @@ public class RobotDriver {
      */
     public void rightClickAt(int x, int y) {
         moveTo(x, y);
-        delay(50);
+        delay(20);
         rightClick();
     }
 
@@ -322,17 +339,17 @@ public class RobotDriver {
         }
         
         // 稳定等待
-        delay(80);
-        
+        delay(30);
+
         // 获取安全坐标
         Point startPos = convertToRobotCoordinates(fromX, fromY);
         Point targetPos = convertToRobotCoordinates(toX, toY);
-        
+
         // 2. 按下鼠标
         robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
-        
+
         // 【关键】按下后等待系统响应，避免拖拽失效
-        delay(50);
+        delay(20);
         
         try {
             if (humanLikeMode) {
@@ -366,7 +383,7 @@ public class RobotDriver {
             }
             
             // 到达终点后稳定等待
-            delay(50);
+            delay(20);
             
         } finally {
             // 5. 释放鼠标
@@ -482,7 +499,7 @@ public class RobotDriver {
         robot.keyRelease(KeyEvent.VK_V);
         robot.keyRelease(KeyEvent.VK_META);
 
-        delay(100);
+        delay(30);
     }
 
     /**

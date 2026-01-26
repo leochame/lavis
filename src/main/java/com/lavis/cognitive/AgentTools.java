@@ -39,18 +39,40 @@ public class AgentTools {
      * 说明：
      * - 屏幕截图叠加网格/模型输出使用 Gemini 坐标系 (0-1000)；
      * - Java 9+ macOS 下 AWT Robot 使用逻辑坐标，不是物理像素；
-     * - 因此这里需要做“坐标系转换”，而不是乘以 Retina 缩放因子。
+     * - 因此这里需要做"坐标系转换"，而不是乘以 Retina 缩放因子。
+     * 
+     * 【修复】添加坐标验证和钳制，确保输入坐标在有效范围内 (0-1000)
      */
     private Point toLogicalPoint(int[] geminiCoords) {
         if (geminiCoords == null || geminiCoords.length < 2) return null;
+        
+        int geminiX = geminiCoords[0];
+        int geminiY = geminiCoords[1];
+        
+        // 验证并钳制 Gemini 坐标到有效范围 (0-1000)
+        boolean clamped = false;
+        if (geminiX < 0 || geminiX > ScreenCapturer.COORD_MAX) {
+            geminiX = Math.max(0, Math.min(ScreenCapturer.COORD_MAX, geminiX));
+            clamped = true;
+        }
+        if (geminiY < 0 || geminiY > ScreenCapturer.COORD_MAX) {
+            geminiY = Math.max(0, Math.min(ScreenCapturer.COORD_MAX, geminiY));
+            clamped = true;
+        }
+        
+        if (clamped) {
+            log.warn("⚠️ Gemini 坐标超出范围，已自动钳制: 原始[{}, {}] -> 修正[{}, {}] (有效范围: 0-{})",
+                    geminiCoords[0], geminiCoords[1], geminiX, geminiY, ScreenCapturer.COORD_MAX);
+        }
+        
         // 使用 ScreenCapturer 内置转换（含边界/安全区处理）
-        Point logical = screenCapturer.toLogicalSafe(geminiCoords[0], geminiCoords[1]);
+        Point logical = screenCapturer.toLogicalSafe(geminiX, geminiY);
         log.info("🎯 坐标校准: Gemini[{}, {}] -> 逻辑坐标[{}, {}]",
-                geminiCoords[0], geminiCoords[1], logical.x, logical.y);
+                geminiX, geminiY, logical.x, logical.y);
         return logical;
     }
 
-    public String moveMouse(@P("Coordinate position array [x, y]") int[] coords) {
+    public String moveMouse(@P("Coordinate position array [x, y] in Gemini format (0-1000)") int[] coords) {
         if (coords == null || coords.length < 2) return "❌ 错误: 坐标无效";
         try {
             Point logical = toLogicalPoint(coords);
@@ -63,12 +85,23 @@ public class AgentTools {
         }
     }
 
-    @Tool("Click at specified screen position Note After click operation executes must observe screen changes such as button color change page jump popup disappearance to confirm if click took effect")
-    public String click(@P("Coordinate position array [x, y]") int[] coords) {
-        if (coords == null || coords.length < 2) return "❌ 错误: 坐标无效";
+    @Tool("Click at specified screen position. Coordinates must be in Gemini format [x, y] where x and y are integers between 0 and 1000. Note: After click operation executes must observe screen changes such as button color change page jump popup disappearance to confirm if click took effect")
+    public String click(@P("Coordinate position array [x, y] in Gemini format (0-1000)") int[] coords) {
+        if (coords == null || coords.length < 2) {
+            return String.format("❌ 错误: 坐标无效 (需要 [x, y] 数组，Gemini 格式 0-%d)", ScreenCapturer.COORD_MAX);
+        }
+        // 检查坐标范围（在 toLogicalPoint 中会自动钳制，但这里先给出警告）
+        if (coords[0] < 0 || coords[0] > ScreenCapturer.COORD_MAX || 
+            coords[1] < 0 || coords[1] > ScreenCapturer.COORD_MAX) {
+            log.warn("⚠️ 坐标超出范围: [{}, {}] (有效范围: 0-{})，将自动钳制", 
+                    coords[0], coords[1], ScreenCapturer.COORD_MAX);
+        }
         try {
             Point logical = toLogicalPoint(coords);
-            if (logical == null) return "❌ 错误: 坐标无效";
+            if (logical == null) {
+                return String.format("❌ 错误: 坐标转换失败 (输入: [%d, %d]，Gemini 格式应为 0-%d)", 
+                        coords[0], coords[1], ScreenCapturer.COORD_MAX);
+            }
             robotDriver.clickAt(logical.x, logical.y);
             // 记录逻辑坐标（截图侧会再转回 Gemini 做标注）
             screenCapturer.recordClickPosition(logical.x, logical.y);
@@ -81,12 +114,22 @@ public class AgentTools {
         }
     }
 
-    @Tool("Double click at specified screen position If single click did not trigger expected UI changes try using this tool")
-    public String doubleClick(@P("Coordinate position array [x, y]") int[] coords) {
-        if (coords == null || coords.length < 2) return "❌ 错误: 坐标无效";
+    @Tool("Double click at specified screen position. Coordinates must be in Gemini format [x, y] where x and y are integers between 0 and 1000. If single click did not trigger expected UI changes try using this tool")
+    public String doubleClick(@P("Coordinate position array [x, y] in Gemini format (0-1000)") int[] coords) {
+        if (coords == null || coords.length < 2) {
+            return String.format("❌ 错误: 坐标无效 (需要 [x, y] 数组，Gemini 格式 0-%d)", ScreenCapturer.COORD_MAX);
+        }
+        if (coords[0] < 0 || coords[0] > ScreenCapturer.COORD_MAX || 
+            coords[1] < 0 || coords[1] > ScreenCapturer.COORD_MAX) {
+            log.warn("⚠️ 坐标超出范围: [{}, {}] (有效范围: 0-{})，将自动钳制", 
+                    coords[0], coords[1], ScreenCapturer.COORD_MAX);
+        }
         try {
             Point logical = toLogicalPoint(coords);
-            if (logical == null) return "❌ 错误: 坐标无效";
+            if (logical == null) {
+                return String.format("❌ 错误: 坐标转换失败 (输入: [%d, %d]，Gemini 格式应为 0-%d)", 
+                        coords[0], coords[1], ScreenCapturer.COORD_MAX);
+            }
             robotDriver.doubleClickAt(logical.x, logical.y);
             screenCapturer.recordClickPosition(logical.x, logical.y);
             return String.format("🖱️ 已在 逻辑坐标(%d, %d) 执行双击（输入Gemini:%d,%d）。请检查屏幕变化。",
@@ -96,8 +139,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("Right click")
-    public String rightClick(@P("Coordinate position array [x, y]") int[] coords) {
+    @Tool("Right click at specified screen position. Coordinates must be in Gemini format [x, y] where x and y are integers between 0 and 1000")
+    public String rightClick(@P("Coordinate position array [x, y] in Gemini format (0-1000)") int[] coords) {
         if (coords == null || coords.length < 2) return "❌ 错误: 坐标无效";
         try {
             Point logical = toLogicalPoint(coords);
@@ -111,8 +154,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("Drag operation")
-    public String drag(@P("Start position [x, y]") int[] from, @P("Target position [x, y]") int[] to) {
+    @Tool("Drag operation. Coordinates must be in Gemini format [x, y] where x and y are integers between 0 and 1000")
+    public String drag(@P("Start position [x, y] in Gemini format (0-1000)") int[] from, @P("Target position [x, y] in Gemini format (0-1000)") int[] to) {
         try {
             if (from == null || from.length < 2 || to == null || to.length < 2) return "❌ 错误: 坐标无效";
             Point fromLogical = toLogicalPoint(from);
@@ -403,5 +446,20 @@ public class AgentTools {
         } catch (Exception e) {
             return "❌ 验证失败: " + e.getMessage();
         }
+    }
+
+    // ==================== 任务完成工具 ====================
+
+    /**
+     * 里程碑完成工具
+     * 
+     * 【重要规则】只能在观察到屏幕变化后调用，不能在执行动作的同一轮调用。
+     * 调用此工具即代表流程结束（Success）。
+     */
+    @Tool("Call only when clear visual evidence of complete task achievement can be seen in screenshot. This call will end current task loop. CRITICAL: Do NOT call this tool in the same turn as executing an action (click, type, etc). You must wait for the next screenshot to verify the action succeeded before calling this tool.")
+    public String completeMilestone(
+            @P("Must include 1.success evidence seen in screenshot 2.specific manifestation of completion state") String summary) {
+        log.info("✅ 里程碑完成: {}", summary);
+        return "Milestone marked as completed: " + summary;
     }
 }

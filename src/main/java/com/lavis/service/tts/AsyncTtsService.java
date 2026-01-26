@@ -216,34 +216,49 @@ public class AsyncTtsService {
     }
 
     private boolean sendTtsAudio(String sessionId, String requestId, String audioBase64, int index, boolean isLast) {
-        return webSocketHandler.sendToSessionById(sessionId, Map.of(
-            "type", "tts_audio",
-            "requestId", requestId,
-            "data", audioBase64,
-            "index", index,
-            "isLast", isLast
-        ));
+        Map<String, Object> data = new java.util.HashMap<>();
+        data.put("requestId", requestId);
+        data.put("data", audioBase64);
+        data.put("index", index);
+        data.put("isLast", isLast);
+        
+        Map<String, Object> message = new java.util.HashMap<>();
+        message.put("type", "tts_audio");
+        message.put("data", data);
+        message.put("timestamp", System.currentTimeMillis());
+        
+        return webSocketHandler.sendToSessionById(sessionId, message);
     }
 
     /**
      * Send TTS skip message
      */
     private void sendTtsSkip(String sessionId, String requestId, String reason) {
-        webSocketHandler.sendToSessionById(sessionId, Map.of(
-            "type", "tts_skip",
-            "requestId", requestId,
-            "reason", reason
-        ));
+        Map<String, Object> data = new java.util.HashMap<>();
+        data.put("requestId", requestId);
+        data.put("reason", reason);
+        
+        Map<String, Object> message = new java.util.HashMap<>();
+        message.put("type", "tts_skip");
+        message.put("data", data);
+        message.put("timestamp", System.currentTimeMillis());
+        
+        webSocketHandler.sendToSessionById(sessionId, message);
     }
 
     /**
      * Send TTS error message
      */
     private void sendTtsError(String sessionId, String requestId, String error) {
-        webSocketHandler.sendToSessionById(sessionId, Map.of(
-            "type", "tts_error",
-            "requestId", requestId,
-            "error", error != null ? error : "Unknown error"
-        ));
+        Map<String, Object> data = new java.util.HashMap<>();
+        data.put("requestId", requestId);
+        data.put("error", error != null ? error : "Unknown error");
+        
+        Map<String, Object> message = new java.util.HashMap<>();
+        message.put("type", "tts_error");
+        message.put("data", data);
+        message.put("timestamp", System.currentTimeMillis());
+        
+        webSocketHandler.sendToSessionById(sessionId, message);
     }
 }

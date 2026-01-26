@@ -206,6 +206,10 @@ export function useGlobalVoice(isAppStarted: boolean): UseGlobalVoiceReturn {
   const audioQueueRef = useRef<AudioQueueItem[]>([]);
   // 是否已收到最后一个音频片段
   const receivedLastRef = useRef<boolean>(false);
+  // 防止重复处理同一个 blob 的标志
+  const isProcessingRef = useRef<boolean>(false);
+  // 追踪最后处理的 blob 标识（size + timestamp）
+  const lastProcessedBlobRef = useRef<string | null>(null);
 
   // 初始化录音 Hook
   const {
@@ -238,6 +242,7 @@ export function useGlobalVoice(isAppStarted: boolean): UseGlobalVoiceReturn {
       // 队列为空
       if (receivedLastRef.current) {
         // 已收到最后一个片段且队列播放完毕，结束播放状态
+        console.log('[Audio] Queue empty and received last, returning to idle');
         isPlayingRef.current = false;
         updateState('idle');
       }
@@ -248,37 +253,64 @@ export function useGlobalVoice(isAppStarted: boolean): UseGlobalVoiceReturn {
     audioQueueRef.current.sort((a, b) => a.index - b.index);
     const item = audioQueueRef.current.shift()!;
 
+    console.log('[Audio] Playing audio chunk:', {
+      index: item.index,
+      isLast: item.isLast,
+      dataLength: item.data.length,
+      dataPreview: item.data.substring(0, 50)
+    });
+
     if (!audioRef.current) {
       audioRef.current = new Audio();
     }
 
     const audio = audioRef.current;
 
-    // 检测音频格式
-    const isWav = item.data.startsWith('UklGR') || item.data.startsWith('Ukl');
-    const mimeType = isWav ? 'audio/wav' : 'audio/mp3';
+    // 检测音频格式（通过 Base64 魔数）
+    // WAV: "UklGR" (RIFF)
+    // MP3: "//uQ" 或 "/+NI" 或 "SUQz" (ID3)
+    // OGG: "T2dn" (OggS)
+    // AAC: "//tQ" 或 "AAAA"
+    let mimeType = 'audio/mpeg'; // 默认 MP3
+    const dataPrefix = item.data.substring(0, 10);
+
+    if (dataPrefix.startsWith('UklGR')) {
+      mimeType = 'audio/wav';
+    } else if (dataPrefix.startsWith('T2dn')) {
+      mimeType = 'audio/ogg';
+    } else if (dataPrefix.startsWith('AAAA') || dataPrefix.startsWith('//tQ')) {
+      mimeType = 'audio/aac';
+    } else if (dataPrefix.startsWith('//uQ') || dataPrefix.startsWith('/+NI') || dataPrefix.startsWith('SUQz')) {
+      mimeType = 'audio/mpeg';
+    }
+
+    console.log('[Audio] Detected format:', mimeType, 'prefix:', dataPrefix);
 
     // 清理之前的监听器
     audio.onerror = null;
     audio.onended = null;
 
+    // 使用 data URL 播放
     audio.src = `data:${mimeType};base64,${item.data}`;
     isPlayingRef.current = true;
 
-    audio.onerror = () => {
+    audio.onerror = (e) => {
+      console.error('[Audio] Playback error:', e, 'src length:', audio.src.length);
       isPlayingRef.current = false;
       // 继续播放下一个
       playNextInQueue();
     };
 
     audio.onended = () => {
+      console.log('[Audio] Chunk playback ended, index:', item.index);
       audio.src = '';
       isPlayingRef.current = false;
       // 继续播放下一个
       playNextInQueue();
     };
 
-    audio.play().catch(() => {
+    audio.play().catch((err) => {
+      console.error('[Audio] Failed to play:', err);
       isPlayingRef.current = false;
       playNextInQueue();
     });
@@ -287,8 +319,22 @@ export function useGlobalVoice(isAppStarted: boolean): UseGlobalVoiceReturn {
 
   // TTS 事件回调
   const handleTtsAudio = useCallback((event: TtsAudioEvent) => {
+    console.log('[TTS] Received audio event:', {
+      requestId: event.requestId,
+      index: event.index,
+      isLast: event.isLast,
+      dataLength: event.data?.length || 0
+    });
+
     // 检查 requestId 是否匹配
     if (currentRequestId && event.requestId !== currentRequestId) {
+      console.log('[TTS] Ignoring audio for different requestId:', event.requestId, 'current:', currentRequestId);
+      return;
+    }
+
+    // 验证音频数据
+    if (!event.data || event.data.length === 0) {
+      console.warn('[TTS] Received empty audio data, skipping');
       return;
     }
 
@@ -301,10 +347,12 @@ export function useGlobalVoice(isAppStarted: boolean): UseGlobalVoiceReturn {
 
     if (event.isLast) {
       receivedLastRef.current = true;
+      console.log('[TTS] Received last audio chunk');
     }
 
     // 如果当前没有在播放，开始播放
     if (!isPlayingRef.current) {
+      console.log('[TTS] Starting playback');
       updateState('speaking');
       playNextInQueue();
     }
@@ -345,6 +393,25 @@ export function useGlobalVoice(isAppStarted: boolean): UseGlobalVoiceReturn {
   // 处理语音对话（异步 TTS 版本）
   // 文字先行，音频通过 WebSocket 异步推送
   const handleVoiceChat = useCallback(async (blob: Blob) => {
+    // 生成 blob 的唯一标识（size + type，同一个录音应该具有相同的 size）
+    const blobId = `${blob.size}-${blob.type}`;
+    
+    // 防止重复处理同一个 blob
+    if (isProcessingRef.current) {
+      console.log('[VoiceChat] Already processing a blob, skipping duplicate call');
+      return;
+    }
+    
+    // 检查是否是同一个 blob（通过 size 和 type 判断）
+    if (lastProcessedBlobRef.current === blobId) {
+      console.log('[VoiceChat] This blob was already processed, skipping duplicate call');
+      return;
+    }
+    
+    // 标记为正在处理
+    isProcessingRef.current = true;
+    lastProcessedBlobRef.current = blobId;
+    
     updateState('processing');
     setError(null);
 
@@ -397,8 +464,11 @@ export function useGlobalVoice(isAppStarted: boolean): UseGlobalVoiceReturn {
           return prev;
         });
       }, 3000);
+    } finally {
+      // 处理完成，重置处理标志
+      isProcessingRef.current = false;
     }
-  }, [updateState, clearAudioBlob, voiceState]);
+  }, [updateState, clearAudioBlob]);
 
   // 唤醒词回调 - 触发录音
   const handleWakeWord = useCallback(() => {
@@ -416,6 +486,11 @@ export function useGlobalVoice(isAppStarted: boolean): UseGlobalVoiceReturn {
       setAgentResponse('');
       setAgentAudio(null);
       setError(null);
+      
+      // 重置处理标志，允许新的录音被处理
+      isProcessingRef.current = false;
+      lastProcessedBlobRef.current = null;
+      
       updateState('listening');
       recorderStart();
     }
@@ -444,9 +519,11 @@ export function useGlobalVoice(isAppStarted: boolean): UseGlobalVoiceReturn {
   useEffect(() => {
     // 如果 audioBlob 存在且不是太短，且（voiceState 是 listening 或录音已停止），则上传
     // 这样可以处理录音完成但状态可能已经变化的情况
-    if (audioBlob && !isTooShort && (voiceState === 'listening' || !isRecording)) {
+    if (audioBlob && !isTooShort && (voiceState === 'listening' || !isRecording) && !isProcessingRef.current) {
       handleVoiceChat(audioBlob).catch((err) => {
         console.error('[VoiceChat] Failed:', err);
+        // 处理失败时也要重置处理标志
+        isProcessingRef.current = false;
       });
     } else if (isTooShort && (voiceState === 'listening' || !isRecording)) {
       // 录音过短或全程静音，直接回到 idle 状态
@@ -480,6 +557,10 @@ export function useGlobalVoice(isAppStarted: boolean): UseGlobalVoiceReturn {
     setAgentResponse('');
     setAgentAudio(null);
     setError(null);
+    
+    // 重置处理标志，允许新的录音被处理
+    isProcessingRef.current = false;
+    lastProcessedBlobRef.current = null;
 
     playDing();
     updateState('listening');

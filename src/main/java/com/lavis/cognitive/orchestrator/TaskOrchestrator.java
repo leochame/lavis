@@ -6,6 +6,8 @@ import com.lavis.cognitive.model.PlanStep;
 import com.lavis.cognitive.model.TaskPlan;
 import com.lavis.cognitive.planner.PlannerService;
 import com.lavis.service.llm.LlmFactory;
+import com.lavis.service.tts.AsyncTtsService;
+import com.lavis.websocket.AgentWebSocketHandler;
 import com.lavis.websocket.WorkflowEventService;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -23,6 +25,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -54,6 +57,14 @@ public class TaskOrchestrator {
     // WebSocket 事件服务（用于向前端推送工作流状态）
     @Autowired(required = false)
     private WorkflowEventService workflowEventService;
+    
+    // AsyncTtsService（用于统一 TTS 生成）
+    @Autowired(required = false)
+    private AsyncTtsService asyncTtsService;
+    
+    // WebSocket Handler（用于获取 sessionId）
+    @Autowired(required = false)
+    private AgentWebSocketHandler webSocketHandler;
 
     /** Planner 使用的模型别名 */
     @Value("${planner.model.alias:}")
@@ -121,16 +132,16 @@ public class TaskOrchestrator {
 
     /**
      * 执行用户目标（主入口）
-     * 
+     *
      * 【统一入口】所有复杂任务必须通过此方法启动
-     * 
+     *
      * 完整流程：
      * 1. 创建 GlobalContext（宏观上下文）
      * 2. Planner 生成计划
      * 3. 逐步执行每个步骤（注入 GlobalContext）
      * 4. 失败时触发 Re-plan
      * 5. 返回最终结果
-     * 
+     *
      * @param userGoal 用户目标
      * @return 执行结果
      */
@@ -625,7 +636,8 @@ public class TaskOrchestrator {
     }
 
     /**
-     * 【新增】异步生成并发送拟人化TTS通知
+     * 【重构】异步生成并发送拟人化TTS通知
+     * 统一使用 AsyncTtsService，避免重复 TTS 播放
      * 仅在最终步骤（计划完成时）调用，不阻塞主执行流程
      * 
      * @param userGoal 用户目标
@@ -635,6 +647,22 @@ public class TaskOrchestrator {
     private void generateAndSendVoiceAnnouncement(String userGoal, int stepsExecuted, long executionTimeMs) {
         CompletableFuture.runAsync(() -> {
             try {
+                // 检查 AsyncTtsService 和 WebSocket Handler 是否可用
+                if (asyncTtsService == null || webSocketHandler == null) {
+                    log.debug("⚠️ AsyncTtsService 或 WebSocketHandler 不可用，跳过 TTS 通知");
+                    return;
+                }
+                
+                // 获取 WebSocket sessionId
+                String sessionId = webSocketHandler.getFirstSessionId();
+                if (sessionId == null || !webSocketHandler.isSessionActive(sessionId)) {
+                    log.debug("⚠️ 没有活动的 WebSocket 会话，跳过 TTS 通知");
+                    return;
+                }
+                
+                // 生成 requestId
+                String requestId = UUID.randomUUID().toString();
+                
                 // 获取快速模型（优先使用 executor 模型，否则使用默认模型）
                 ChatLanguageModel fastModel = null;
                 if (executorModelAlias != null && !executorModelAlias.isBlank() 
@@ -683,11 +711,9 @@ public class TaskOrchestrator {
                         announcementText = announcementText.substring(0, 20) + "...";
                     }
                     
-                    // 发送 TTS 通知
-                    if (workflowEventService != null) {
-                        workflowEventService.onVoiceAnnouncement(announcementText);
-                        log.info("🎙️ TTS 通知已生成: {}", announcementText);
-                    }
+                    // 【重构】使用 AsyncTtsService 统一生成和推送 TTS
+                    asyncTtsService.generateAndPush(sessionId, announcementText, requestId);
+                    log.info("🎙️ TTS 通知已生成并推送: {} (requestId: {})", announcementText, requestId);
                 } else {
                     log.warn("⚠️ LLM 返回空文本，跳过 TTS 通知");
                 }

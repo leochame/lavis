@@ -149,16 +149,23 @@ public class ScreenCapturer {
 
     /**
      * Gemini 坐标 (0-1000) → 逻辑屏幕坐标
+     * * 【精度改进】使用 Math.round() 进行四舍五入，而不是直接截断，提高坐标转换精度
      * * 【修复】增加边界钳位，确保坐标不超出 [0, width-1]
      */
     public Point toLogical(int geminiX, int geminiY) {
         Dimension screen = getScreenSize();
-        // 钳位到 [0, width-1] 防止溢出
-        int x = (int) Math.min(screen.width - 1, Math.max(0, (double) geminiX / COORD_MAX * screen.width));
-        int y = (int) Math.min(screen.height - 1, Math.max(0, (double) geminiY / COORD_MAX * screen.height));
+        // 使用四舍五入提高精度，而不是直接截断
+        double xDouble = (double) geminiX / COORD_MAX * screen.width;
+        double yDouble = (double) geminiY / COORD_MAX * screen.height;
+        // 四舍五入后钳位到 [0, width-1] 防止溢出
+        int x = (int) Math.min(screen.width - 1, Math.max(0, Math.round(xDouble)));
+        int y = (int) Math.min(screen.height - 1, Math.max(0, Math.round(yDouble)));
 
-        log.debug("坐标转换: Gemini({},{}) -> 逻辑({},{}) [屏幕 {}x{}]",
-                geminiX, geminiY, x, y, screen.width, screen.height);
+        if (log.isDebugEnabled()) {
+            log.debug("坐标转换: Gemini({},{}) -> 逻辑({},{}) [屏幕 {}x{}] (原始计算值: {:.2f}, {:.2f})",
+                    geminiX, geminiY, x, y, screen.width, screen.height, 
+                    String.format("%.2f", xDouble), String.format("%.2f", yDouble));
+        }
 
         return new Point(x, y);
     }
@@ -182,11 +189,15 @@ public class ScreenCapturer {
 
     /**
      * 逻辑屏幕坐标 → Gemini 坐标 (0-1000)
+     * * 【精度改进】使用 Math.round() 进行四舍五入，提高坐标转换精度
      */
     public Point toGemini(int logicalX, int logicalY) {
         Dimension screen = getScreenSize();
-        int x = (int) ((double) logicalX / screen.width * COORD_MAX);
-        int y = (int) ((double) logicalY / screen.height * COORD_MAX);
+        // 使用四舍五入提高精度
+        double xDouble = (double) logicalX / screen.width * COORD_MAX;
+        double yDouble = (double) logicalY / screen.height * COORD_MAX;
+        int x = (int) Math.round(xDouble);
+        int y = (int) Math.round(yDouble);
 
         // 钳位
         x = Math.max(0, Math.min(COORD_MAX, x));
@@ -370,11 +381,13 @@ public class ScreenCapturer {
 
     /**
      * 逻辑屏幕坐标 → 压缩图像坐标
+     * * 【精度改进】使用四舍五入提高精度
      */
     private Point logicalToImageCoord(Point logical, BufferedImage image) {
         Dimension screen = getScreenSize();
         double ratio = (double) image.getWidth() / screen.width;
-        return new Point((int)(logical.x * ratio), (int)(logical.y * ratio));
+        // 使用四舍五入提高精度
+        return new Point((int) Math.round(logical.x * ratio), (int) Math.round(logical.y * ratio));
     }
 
     /**

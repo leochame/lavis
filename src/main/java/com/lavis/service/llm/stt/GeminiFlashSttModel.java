@@ -10,6 +10,8 @@ import okhttp3.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.util.Base64;
 import java.util.concurrent.TimeUnit;
 
@@ -20,14 +22,14 @@ import java.util.concurrent.TimeUnit;
  * 支持通过 inlineData base64 方式上传音频
  * 
  * 根据官方文档，Gemini 支持音频理解，需要：
- * 1. 添加文本提示（prompt）明确要求转录，例如 "Generate a transcript of the speech."
+ * 1. 添加文本提示（prompt）明确要求转录，例如 "Transcribe the audio. Output only the exact words spoken, nothing else."
  * 2. 支持多种音频格式：WAV, MP3, AIFF, AAC, OGG, FLAC
  * 
  * API 文档: 
  * - 官方文档: https://ai.google.dev/gemini-api/docs/audio
  * - 中转站文档: https://docs.newapi.pro/zh/docs/api/ai-model/chat/gemini/geminirelayv1beta-391536411
  */
-@Slf4j             
+@Slf4j
 public class GeminiFlashSttModel implements SttModel {
 
     private final ModelConfig config;
@@ -43,10 +45,18 @@ public class GeminiFlashSttModel implements SttModel {
 
     public GeminiFlashSttModel(ModelConfig config) {
         this.config = config;
+        // 配置连接池和超时设置，提高网络稳定性
+        // 针对连接重置问题，采用以下策略：
+        // 1. 减少连接池保持时间，避免复用已失效的连接
+        // 2. 启用连接失败重试
+        // 3. 设置合理的超时时间
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(config.getTimeoutSeconds(), TimeUnit.SECONDS)
                 .readTimeout(config.getTimeoutSeconds(), TimeUnit.SECONDS)
                 .writeTimeout(config.getTimeoutSeconds(), TimeUnit.SECONDS)
+                .connectionPool(new ConnectionPool(5, 30, TimeUnit.SECONDS)) // 连接池：最多5个连接，保持30秒（减少保持时间，避免复用失效连接）
+                .retryOnConnectionFailure(true) // 启用连接失败重试
+                .protocols(java.util.Arrays.asList(Protocol.HTTP_2, Protocol.HTTP_1_1)) // 明确支持的协议
                 .build();
     }
 
@@ -100,7 +110,21 @@ public class GeminiFlashSttModel implements SttModel {
             String audioBase64 = Base64.getEncoder().encodeToString(audioBytes);
             String mimeType = getAudioMimeType(audioFile.getOriginalFilename());
             
-            log.info("📁 Audio MIME type: {}, size: {} bytes", mimeType, audioBytes.length);
+            // 计算 Base64 编码后的数据大小（用于诊断）
+            int base64Size = audioBase64.length();
+            double sizeMB = audioBytes.length / (1024.0 * 1024.0);
+            double base64SizeMB = base64Size / (1024.0 * 1024.0);
+            
+            log.info("📁 Audio MIME type: {}, original size: {} MB ({} bytes), base64 size: {} MB ({} chars)", 
+                    mimeType, String.format("%.2f", sizeMB), audioBytes.length, 
+                    String.format("%.2f", base64SizeMB), base64Size);
+            
+            // 警告：如果文件太大，可能会触发 Cloudflare 524 超时
+            if (sizeMB > 10) {
+                log.warn("⚠️ Large audio file detected ({} MB). This may cause timeout issues (524 error).", 
+                        String.format("%.2f", sizeMB));
+                log.warn("   Consider: splitting the audio, using a shorter clip, or compressing the audio.");
+            }
 
             // 3. 构建 Gemini generateContent 请求体
             // 根据官方文档，需要添加文本提示来明确要求转录
@@ -108,7 +132,7 @@ public class GeminiFlashSttModel implements SttModel {
             // {
             //   "contents": [{
             //     "parts": [
-            //       {"text": "Generate a transcript of the speech."},
+            //       {"text": "Transcribe the audio. Output only the exact words spoken, nothing else."},
             //       {
             //         "inlineData": {
             //           "mimeType": "audio/mp3",
@@ -124,8 +148,9 @@ public class GeminiFlashSttModel implements SttModel {
             ArrayNode parts = content.putArray("parts");
             
             // 添加文本提示，明确要求转录（根据官方文档要求）
+            // 使用更明确的指令，避免模型误解为"生成内容"而非"转录语音"
             ObjectNode textPart = parts.addObject();
-            textPart.put("text", "Generate a transcript of the speech.");
+            textPart.put("text", "Transcribe the audio. Output only the exact words spoken, nothing else.");
             
             // 添加音频数据
             ObjectNode audioPart = parts.addObject();
@@ -138,26 +163,120 @@ public class GeminiFlashSttModel implements SttModel {
 
             RequestBody requestBody = RequestBody.create(requestJson, JSON_MEDIA_TYPE);
 
-            Request request = new Request.Builder()
+            // 构建请求，添加必要的请求头以避免连接重置问题
+            // 1. User-Agent: 某些代理服务要求此头部
+            // 2. Accept: 明确接受的响应类型
+            // 3. Connection: 对于大请求，使用 close 避免连接复用问题
+            Request.Builder requestBuilder = new Request.Builder()
                     .url(apiUrl)
                     .addHeader("Authorization", "Bearer " + config.getApiKey())
                     .addHeader("Content-Type", "application/json")
-                    .post(requestBody)
-                    .build();
-
-            // 4. 发送请求
-            try (Response response = httpClient.newCall(request).execute()) {
-                String responseBody = response.body() != null ? response.body().string() : "";
-
-                if (!response.isSuccessful()) {
-                    log.error("❌ Gemini STT API failed: {} - URL: {}", response.code(), apiUrl);
-                    log.error("❌ Error response body: {}", responseBody);
-                    throw new IOException("Gemini STT transcription failed: " + response.code() + " - " + responseBody);
-                }
-
-                log.debug("📝 Gemini response: {}", responseBody);
-                return parseGeminiResponse(responseBody);
+                    .addHeader("Accept", "application/json")
+                    .addHeader("User-Agent", "Lavis-Agent/1.0 (Java/OkHttp)")
+                    .post(requestBody);
+            
+            // 对于大请求（>100KB），使用 Connection: close 避免连接复用导致的问题
+            if (base64SizeMB > 0.1) {
+                requestBuilder.addHeader("Connection", "close");
+                log.debug("📦 Large request detected ({} MB), using Connection: close", String.format("%.2f", base64SizeMB));
             }
+            
+            Request request = requestBuilder.build();
+
+            // 4. 发送请求（带重试逻辑）
+            int maxRetries = config.getMaxRetries() != null ? config.getMaxRetries() : 3;
+            IOException lastException = null;
+            
+            for (int attempt = 0; attempt <= maxRetries; attempt++) {
+                try {
+                    if (attempt > 0) {
+                        // 指数退避：1s, 2s, 4s
+                        long backoffMs = (long) Math.pow(2, attempt - 1) * 1000;
+                        log.warn("🔄 Retrying Gemini STT request (attempt {}/{}) after {}ms", 
+                                attempt, maxRetries, backoffMs);
+                        Thread.sleep(backoffMs);
+                    }
+
+                    try (Response response = httpClient.newCall(request).execute()) {
+                        String responseBody = response.body() != null ? response.body().string() : "";
+
+                        if (!response.isSuccessful()) {
+                            int statusCode = response.code();
+                            
+                            // HTTP 错误码：4xx 不重试（除了 524），5xx 重试
+                            if (statusCode >= 400 && statusCode < 500) {
+                                log.error("❌ Gemini STT API failed (client error): {} - URL: {}", statusCode, apiUrl);
+                                log.error("❌ Error response body: {}", responseBody);
+                                throw new IOException("Gemini STT transcription failed: " + statusCode + " - " + responseBody);
+                            } else {
+                                // 5xx 服务器错误，可以重试
+                                log.warn("⚠️ Gemini STT API server error: {} - URL: {}", statusCode, apiUrl);
+                                if (attempt < maxRetries) {
+                                    lastException = new IOException("Server error: " + statusCode + " - " + responseBody);
+                                    continue;
+                                } else {
+                                    throw new IOException("Gemini STT transcription failed: " + statusCode + " - " + responseBody);
+                                }
+                            }
+                        }
+
+                        log.debug("📝 Gemini response: {}", responseBody);
+                        return parseGeminiResponse(responseBody);
+                    }
+                } catch (SocketException | SocketTimeoutException e) {
+                    // 连接错误：可以重试
+                    lastException = e;
+                    if (attempt < maxRetries) {
+                        log.warn("⚠️ Connection error (attempt {}/{}): {} - {}", 
+                                attempt + 1, maxRetries, e.getClass().getSimpleName(), e.getMessage());
+                        // 对于连接重置，在重试前清除连接池中的连接
+                        if (e.getMessage() != null && e.getMessage().contains("reset")) {
+                            log.debug("🔄 Clearing connection pool due to connection reset");
+                            httpClient.connectionPool().evictAll(); // 清除所有连接
+                        }
+                        continue;
+                    } else {
+                        log.error("❌ Connection failed after {} attempts: {} - {}", 
+                                maxRetries + 1, e.getClass().getSimpleName(), e.getMessage());
+                        throw e;
+                    }
+                } catch (IOException e) {
+                    // 其他 IO 错误：检查是否可重试
+                    String errorMsg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+                    String errorClass = e.getClass().getSimpleName();
+                    boolean isRetryable = errorMsg.contains("connection") || 
+                                         errorMsg.contains("reset") || 
+                                         errorMsg.contains("timeout") ||
+                                         errorMsg.contains("broken pipe") ||
+                                         errorMsg.contains("handshake");
+                    
+                    if (isRetryable && attempt < maxRetries) {
+                        lastException = e;
+                        log.warn("⚠️ Network error (attempt {}/{}): {} - {}", 
+                                attempt + 1, maxRetries, errorClass, e.getMessage());
+                        // 对于连接重置或握手错误，清除连接池
+                        if (errorMsg.contains("reset") || errorMsg.contains("handshake")) {
+                            log.debug("🔄 Clearing connection pool due to {} error", errorClass);
+                            httpClient.connectionPool().evictAll();
+                        }
+                        continue;
+                    } else {
+                        // 不可重试或已达到最大重试次数
+                        log.error("❌ Network error (non-retryable or max retries reached): {} - {}", 
+                                errorClass, e.getMessage());
+                        throw e;
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Transcription interrupted", e);
+                }
+            }
+            
+            // 如果所有重试都失败了
+            if (lastException != null) {
+                throw lastException;
+            }
+            throw new IOException("Failed to transcribe audio after " + (maxRetries + 1) + " attempts");
 
         } catch (IOException e) {
             log.error("Transcription failed", e);

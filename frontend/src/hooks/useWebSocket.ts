@@ -85,6 +85,8 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
   const [workflow, setWorkflow] = useState<WorkflowState>(INITIAL_STATE);
   const [lastEvent, setLastEvent] = useState<WorkflowEvent | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  // 新增：跟踪 TTS 是否正在生成（用于保持工作状态指示器）
+  const [isTtsGenerating, setIsTtsGenerating] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
@@ -156,7 +158,13 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
   // 消息处理逻辑
   const handleMessage = useCallback((message: WorkflowEvent) => {
     const { type, data } = message;
-    console.log('🔍 [WS] 处理消息:', type, 'data:', data);
+    // 对于 tts_audio 等包含大量数据的消息，只打印类型和数据长度
+    if (type === 'tts_audio') {
+      const dataStr = data?.data as string | undefined;
+      console.log('🔍 [WS] 处理消息:', type, 'data length:', dataStr?.length ?? 0);
+    } else {
+      console.log('🔍 [WS] 处理消息:', type, 'data:', data);
+    }
 
     switch (type) {
       case 'connected':
@@ -365,6 +373,8 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
         if (!data) {
           break;
         }
+        // 标记 TTS 正在生成
+        setIsTtsGenerating(true);
         if (ttsCallbacksRef.current?.onTtsAudio) {
           ttsCallbacksRef.current.onTtsAudio({
             type: 'tts_audio',
@@ -374,6 +384,11 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
             isLast: data.isLast as boolean,
           });
         }
+        // 如果是最后一个音频片段，标记 TTS 生成完成
+        if (data.isLast) {
+          console.log('[WS] TTS generation completed (isLast=true)');
+          setIsTtsGenerating(false);
+        }
         break;
 
       case 'tts_skip':
@@ -381,6 +396,8 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
         if (!data) {
           break;
         }
+        // TTS 跳过，标记生成完成
+        setIsTtsGenerating(false);
         if (ttsCallbacksRef.current?.onTtsSkip) {
           ttsCallbacksRef.current.onTtsSkip({
             type: 'tts_skip',
@@ -396,6 +413,8 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
           break;
         }
         console.error('[WS] TTS error:', data.error);
+        // TTS 错误，标记生成完成
+        setIsTtsGenerating(false);
         if (ttsCallbacksRef.current?.onTtsError) {
           ttsCallbacksRef.current.onTtsError({
             type: 'tts_error',
@@ -464,19 +483,80 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
       ws.onmessage = (event) => {
         try {
           const rawData = event.data;
-          console.log('📩 [WS] 收到原始消息:', rawData);
+          // 对于超长消息，只打印摘要
+          const MAX_LOG_LENGTH = 500;
+          if (typeof rawData === 'string' && rawData.length > MAX_LOG_LENGTH) {
+            try {
+              const parsed = JSON.parse(rawData);
+              if (parsed.type === 'tts_audio' && parsed.data?.data) {
+                // TTS 音频消息：只显示摘要
+                console.log('📩 [WS] 收到原始消息:', {
+                  requestId: parsed.requestId,
+                  index: parsed.index,
+                  isLast: parsed.isLast,
+                  type: parsed.type,
+                  dataLength: parsed.data?.data?.length || 0,
+                  dataPreview: parsed.data?.data?.substring(0, 50) + '...'
+                });
+              } else {
+                // 其他超长消息：显示前N个字符
+                console.log('📩 [WS] 收到原始消息 (超长，已截断):', rawData.substring(0, MAX_LOG_LENGTH) + '...');
+              }
+            } catch {
+              // 如果不是JSON，直接截断
+              console.log('📩 [WS] 收到原始消息 (超长，已截断):', rawData.substring(0, MAX_LOG_LENGTH) + '...');
+            }
+          } else {
+            console.log('📩 [WS] 收到原始消息:', rawData);
+          }
+          
           const message = JSON.parse(rawData) as WorkflowEvent;
-          console.log('📩 [WS] 解析后的消息:', {
-            type: message.type,
-            hasData: !!message.data,
-            dataKeys: message.data ? Object.keys(message.data) : [],
-            timestamp: message.timestamp,
-            fullMessage: message
-          });
+          
+          // 格式化解析后的消息，对超长数据字段进行截断
+          const formatMessageForLog = (msg: WorkflowEvent) => {
+            const logData: any = {
+              type: msg.type,
+              hasData: !!msg.data,
+              dataKeys: msg.data ? Object.keys(msg.data) : [],
+              timestamp: msg.timestamp,
+            };
+            
+            // 对于包含大量数据的消息类型，只显示摘要
+            if (msg.type === 'tts_audio' && msg.data) {
+              const dataStr = (msg.data as any).data;
+              if (typeof dataStr === 'string' && dataStr.length > 100) {
+                logData.data = {
+                  requestId: (msg.data as any).requestId,
+                  index: (msg.data as any).index,
+                  isLast: (msg.data as any).isLast,
+                  dataLength: dataStr.length,
+                  dataPreview: dataStr.substring(0, 50) + '...'
+                };
+              } else {
+                logData.data = msg.data;
+              }
+            } else if (msg.data) {
+              // 对于其他消息，如果data字段太大，也进行截断
+              const dataStr = JSON.stringify(msg.data);
+              if (dataStr.length > MAX_LOG_LENGTH) {
+                logData.data = {
+                  _truncated: true,
+                  _originalLength: dataStr.length,
+                  _preview: dataStr.substring(0, MAX_LOG_LENGTH) + '...'
+                };
+              } else {
+                logData.data = msg.data;
+              }
+            }
+            
+            return logData;
+          };
+          
+          console.log('📩 [WS] 解析后的消息:', formatMessageForLog(message));
           setLastEvent(message);
           handleMessage(message);
         } catch (e) {
-          console.error('[WS] ❌ 解析消息失败:', e, '原始数据:', event.data);
+          console.error('[WS] ❌ 解析消息失败:', e, '原始数据:', event.data?.substring?.(0, 200) || event.data);
         }
       };
     } catch (e) {
@@ -517,6 +597,7 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
     sessionId, // WebSocket Session ID（用于 voice-chat 请求）
     workflow,
     lastEvent,
+    isTtsGenerating, // TTS 是否正在生成（用于保持工作状态指示器）
     resetWorkflow,
     sendMessage, // 暴露发送方法
   };

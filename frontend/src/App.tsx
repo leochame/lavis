@@ -40,7 +40,7 @@ export default function App() {
   const globalVoice = useGlobalVoice(isStarted);
 
   // 初始化 WebSocket，传入 TTS 回调
-  const { connected: wsConnected, workflow: wsWorkflow } = useWebSocket(wsUrl, globalVoice.ttsCallbacks);
+  const { connected: wsConnected, workflow: wsWorkflow, isTtsGenerating } = useWebSocket(wsUrl, globalVoice.ttsCallbacks);
 
 
   // Start heartbeat on mount
@@ -257,8 +257,10 @@ export default function App() {
             onStartRecording={globalVoice.startRecording}
             wsConnected={wsConnected}
             isWorking={(() => {
-              const working = wsWorkflow.status === 'executing' || 
+              // 工作状态包括：执行中、规划中、或 TTS 正在生成
+              const working = wsWorkflow.status === 'executing' ||
                 wsWorkflow.status === 'planning' ||
+                isTtsGenerating ||  // 新增：TTS 生成中也算工作状态
                 status?.orchestrator_state?.includes('EXECUTING') ||
                 status?.orchestrator_state?.includes('PLANNING') ||
                 status?.orchestrator_state?.includes('THINKING');
@@ -266,6 +268,7 @@ export default function App() {
               if (wsConnected) {
                 console.log('🔍 App.tsx isWorking calculation:', {
                   'wsWorkflow.status': wsWorkflow.status,
+                  'isTtsGenerating': isTtsGenerating,
                   'status?.orchestrator_state': status?.orchestrator_state ? JSON.stringify(status.orchestrator_state) : 'null',
                   'isWorking': working,
                   'wsConnected': wsConnected

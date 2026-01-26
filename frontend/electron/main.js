@@ -188,6 +188,10 @@ function createWindow() {
     mainWindow.on('closed', () => {
         mainWindow = null;
         stopAlwaysOnTopEnforcer();
+        // 如果窗口关闭且没有其他窗口，退出应用
+        if (electron_1.BrowserWindow.getAllWindows().length === 0) {
+            electron_1.app.quit();
+        }
     });
     // 监听窗口失去焦点时重新置顶
     mainWindow.on('blur', () => {
@@ -472,6 +476,10 @@ electron_1.ipcMain.on('show-context-menu', () => {
         {
             label: '退出 Lavis',
             click: () => {
+                // 关闭所有窗口并退出
+                electron_1.BrowserWindow.getAllWindows().forEach(window => {
+                    window.destroy();
+                });
                 electron_1.app.quit();
             },
         },
@@ -691,13 +699,20 @@ electron_1.ipcMain.handle('backend:request', async (_event, { method, endpoint, 
 });
 // Handle app quit
 electron_1.app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-        electron_1.app.quit();
-    }
+    // 在所有平台上都退出应用，而不是在 macOS 上保持运行
+    // 如果用户想要退出，应该完全退出，而不是继续在后台运行
+    electron_1.app.quit();
 });
 electron_1.app.on('activate', () => {
-    if (electron_1.BrowserWindow.getAllWindows().length === 0) {
+    // 只有在应用没有退出意图时才重新创建窗口
+    // 如果用户已经关闭了所有窗口并退出，不应该重新创建
+    if (electron_1.BrowserWindow.getAllWindows().length === 0 && mainWindow === null) {
         createWindow();
+    }
+    else if (mainWindow) {
+        // 如果窗口存在但被隐藏，显示它
+        mainWindow.show();
+        mainWindow.focus();
     }
 });
 // Global hotkey (Option+Space or Alt+Space)
@@ -762,15 +777,40 @@ electron_1.app.whenReady().then(async () => {
     // Create system tray
     createTray();
 });
+// Clean up before quit
+electron_1.app.on('before-quit', (event) => {
+    // 标记应用正在退出，防止其他操作干扰
+    console.log('🛑 Application is quitting...');
+});
 // Clean up on quit
 electron_1.app.on('will-quit', async (event) => {
     // 阻止默认退出，等待后端关闭
     event.preventDefault();
+    // 取消注册所有全局快捷键
     electron_1.globalShortcut.unregisterAll();
+    // 停止置顶定时器
+    stopAlwaysOnTopEnforcer();
+    // 销毁系统托盘
+    if (tray) {
+        tray.destroy();
+        tray = null;
+    }
+    // 确保所有窗口都已关闭
+    const windows = electron_1.BrowserWindow.getAllWindows();
+    windows.forEach(window => {
+        if (!window.isDestroyed()) {
+            window.destroy();
+        }
+    });
     // 停止后端服务
     console.log('🛑 Stopping backend service...');
-    await (0, backend_manager_1.stopBackend)();
-    console.log('✅ Backend service stopped');
+    try {
+        await (0, backend_manager_1.stopBackend)();
+        console.log('✅ Backend service stopped');
+    }
+    catch (error) {
+        console.error('❌ Error stopping backend:', error);
+    }
     // 现在可以退出了
     electron_1.app.exit(0);
 });
@@ -809,6 +849,10 @@ function createTray() {
         {
             label: 'Quit',
             click: () => {
+                // 关闭所有窗口并退出
+                electron_1.BrowserWindow.getAllWindows().forEach(window => {
+                    window.destroy();
+                });
                 electron_1.app.quit();
             },
         },

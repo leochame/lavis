@@ -45,11 +45,9 @@ Lavis is a macOS desktop AI agent that **perceives your screen**, **controls mou
 **方式一（推荐）/ Option 1 (recommended): 环境变量 / Environment variables**
 
 ```bash
-export MODELA_API_KEY=your_modela_api_key    # 主要 LLM (e.g. GPT-4)
-export MODELB_API_KEY=your_modelb_api_key    # 视觉 LLM (e.g. Gemini)
-export MODELC_API_KEY=your_modelc_api_key    # 快速 LLM (e.g. GPT-3.5)
-export WHISPER_API_KEY=your_whisper_api_key  # 语音识别 / ASR
-export TTS_API_KEY=your_tts_api_key          # 语音合成 / TTS
+export FAST_MODEL_API_KEY=your_fast_model_api_key  # 快模型 LLM (e.g. Gemini Flash)
+export WHISPER_API_KEY=your_whisper_api_key        # 语音识别 / ASR
+export TTS_API_KEY=your_tts_api_key                # 语音合成 / TTS
 ```
 
 **方式二 / Option 2: 配置文件 / Configuration file**

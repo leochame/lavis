@@ -40,45 +40,18 @@ public class PlannerService {
     // 全局历史 - 只记录高层对话
     private final List<ChatMessage> globalHistory = new ArrayList<>();
 
-    // 规划专用的 System Prompt - 【架构升级】使用 Tool Call 方式
+    // 规划专用的 System Prompt
     private static final String PLANNER_SYSTEM_PROMPT = """
-            You are a strategic planning expert acting as a CEO role responsible for breaking down user goals into milestone level execution steps
-
-            ## Core Constraints Must Follow
-            1. **No micro operations**: Do not output specific coordinates pixel positions or atomic actions such as click 300 200
-            2. **Direction only**: You are only responsible for what to do, you are not responsible for how to do it
-            3. **Milestone thinking**: Each step should be a verifiable business milestone not a single mouse operation
-
-            ## Prohibited Operations
-            - Do not plan single clicks, leave to Executor to decide
-            - Do not plan single text inputs, leave to Executor to decide
-            - Do not include any coordinates or pixel positions
-
-            ## How to Create Plan
-            Use the `addPlanStep` tool to add each step to the plan. Call this tool multiple times to build the complete plan.
-
-            ## Step Description Guidelines
-            - Each step should be a clear milestone-level task
-            - Describe what to do, not how to do it
-            - Examples:
-              * Good: "Launch WeChat application and wait for main interface ready"
-              * Good: "Navigate to profile page"
-              * Good: "Complete and submit the form"
-              * Bad: "Click at coordinate (300, 200)"
-              * Bad: "Type text 'hello'"
-
-            ## Example
-            User Goal: Open WeChat send message to Zhang San
-
-            You should call:
-            1. addPlanStep(id=1, desc="Launch WeChat application and wait for main interface ready")
-            2. addPlanStep(id=2, desc="Search and enter chat with Zhang San")
-            3. addPlanStep(id=3, desc="Send message")
-
-            ## Important Notes
-            - **Use tools to create plan**: Call `addPlanStep` tool for each step
-            - **Step count is usually 2-5**: Do not be too fragmented
-            - **Start from id=1**: Step IDs should be sequential starting from 1
+            You are a planning assistant. Your task is to break down the user's request into a simple todo list.
+            
+            ## Core Principles
+            - Break down the user's goal into clear, sequential todo items
+            - Keep items at a high level - describe "what to do", not "how to do it"
+            - Use the `createTodoList` tool ONCE with an array of todo items
+            - The array should contain all todo items needed to complete the user's objective
+            
+            ## Language
+            - Always respond in the same language as the user input
             """;
 
     public PlannerService(ScreenCapturer screenCapturer, PlanTools planTools) {
@@ -106,7 +79,7 @@ public class PlannerService {
 
     /**
      * 生成任务计划 - 使用 Tool Call 方式
-     * 
+     *
      * @param userGoal       用户目标
      * @param withScreenshot 是否包含当前屏幕截图
      * @return 任务计划
@@ -136,9 +109,9 @@ public class PlannerService {
                         %s
 
                         ## Current Screen State
-                        Please refer to the current screen state in the attached image to create the plan.
+                        Please refer to the current screen state in the attached image.
 
-                        Use the addPlanStep tool to create the execution plan.
+                        Always create a todo list using the createTodoList tool, even for simple questions or greetings.
                         """, userGoal);
 
                 messages.add(UserMessage.from(
@@ -149,14 +122,14 @@ public class PlannerService {
                         ## User Goal
                         %s
 
-                        Use the addPlanStep tool to create the execution plan.
+                        Always create a todo list using the createTodoList tool, even for simple questions or greetings.
                         """, userGoal);
 
                 messages.add(UserMessage.from(userPrompt));
             }
 
             // 获取工具规格
-            List<dev.langchain4j.agent.tool.ToolSpecification> toolSpecs = 
+            List<dev.langchain4j.agent.tool.ToolSpecification> toolSpecs =
                     ToolSpecifications.toolSpecificationsFrom(planTools);
 
             // 工具调用循环（最多 10 次迭代）
@@ -173,10 +146,15 @@ public class PlannerService {
 
                 // 检查是否有工具调用请求
                 if (!aiMessage.hasToolExecutionRequests()) {
-                    // 没有工具调用，说明规划完成或出错
-                    String textResponse = aiMessage.text();
-                    if (textResponse != null && !textResponse.isBlank()) {
-                        log.debug("📝 Planner 文本响应: {}", textResponse);
+                    // 没有工具调用，说明规划完成或需要继续迭代
+                    // 如果没有步骤，创建默认步骤
+                    if (planTools.getCollectedSteps().isEmpty()) {
+                        log.warn("⚠️ Planner 未调用工具，创建默认步骤");
+                        PlanStep fallbackStep = PlanStep.builder()
+                                .id(1)
+                                .description(userGoal)
+                                .build();
+                        planTools.addTodoItem(fallbackStep);
                     }
                     break;
                 }
@@ -191,16 +169,14 @@ public class PlannerService {
 
                     log.debug("  → 调用工具: {}({})", toolName, toolArgs);
 
-                    if ("addPlanStep".equals(toolName)) {
+                    if ("createTodoList".equals(toolName)) {
                         // 工具会在 PlanTools 中执行，步骤会被收集
-                        String result = planTools.addPlanStep(
-                                extractIntArg(toolArgs, "id"),
-                                extractStringArg(toolArgs, "desc")
-                        );
+                        String[] todoItems = extractStringArrayArg(toolArgs, "todoItems");
+                        String result = planTools.createTodoList(todoItems);
                         log.debug("  ← 工具结果: {}", result);
 
                         // 添加工具执行结果到消息列表
-                        dev.langchain4j.data.message.ToolExecutionResultMessage toolResult = 
+                        dev.langchain4j.data.message.ToolExecutionResultMessage toolResult =
                                 dev.langchain4j.data.message.ToolExecutionResultMessage.from(request, result);
                         messages.add(toolResult);
                     } else {
@@ -211,7 +187,8 @@ public class PlannerService {
 
             // 获取收集的步骤
             List<PlanStep> steps = new ArrayList<>(planTools.getCollectedSteps());
-            
+
+            // 如果没有步骤，创建默认步骤
             if (steps.isEmpty()) {
                 log.warn("⚠️ 未能生成任何步骤，创建默认步骤");
                 PlanStep fallbackStep = PlanStep.builder()
@@ -220,7 +197,6 @@ public class PlannerService {
                         .build();
                 steps.add(fallbackStep);
             }
-
             plan.addSteps(steps);
 
             // 记录到全局历史
@@ -272,6 +248,28 @@ public class PlannerService {
         } catch (Exception e) {
             log.warn("⚠️ 提取参数失败: key={}, args={}", key, argsJson);
             return "";
+        }
+    }
+
+    /**
+     * 从工具参数 JSON 中提取字符串数组参数
+     */
+    private String[] extractStringArrayArg(String argsJson, String key) {
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(argsJson);
+            com.fasterxml.jackson.databind.JsonNode value = root.get(key);
+            if (value != null && value.isArray()) {
+                String[] result = new String[value.size()];
+                for (int i = 0; i < value.size(); i++) {
+                    result[i] = value.get(i).asText();
+                }
+                return result;
+            }
+            return new String[0];
+        } catch (Exception e) {
+            log.warn("⚠️ 提取数组参数失败: key={}, args={}", key, argsJson);
+            return new String[0];
         }
     }
 

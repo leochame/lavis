@@ -9,6 +9,7 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -29,11 +30,16 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
         log.info("🔌 WebSocket 连接建立: {}", session.getId());
         
         // 发送欢迎消息
-        sendToSession(session, Map.of(
-            "type", "connected",
-            "message", "Connected to Lavis Agent WebSocket",
-            "sessionId", session.getId()
-        ));
+        Map<String, Object> data = new HashMap<>();
+        data.put("message", "Connected to Lavis Agent WebSocket");
+        data.put("sessionId", session.getId());
+        
+        Map<String, Object> message = new HashMap<>();
+        message.put("type", "connected");
+        message.put("data", data);
+        message.put("timestamp", System.currentTimeMillis());
+        
+        sendToSession(session, message);
     }
 
     @Override

@@ -795,25 +795,28 @@ export function useVoskWakeWord({
   }, [isListening, loadVosk, initRecognizer, wakeWord]);
 
   // 根据 enabled 状态自动启动/停止
+  // 关键修复：添加 isListening 到依赖数组，确保状态变化时能正确响应
   useEffect(() => {
+    console.log('[Vosk] Effect triggered:', { enabled, isListening, hasError: !!error });
+
     if (enabled && !isListening && !error) {
+      console.log('[Vosk] 🔄 Restarting wake word detection (enabled=true, not listening)');
       startListening().catch((err) => {
         console.error('[Vosk] Failed to start listening:', err);
         const errorMsg = err instanceof Error ? err.message : String(err);
         setError(`启动失败: ${errorMsg}`);
       });
     } else if (!enabled && isListening) {
+      console.log('[Vosk] ⏸️ Pausing wake word detection (enabled=false)');
       stopListening();
     }
 
-    // Cleanup: 只在组件卸载时停止
+    // Cleanup: 组件卸载时停止
     return () => {
-      if (!enabled) {
-        stopListening();
-      }
+      // 注意：不在这里调用 stopListening，因为 effect 会在依赖变化时重新运行
+      // stopListening 只在 enabled 变为 false 时调用
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, error]);
+  }, [enabled, error, isListening, startListening, stopListening]);
 
   return {
     isListening,

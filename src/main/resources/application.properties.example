@@ -14,7 +14,7 @@ spring.application.name=lavis
 # Server
 server.port=8080
 
-app.llm.default-model=modela
+app.llm.default-model=fast-model
 app.llm.default-stt-model=whisper
 app.llm.default-tts-model=tts
 
@@ -25,29 +25,14 @@ app.llm.default-tts-model=tts
 # Using LangChain4j GoogleAiGeminiChatModel with custom baseUrl (relay)
 # Supports: tool calling, multimodal (text + images), system instructions
 # Docs: https://docs.newapi.pro/zh/docs/api/ai-model/chat/gemini/geminirelayv1beta-391536411
-app.llm.models.modela.provider=GEMINI
-app.llm.models.modela.base-url=https://api.jieai.shop/v1
-app.llm.models.modela.api-key=${MODELA_API_KEY:sk-N8Ra8IXzokz5qAkAy48zXQE3DSPRYKnHYVGQJXmzu2IZbq7J}
-app.llm.models.modela.model-name=gemini-3-flash-preview
-app.llm.models.modela.temperature=0.4
-app.llm.models.modela.timeout-seconds=180
-app.llm.models.modela.max-retries=3
-
-app.llm.models.modelb.provider=GEMINI
-app.llm.models.modelb.base-url=https://api.jieai.shop/v1
-app.llm.models.modelb.api-key=${MODELB_API_KEY:sk-N8Ra8IXzokz5qAkAy48zXQE3DSPRYKnHYVGQJXmzu2IZbq7J}
-app.llm.models.modelb.model-name=gemini-3-flash-preview
-app.llm.models.modelb.temperature=0.4
-app.llm.models.modelb.timeout-seconds=60
-app.llm.models.modelb.max-retries=3
-
-app.llm.models.modelc.provider=GEMINI
-app.llm.models.modelc.base-url=https://api.jieai.shop/v1
-app.llm.models.modelc.api-key=${MODELC_API_KEY:sk-N8Ra8IXzokz5qAkAy48zXQE3DSPRYKnHYVGQJXmzu2IZbq7J}
-app.llm.models.modelc.model-name=gemini-3-flash-preview
-app.llm.models.modelc.temperature=0.4
-app.llm.models.modelc.timeout-seconds=60
-app.llm.models.modelc.max-retries=3
+# 快模型（Fast Model）- 用于快速响应的 LLM
+app.llm.models.fast-model.provider=GEMINI
+app.llm.models.fast-model.base-url=https://api.jieai.shop/v1
+app.llm.models.fast-model.api-key=${FAST_MODEL_API_KEY:sk-N8Ra8IXzokz5qAkAy48zXQE3DSPRYKnHYVGQJXmzu2IZbq7J}
+app.llm.models.fast-model.model-name=gemini-3-flash-preview
+app.llm.models.fast-model.temperature=0.4
+app.llm.models.fast-model.timeout-seconds=180
+app.llm.models.fast-model.max-retries=3
 
 # ====================================
 # Voice: STT (Speech-to-Text)
@@ -60,7 +45,11 @@ app.llm.models.whisper.provider=GEMINI
 app.llm.models.whisper.base-url=https://api.jieai.shop/v1
 app.llm.models.whisper.api-key=${WHISPER_API_KEY:your-gemini-api-key-here}
 app.llm.models.whisper.model-name=gemini-3-flash-preview
-app.llm.models.whisper.timeout-seconds=60
+# 超时设置：建议设置为 120-180 秒，因为：
+# 1. Cloudflare 的默认超时通常是 100 秒
+# 2. 音频处理可能需要较长时间，特别是大文件
+# 3. 如果遇到 524 错误（Cloudflare 超时），可以尝试增加此值
+app.llm.models.whisper.timeout-seconds=120
 
 # Option 2: Qwen ASR (DashScope)
 # Using Alibaba Cloud DashScope OpenAI-compatible API
@@ -89,14 +78,14 @@ app.llm.models.tts.timeout-seconds=60
 # Agent Configuration
 # ====================================
 # Model alias used by the Agent (corresponds to the key in app.llm.models.*)
-agent.model.alias=modela
+agent.model.alias=fast-model
 # Retry configuration
 agent.retry.max=3
 agent.retry.delay.ms=2000
 agent.max.tool.iterations=30
 
 # Planner and Executor can use different models (leave empty to use agent.model.alias)
-# planner.model.alias=modela
+# planner.model.alias=fast-model
 # executor.model.alias=executor
 
 # [Critical] Wait time (in milliseconds) after tool execution for UI response
