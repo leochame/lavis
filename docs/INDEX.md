@@ -142,17 +142,18 @@
 - 内存占用监控
 
 **任务清单**：
-- [ ] 实现 `MemoryManager.java`（记忆管理器）
-- [ ] 实现 `ImageCleanupService.java`（图片清理服务）
-- [ ] 实现 `ContextCompactor.java`（上下文压缩器）
-- [ ] 实现 `SessionStore.java`（会话持久化）
-- [ ] 集成到 `AgentService.java`
-- [ ] 配置定时清理任务（@Scheduled）
-- [ ] 实现内存占用监控
+- [x] 实现 `MemoryManager.java`（记忆管理器）
+- [x] 实现 `ImageCleanupService.java`（图片清理服务）
+- [x] 实现 `ContextCompactor.java`（上下文压缩器）
+- [x] 实现 `SessionStore.java`（会话持久化）
+- [x] 集成到 `AgentService.java`
+- [x] 配置定时清理任务（@Scheduled）
+- [x] 实现内存占用监控
 - [ ] 测试长时间运行（24 小时以上）
 - [ ] 验证内存占用稳定性
 
 **参考文档**：[记忆管理系统](Enhancement-Plan-Memory-Cron-Skills.md)
+**实现文档**：[Phase 2 实现总结](Phase2-Memory-Management-Implementation.md)
 
 ---
 

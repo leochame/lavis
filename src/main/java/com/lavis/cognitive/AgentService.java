@@ -2,6 +2,8 @@ package com.lavis.cognitive;
 
 import com.lavis.cognitive.executor.ToolExecutionService;
 import com.lavis.cognitive.orchestrator.TaskOrchestrator;
+import com.lavis.memory.MemoryManager;
+import com.lavis.memory.SessionStore;
 import com.lavis.perception.ScreenCapturer;
 import com.lavis.service.llm.LlmFactory;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -38,6 +40,7 @@ public class AgentService {
     private final TaskOrchestrator taskOrchestrator;
     private final ToolExecutionService toolExecutionService;
     private final LlmFactory llmFactory;
+    private final MemoryManager memoryManager;
 
     @Value("${agent.retry.max:3}")
     private int maxRetries;
@@ -223,6 +226,22 @@ public class AgentService {
         // 保存用户消息到记忆
         chatMemory.add(userMessage);
 
+        // Save to database and perform memory management
+        try {
+            memoryManager.saveMessage(userMessage, estimateTokenCount(userMessage));
+
+            // Perform periodic memory management
+            if (chatMemory instanceof ImageContentCleanableChatMemory cleanableMemory) {
+                MemoryManager.MemoryManagementResult result = memoryManager.manageMemory(cleanableMemory);
+                if (result.imagesCleanedCount() > 0 || result.compressionPerformed()) {
+                    log.info("Memory management: {} images cleaned, compression: {}",
+                            result.imagesCleanedCount(), result.compressionPerformed());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to persist message to database", e);
+        }
+
         StringBuilder fullResponse = new StringBuilder();
 
         // 工具调用循环 - 使用传入的 maxSteps，如果 <= 0 则使用全局配置（兼容旧代码）
@@ -240,6 +259,13 @@ public class AgentService {
             messages.add(aiMessage);
             // 【修复】保存 AI 响应到记忆（包括工具调用请求）
             chatMemory.add(aiMessage);
+
+            // Save AI message to database
+            try {
+                memoryManager.saveMessage(aiMessage, estimateTokenCount(aiMessage));
+            } catch (Exception e) {
+                log.warn("Failed to persist AI message to database", e);
+            }
 
             // 检查是否有工具调用请求
             if (!aiMessage.hasToolExecutionRequests()) {
@@ -416,13 +442,44 @@ public class AgentService {
     }
 
     /**
+     * Get memory statistics
+     */
+    public MemoryManager.MemoryStats getMemoryStats() {
+        return memoryManager.getMemoryStats();
+    }
+
+    /**
+     * Get session statistics
+     */
+    public SessionStore.SessionStats getSessionStats() {
+        return memoryManager.getSessionStats();
+    }
+
+    /**
      * 重置对话历史
      */
     public void resetConversation() {
         if (chatMemory != null) {
             chatMemory.clear();
         }
+        memoryManager.resetSession();
         log.info("🔄 对话历史已重置");
+    }
+
+    /**
+     * Estimate token count for a message
+     * Rough approximation: 1 token ≈ 4 characters
+     */
+    private int estimateTokenCount(ChatMessage message) {
+        String text = "";
+        if (message instanceof UserMessage userMsg) {
+            text = userMsg.hasSingleText() ? userMsg.singleText() : userMsg.toString();
+        } else if (message instanceof AiMessage aiMsg) {
+            text = aiMsg.text();
+        } else {
+            text = message.toString();
+        }
+        return text.length() / 4;
     }
 
 

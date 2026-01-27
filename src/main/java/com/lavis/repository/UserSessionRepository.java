@@ -15,5 +15,7 @@ public interface UserSessionRepository extends JpaRepository<UserSessionEntity, 
 
     List<UserSessionEntity> findByLastActiveAtAfter(LocalDateTime lastActiveAt);
 
+    List<UserSessionEntity> findByLastActiveAtBefore(LocalDateTime lastActiveAt);
+
     List<UserSessionEntity> findAllByOrderByLastActiveAtDesc();
 }

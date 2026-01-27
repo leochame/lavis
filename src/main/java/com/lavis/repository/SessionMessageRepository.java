@@ -16,5 +16,9 @@ public interface SessionMessageRepository extends JpaRepository<SessionMessageEn
 
     List<SessionMessageEntity> findBySessionIdAndCreatedAtAfter(String sessionId, LocalDateTime createdAt);
 
+    List<SessionMessageEntity> findBySessionIdAndHasImageOrderByCreatedAtDesc(String sessionId, boolean hasImage);
+
+    void deleteBySessionId(String sessionId);
+
     Long countBySessionId(String sessionId);
 }
