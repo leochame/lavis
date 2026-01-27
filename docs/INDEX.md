@@ -49,71 +49,98 @@
 
 ---
 
-## 🔧 功能增强计划
+## 🔧 已实现功能
 
-### 核心增强功能
+### 1. 记忆管理系统 ✅
 
-| 文档 | 描述 | 实施优先级 |
-|------|------|-----------|
-| [记忆管理系统](Enhancement-Plan-Memory-Cron-Skills.md) | 长期运行、自动清理、智能压缩 | 🔴 高 |
-| [定时任务系统](Enhancement-Plan-Part2-Scheduler-Skills.md) | Cron 调度、任务持久化、执行历史 | 🔴 高 |
-| [Skills 插件系统](Enhancement-Plan-Part2-Scheduler-Skills.md) | Markdown 格式、动态加载、参数化执行 | 🟡 中 |
+**状态**：已完成（Phase 2）
+**实现日期**：2026-01-27
 
-### 功能特性
+**核心功能**：
+- ✅ **会话持久化**：自动保存对话到 SQLite 数据库（user_sessions, session_messages 表）
+- ✅ **自动清理截图**：保留最近 10 张截图，自动删除旧截图
+- ✅ **智能压缩对话**：超过 100K tokens 自动使用 AI 总结压缩
+- ✅ **定时清理任务**：每小时自动清理旧会话（>30 天）和旧截图
+- ✅ **内存监控**：实时监控 JVM 堆内存使用情况
+- ✅ **会话统计**：跟踪消息数量、token 使用量、会话时间
 
-#### 1. 记忆管理系统
-- **目标**：支持 7×24 小时长期运行
-- **核心功能**：
-  - 自动清理历史截图（保留最近 10 张）
-  - 智能压缩对话历史（超过 100K tokens 自动总结）
-  - 会话持久化（JSONL 格式）
-  - 定时清理任务（每小时执行）
-- **实现文件**：
-  - `MemoryManager.java`
-  - `ImageCleanupService.java`
-  - `ContextCompactor.java`
-  - `SessionStore.java`
+**实现组件**：
+- `SessionStore.java` - 会话持久化服务
+- `ImageCleanupService.java` - 截图清理服务（@Scheduled 每小时）
+- `ContextCompactor.java` - 上下文压缩服务（AI 驱动）
+- `MemoryManager.java` - 记忆管理协调器
 
-#### 2. 定时任务系统
-- **目标**：实现 7×24 小时自动化任务
-- **核心功能**：
-  - Cron 表达式调度
-  - 任务持久化（重启后恢复）
-  - 执行历史记录
-  - 支持 Agent 任务和 Shell 命令
-- **实现文件**：
-  - `ScheduledTaskService.java`
-  - `TaskExecutor.java`
-  - `TaskStore.java`
-  - REST API：`/api/scheduler/tasks`
+**配置参数**（默认值）：
+```properties
+memory.keep.images=10                    # 保留截图数量
+memory.token.threshold=100000            # 压缩触发阈值
+memory.keep.recent.messages=10           # 压缩时保留最近消息数
+memory.session.retention.days=30         # 会话保留天数
+memory.cleanup.interval.ms=3600000       # 清理间隔（1小时）
+```
 
-#### 3. Skills 插件系统
-- **目标**：允许用户自定义工具和扩展功能
-- **核心功能**：
-  - Markdown 格式定义（参考 Clawdbot）
-  - 动态加载和热重载
-  - 参数化执行
-  - 与 Agent Tools 集成
-- **实现文件**：
-  - `SkillManager.java`
-  - `SkillLoader.java`
-  - `SkillExecutor.java`
-  - 技能目录：`~/.lavis/skills/`
+**数据库表**：
+- `user_sessions` - 会话元数据（session_key, message_count, total_tokens）
+- `session_messages` - 消息历史（message_type, content, has_image, token_count）
+
+**API 接口**：
+- `AgentService.getMemoryStats()` - 获取内存统计
+- `AgentService.getSessionStats()` - 获取会话统计
+- `AgentService.resetConversation()` - 重置会话
+
+**详细文档**：[Phase 2 实现总结](Phase2-Memory-Management-Implementation.md)
+
+---
+
+## 🚧 计划中功能
+
+### 2. 定时任务系统（Phase 3）
+
+**目标**：实现 7×24 小时自动化任务调度
+
+**核心功能**：
+- Cron 表达式调度
+- 任务持久化（使用 scheduled_tasks 表）
+- 执行历史记录（使用 task_run_logs 表）
+- 支持 Agent 任务和 Shell 命令
+- 任务管理 UI
+
+**实现文件**：
+- `ScheduledTaskService.java`
+- `TaskExecutor.java`
+- REST API：`/api/scheduler/tasks`
+
+### 3. Skills 插件系统（Phase 4）
+
+**目标**：提升系统扩展性，允许用户自定义工具和技能
+
+**核心功能**：
+- Markdown 格式定义技能
+- 动态加载和热重载
+- 参数化执行
+- 与 Agent Tools 集成
+- 向量搜索支持（使用 agent_skills 表的 embedding 字段）
+
+**实现文件**：
+- `SkillManager.java`
+- `SkillLoader.java`
+- `SkillExecutor.java`
+- 技能目录：`~/.lavis/skills/`
 
 ---
 
 ## 📋 实施计划
 
-### 第一阶段：数据库集成
+### 第一阶段：数据库集成 ✅
 
-**目标**：完成 SQLite 数据库集成，为后续功能提供持久化基础
+**状态**：已完成
+**完成日期**：2026-01-27
 
 **核心功能**：
 - SQLite 数据库配置与集成
 - 数据表结构设计与迁移
 - JPA 实体类和 Repository 实现
 - 后端数据库访问（通过 JPA）
-- Electron 前端数据库访问（通过 better-sqlite3）
 
 **任务清单**：
 - [x] 添加 SQLite 依赖到 `pom.xml`
@@ -130,14 +157,17 @@
 
 ---
 
-### 第二阶段：记忆管理系统
+### 第二阶段：记忆管理系统 ✅
+
+**状态**：已完成
+**完成日期**：2026-01-27
 
 **目标**：支持 7×24 小时长期运行，自动管理内存和历史数据
 
 **核心功能**：
 - 自动清理历史截图（保留最近 10 张）
 - 智能压缩对话历史（超过 100K tokens 自动总结）
-- 会话持久化（JSONL 格式）
+- 会话持久化（SQLite 数据库）
 - 定时清理任务（每小时执行）
 - 内存占用监控
 
@@ -152,12 +182,42 @@
 - [ ] 测试长时间运行（24 小时以上）
 - [ ] 验证内存占用稳定性
 
-**参考文档**：[记忆管理系统](Enhancement-Plan-Memory-Cron-Skills.md)
 **实现文档**：[Phase 2 实现总结](Phase2-Memory-Management-Implementation.md)
+
+**已实现的功能**：
+1. **会话持久化**：每条消息自动保存到数据库，包含类型、内容、token 数、是否含图片等元数据
+2. **自动截图清理**：
+   - 内存中：ImageContentCleanableChatMemory 自动清理旧截图
+   - 数据库中：定期删除旧的图片消息，保留最近 10 条
+3. **智能上下文压缩**：
+   - 监控 token 使用量（估算：1 token ≈ 4 字符）
+   - 超过 100K tokens 时自动触发压缩
+   - 使用 AI 总结旧消息，保留最近 10 条完整消息
+4. **定时维护任务**：
+   - 每小时自动执行清理
+   - 删除 30 天前的旧会话
+   - 清理当前会话的旧截图
+5. **内存监控**：
+   - 实时监控 JVM 堆内存使用
+   - 提供内存统计 API（已用/最大/使用率）
+6. **会话统计**：
+   - 消息数量统计
+   - Token 使用量统计
+   - 会话活跃时间跟踪
+
+**数据库集成**：
+- 使用 `user_sessions` 表存储会话元数据
+- 使用 `session_messages` 表存储完整对话历史
+- 支持按会话查询、按时间过滤、按类型筛选
+
+**API 接口**：
+- `getMemoryStats()` - 获取 JVM 内存统计
+- `getSessionStats()` - 获取当前会话统计
+- `resetConversation()` - 重置会话（清空内存并创建新会话）
 
 ---
 
-### 第三阶段：定时任务系统
+### 第三阶段：定时任务系统（待实现）
 
 **目标**：实现自动化任务调度，支持 Cron 表达式和任务管理
 
