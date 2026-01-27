@@ -37,13 +37,9 @@
 - UserPreferenceRepository
 - AgentSkillRepository
 
-✅ **Task 6**: Implemented DatabaseBackupService
-- Scheduled daily backup at 3 AM
-- Automatic cleanup of backups older than 30 days
-- Manual backup trigger method
-
-✅ **Task 7**: Enabled scheduling in LavisApplication
-- Added @EnableScheduling annotation
+✅ **Task 6**: Verified backend database access
+- Project compiles successfully
+- JPA entities and repositories ready for use
 
 ## Verification Steps
 
@@ -122,15 +118,15 @@ public class DatabaseTestController {
 }
 ```
 
-### 5. Verify Backup Service
+## Database Backup
 
-The backup service will run automatically at 3 AM daily. To test manually:
+SQLite is a file-based database. For backups, simply copy the database file:
 
 ```bash
-# Check backup directory
-ls -lh ~/.lavis/backups/
+# Manual backup
+cp ~/.lavis/data/lavis.db ~/.lavis/data/lavis_backup_$(date +%Y%m%d).db
 
-# Backups should appear after 3 AM or when manually triggered
+# Or use system-level backup tools (Time Machine, rsync, etc.)
 ```
 
 ## Next Steps
@@ -172,9 +168,6 @@ With Phase 1 complete, you can now proceed to:
 - UserPreferenceRepository.java
 - AgentSkillRepository.java
 
-**Services** (`src/main/java/com/lavis/service/`):
-- DatabaseBackupService.java
-
 **Database Migration** (`src/main/resources/db/migration/`):
 - V1__Initial_Schema.sql
 
@@ -183,7 +176,6 @@ With Phase 1 complete, you can now proceed to:
 **Modified Files**:
 - pom.xml (added SQLite dependencies)
 - application.properties (added database configuration)
-- LavisApplication.java (added @EnableScheduling)
 
 ## Database Schema
 
@@ -229,7 +221,7 @@ Phase 1 (SQLite Database Integration) is now complete. The backend has:
 - ✅ SQLite database configured and integrated
 - ✅ All entity classes and repositories implemented
 - ✅ Flyway migrations set up for schema management
-- ✅ Automatic backup service configured
+- ✅ Backend can access database through JPA
 - ✅ Project compiles successfully
 
 The database foundation is ready for Phase 2 (Memory Management System) implementation.

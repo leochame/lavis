@@ -111,15 +111,16 @@
 - SQLite 数据库配置与集成
 - 数据表结构设计与迁移
 - JPA 实体类和 Repository 实现
-- Electron 前端数据库访问
-- 自动备份机制
+- 后端数据库访问（通过 JPA）
+- Electron 前端数据库访问（通过 better-sqlite3）
 
 **任务清单**：
-- [ ] 添加 SQLite 依赖到 `pom.xml`
-- [ ] 配置 `application.properties`
-- [ ] 创建 Flyway 迁移脚本（V1__Initial_Schema.sql）
-- [ ] 实现 JPA 实体类（ScheduledTaskEntity, UserSessionEntity, AgentSkillEntity）
-- [ ] 实现 JPA Repository 接口
+- [x] 添加 SQLite 依赖到 `pom.xml`
+- [x] 配置 `application.properties`
+- [x] 创建 Flyway 迁移脚本（V1__Initial_Schema.sql）
+- [x] 实现 JPA 实体类（ScheduledTaskEntity, UserSessionEntity, AgentSkillEntity）
+- [x] 实现 JPA Repository 接口
+- [x] 验证后端数据库访问
 - [ ] 在 Electron 中集成 `better-sqlite3`
 - [ ] 实现前端数据库访问模块（database.ts）
 - [ ] 测试前端直接读取数据库
