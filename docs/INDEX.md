@@ -123,8 +123,6 @@
 - [ ] 在 Electron 中集成 `better-sqlite3`
 - [ ] 实现前端数据库访问模块（database.ts）
 - [ ] 测试前端直接读取数据库
-- [ ] 配置自动备份服务（DatabaseBackupService）
-- [ ] 测试数据持久化和恢复
 
 **参考文档**：[SQLite 集成方案](Database-Integration-SQLite.md)
 
@@ -339,10 +337,8 @@ frontend/
 | GET | `/api/agent/status` | 获取系统状态 |
 | POST | `/api/agent/chat` | 聊天（带截图上下文） |
 | POST | `/api/agent/task` | 执行自动化任务 |
-| POST | `/api/agent/stop` | 紧急停止 |
 | POST | `/api/agent/reset` | 重置对话 |
 | GET | `/api/agent/screenshot` | 获取屏幕截图 |
-| POST | `/api/agent/tts` | 文本转语音 |
 | GET | `/api/agent/history` | 获取任务历史 |
 
 ### 定时任务 API（新增）
