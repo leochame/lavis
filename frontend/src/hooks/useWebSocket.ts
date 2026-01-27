@@ -167,7 +167,7 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
     }
 
     switch (type) {
-      case 'connected':
+      case 'connected': {
         // 保存服务器返回的 sessionId
         // 消息格式：{ type: "connected", data: { sessionId: "...", message: "..." }, timestamp: ... }
         console.log('✅ [WS] 收到 connected 消息:', message);
@@ -179,6 +179,7 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
           console.warn('⚠️ [WS] connected 消息中未找到 sessionId，data:', data);
         }
         break;
+      }
 
       case 'plan_created':
         if (!data) {
@@ -217,13 +218,16 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
           description: data.description
         });
         setWorkflow((prev) => {
-          const newState = {
+          const newState: WorkflowState = {
             ...prev,
             status: 'executing' as const,
             currentStepId: data.stepId as number,
             progress: data.progress as number,
-            steps: prev.steps.map((step) =>
-              step.id === data.stepId ? { ...step, status: 'IN_PROGRESS' } : step
+            steps: prev.steps.map(
+              (step): PlanStepEvent =>
+                step.id === data.stepId
+                  ? { ...step, status: 'IN_PROGRESS' }
+                  : step
             ),
           };
           console.log('🔄 [WS] 更新 workflow 状态为 executing:', newState);
@@ -268,7 +272,7 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
         }));
         break;
 
-      case 'plan_completed':
+      case 'plan_completed': {
         setWorkflow((prev) => ({
           ...prev,
           status: 'completed',
@@ -276,33 +280,43 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
         }));
         // 注意：voice_announcement 是单独的事件，会在 plan_completed 之后通过 WebSocket 发送
         // 如果后端在 plan_completed 的 data 中包含了语音播报信息，可以在这里处理
-        if (data && (data as any).voiceAnnouncement) {
-          handleVoiceAnnouncement((data as any).voiceAnnouncement).catch((error) => {
+        const planCompletedData = data as { voiceAnnouncement?: string } | undefined;
+        if (planCompletedData?.voiceAnnouncement) {
+          handleVoiceAnnouncement(planCompletedData.voiceAnnouncement).catch((error) => {
             console.error('[WS] Failed to handle voice announcement:', error);
           });
         }
         break;
+      }
 
-      case 'plan_failed':
+      case 'plan_failed': {
         setWorkflow((prev) => ({
           ...prev,
           status: 'failed',
         }));
         // 如果有错误信息，记录到日志
-        if (data && (data as any).reason) {
-          console.error('[WS] 计划失败:', (data as any).reason);
+        const failedData = data as { reason?: string } | undefined;
+        if (failedData?.reason) {
+          console.error('[WS] 计划失败:', failedData.reason);
         }
         break;
+      }
 
-      case 'execution_error':
+      case 'execution_error': {
         // 处理执行错误事件
         if (!data) {
           console.warn('[WS] ⚠️ execution_error message missing data');
           break;
         }
-        const errorMessage = (data as any).errorMessage as string;
-        const errorType = (data as any).errorType as string;
-        const errorPlanId = (data as any).planId as string;
+        const errorData = data as {
+          errorMessage?: string;
+          errorType?: string;
+          planId?: string;
+          timestamp?: number;
+        };
+        const errorMessage = errorData.errorMessage ?? '';
+        const errorType = errorData.errorType ?? '';
+        const errorPlanId = errorData.planId ?? '';
         
         console.error('[WS] ❌ 执行错误:', {
           errorType,
@@ -320,11 +334,12 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
             {
               level: 'error',
               message: `执行错误 [${errorType}]: ${errorMessage}`,
-              timestamp: (data as any).timestamp as number || Date.now(),
+              timestamp: errorData.timestamp || Date.now(),
             },
           ],
         }));
         break;
+      }
 
       case 'thinking':
         setWorkflow((prev) => ({
@@ -351,7 +366,7 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
         }));
         break;
 
-      case 'voice_announcement':
+      case 'voice_announcement': {
         // 处理语音播报事件：调用后端 TTS API 并播放
         if (!data) {
           break;
@@ -364,6 +379,7 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
           console.error('[WS] Failed to play voice announcement:', error);
         });
         break;
+      }
 
       // ==========================================
       // TTS 异步推送事件处理
@@ -428,7 +444,7 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
         // Handle custom events or unknown events silently
         break;
     }
-  }, []);
+  }, [handleVoiceAnnouncement]);
 
   const connect = useCallback(function connectFn() {
     if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) return;
@@ -514,7 +530,20 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
           
           // 格式化解析后的消息，对超长数据字段进行截断
           const formatMessageForLog = (msg: WorkflowEvent) => {
-            const logData: any = {
+            type TtsAudioPayload = {
+              data?: string;
+              requestId?: string;
+              index?: number;
+              isLast?: boolean;
+            };
+
+            const logData: {
+              type: string;
+              hasData: boolean;
+              dataKeys: string[];
+              timestamp: number;
+              data?: unknown;
+            } = {
               type: msg.type,
               hasData: !!msg.data,
               dataKeys: msg.data ? Object.keys(msg.data) : [],
@@ -523,12 +552,13 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
             
             // 对于包含大量数据的消息类型，只显示摘要
             if (msg.type === 'tts_audio' && msg.data) {
-              const dataStr = (msg.data as any).data;
+              const ttsData = msg.data as TtsAudioPayload;
+              const dataStr = ttsData.data ?? '';
               if (typeof dataStr === 'string' && dataStr.length > 100) {
                 logData.data = {
-                  requestId: (msg.data as any).requestId,
-                  index: (msg.data as any).index,
-                  isLast: (msg.data as any).isLast,
+                  requestId: ttsData.requestId,
+                  index: ttsData.index,
+                  isLast: ttsData.isLast,
                   dataLength: dataStr.length,
                   dataPreview: dataStr.substring(0, 50) + '...'
                 };

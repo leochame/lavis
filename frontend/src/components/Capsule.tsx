@@ -4,6 +4,13 @@ import type { VoiceState } from '../hooks/useGlobalVoice';
 import { useUIStore } from '../store/uiStore';
 import './Capsule.css';
 
+// Provide a minimal typing for process.env in the renderer to avoid TS errors
+declare const process: {
+  env?: {
+    NODE_ENV?: string;
+  };
+};
+
 /**
  * Capsule 显示状态
  * 结合了 Agent 状态和语音状态
@@ -106,7 +113,7 @@ export function Capsule({
       isTtsPlaying: String(isTtsPlaying),
       showWorkingIndicator: String(showWorkingIndicator),
       statusOrchestrator: status?.orchestrator_state ? JSON.stringify(status.orchestrator_state) : 'null',
-      statusState: status?.state || 'null',
+      statusAvailable: typeof status?.available === 'boolean' ? String(status.available) : 'null',
       voiceState: voiceState ? JSON.stringify(voiceState) : 'null'
     };
     console.log('🔍 Capsule working indicator debug:', debugInfo);
