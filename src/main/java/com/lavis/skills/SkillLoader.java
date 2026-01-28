@@ -1,9 +1,13 @@
 package com.lavis.skills;
 
+import com.lavis.skills.event.SkillsUpdatedEvent;
 import com.lavis.skills.model.ParsedSkill;
+import com.lavis.skills.model.SkillToolDefinition;
+import dev.langchain4j.agent.tool.ToolSpecification;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import org.yaml.snakeyaml.Yaml;
 
@@ -11,12 +15,18 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
- * Loads and parses SKILL.md files from the skills directory.
- * Supports hot reload via file system watching.
+ * Skill 加载器 - 重构版本
+ *
+ * 核心改进：
+ * 1. 热重载事件传播 - 文件变更时发布 Spring Event
+ * 2. 维护实时的 ToolSpecification 列表
+ * 3. 支持监听器模式，通知 AgentService 更新工具
  */
 @Component
 public class SkillLoader {
@@ -28,6 +38,15 @@ public class SkillLoader {
 
     private final Yaml yaml = new Yaml();
     private final Map<String, ParsedSkill> loadedSkills = new ConcurrentHashMap<>();
+
+    /** 缓存的 ToolSpecification 列表（供 LLM 使用） */
+    private final List<ToolSpecification> cachedToolSpecifications = new CopyOnWriteArrayList<>();
+
+    /** Spring 事件发布器 */
+    private final ApplicationEventPublisher eventPublisher;
+
+    /** 变更监听器列表 */
+    private final List<SkillChangeListener> changeListeners = new CopyOnWriteArrayList<>();
 
     @Value("${skills.directory:${user.home}/.lavis/skills}")
     private String skillsDirectory;
@@ -41,15 +60,23 @@ public class SkillLoader {
     private WatchService watchService;
     private Thread watchThread;
 
+    public SkillLoader(ApplicationEventPublisher eventPublisher) {
+        this.eventPublisher = eventPublisher;
+    }
+
     public Path getSkillsDirectory() {
         return Paths.get(skillsDirectory);
     }
 
+    // ==================== 核心加载方法 ====================
+
     /**
      * Load all skills from the skills directory.
+     * 加载完成后会发布 SkillsUpdatedEvent 事件。
      */
     public Map<String, ParsedSkill> loadAllSkills() {
         loadedSkills.clear();
+        cachedToolSpecifications.clear();
         Path skillsPath = getSkillsDirectory();
 
         if (!Files.exists(skillsPath)) {
@@ -72,6 +99,8 @@ public class SkillLoader {
                             ParsedSkill skill = loadSkill(skillFile);
                             if (skill != null) {
                                 loadedSkills.put(skill.getName(), skill);
+                                // 同时缓存 ToolSpecification
+                                cachedToolSpecifications.add(skill.toToolSpecification());
                                 logger.info("Loaded skill: {} from {}", skill.getName(), skillFile);
                             }
                         } catch (Exception e) {
@@ -85,6 +114,10 @@ public class SkillLoader {
         }
 
         logger.info("Loaded {} skills from {}", loadedSkills.size(), skillsPath);
+
+        // 发布初始加载事件
+        publishSkillsUpdatedEvent(SkillsUpdatedEvent.UpdateType.INITIAL_LOAD, null);
+
         return loadedSkills;
     }
 
@@ -134,42 +167,51 @@ public class SkillLoader {
         }
     }
 
-    private String getString(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        return value != null ? value.toString() : null;
-    }
+    // ==================== 工具规格获取 ====================
 
-    @SuppressWarnings("unchecked")
-    private List<ParsedSkill.SkillParameter> parseParameters(Map<String, Object> metadata) {
-        List<ParsedSkill.SkillParameter> params = new ArrayList<>();
-        Object paramsObj = metadata.get("parameters");
-        if (paramsObj instanceof List) {
-            List<Map<String, Object>> paramsList = (List<Map<String, Object>>) paramsObj;
-            for (Map<String, Object> paramMap : paramsList) {
-                params.add(ParsedSkill.SkillParameter.builder()
-                        .name(getString(paramMap, "name"))
-                        .description(getString(paramMap, "description"))
-                        .defaultValue(getString(paramMap, "default"))
-                        .required(Boolean.TRUE.equals(paramMap.get("required")))
-                        .build());
-            }
-        }
-        return params;
+    /**
+     * 获取所有 Skill 的 ToolSpecification 列表。
+     * 这是 AgentService 用于动态挂载工具的入口。
+     */
+    public List<ToolSpecification> getToolSpecifications() {
+        return Collections.unmodifiableList(cachedToolSpecifications);
     }
 
     /**
-     * Get all currently loaded skills.
+     * 获取所有 Skill 的 SkillToolDefinition 列表（用于序列化）
      */
-    public Map<String, ParsedSkill> getLoadedSkills() {
-        return Collections.unmodifiableMap(loadedSkills);
+    public List<SkillToolDefinition> getSkillToolDefinitions() {
+        return loadedSkills.values().stream()
+                .map(ParsedSkill::toSkillToolDefinition)
+                .collect(Collectors.toList());
+    }
+
+    // ==================== 监听器模式 ====================
+
+    /**
+     * 添加变更监听器
+     */
+    public void addChangeListener(SkillChangeListener listener) {
+        changeListeners.add(listener);
+        logger.info("Added skill change listener: {}", listener.getClass().getSimpleName());
     }
 
     /**
-     * Get a loaded skill by name.
+     * 移除变更监听器
      */
-    public Optional<ParsedSkill> getSkill(String name) {
-        return Optional.ofNullable(loadedSkills.get(name));
+    public void removeChangeListener(SkillChangeListener listener) {
+        changeListeners.remove(listener);
     }
+
+    /**
+     * Skill 变更监听器接口
+     */
+    @FunctionalInterface
+    public interface SkillChangeListener {
+        void onSkillsChanged(List<ToolSpecification> newToolSpecs);
+    }
+
+    // ==================== 热重载 ====================
 
     /**
      * Start watching for file changes (hot reload).
@@ -220,19 +262,36 @@ public class SkillLoader {
             try {
                 WatchKey key = watchService.take();
                 boolean shouldReload = false;
+                SkillsUpdatedEvent.UpdateType updateType = SkillsUpdatedEvent.UpdateType.SKILL_MODIFIED;
+                String changedSkillName = null;
 
                 for (WatchEvent<?> event : key.pollEvents()) {
                     Path changed = (Path) event.context();
-                    if (changed.toString().equals(SKILL_FILE_NAME) ||
-                            event.kind() == StandardWatchEventKinds.ENTRY_CREATE ||
-                            event.kind() == StandardWatchEventKinds.ENTRY_DELETE) {
+                    String fileName = changed.toString();
+
+                    if (fileName.equals(SKILL_FILE_NAME)) {
                         shouldReload = true;
+                        // 尝试获取变更的 skill 名称
+                        Watchable watchable = key.watchable();
+                        if (watchable instanceof Path parentPath) {
+                            changedSkillName = parentPath.getFileName().toString();
+                        }
+                    } else if (event.kind() == StandardWatchEventKinds.ENTRY_CREATE) {
+                        shouldReload = true;
+                        updateType = SkillsUpdatedEvent.UpdateType.SKILL_ADDED;
+                        changedSkillName = fileName;
+                        // 注册新目录的监听
+                        registerNewDirectory(changed);
+                    } else if (event.kind() == StandardWatchEventKinds.ENTRY_DELETE) {
+                        shouldReload = true;
+                        updateType = SkillsUpdatedEvent.UpdateType.SKILL_REMOVED;
+                        changedSkillName = fileName;
                     }
                 }
 
                 if (shouldReload) {
-                    logger.info("Detected skill file changes, reloading...");
-                    loadAllSkills();
+                    logger.info("Detected skill file changes ({}), reloading...", updateType);
+                    reloadAndNotify(updateType, changedSkillName);
                 }
 
                 key.reset();
@@ -240,6 +299,88 @@ public class SkillLoader {
                 Thread.currentThread().interrupt();
                 break;
             }
+        }
+    }
+
+    /**
+     * 重新加载并通知所有监听器
+     */
+    private void reloadAndNotify(SkillsUpdatedEvent.UpdateType updateType, String changedSkillName) {
+        // 重新加载所有 skills
+        loadedSkills.clear();
+        cachedToolSpecifications.clear();
+
+        Path skillsPath = getSkillsDirectory();
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(skillsPath)) {
+            for (Path entry : stream) {
+                if (Files.isDirectory(entry)) {
+                    Path skillFile = entry.resolve(SKILL_FILE_NAME);
+                    if (Files.exists(skillFile)) {
+                        try {
+                            ParsedSkill skill = loadSkill(skillFile);
+                            if (skill != null) {
+                                loadedSkills.put(skill.getName(), skill);
+                                cachedToolSpecifications.add(skill.toToolSpecification());
+                            }
+                        } catch (Exception e) {
+                            logger.error("Failed to reload skill from {}: {}", skillFile, e.getMessage());
+                        }
+                    }
+                }
+            }
+        } catch (IOException e) {
+            logger.error("Failed to scan skills directory during reload: {}", e.getMessage());
+        }
+
+        logger.info("Reloaded {} skills", loadedSkills.size());
+
+        // 发布事件
+        publishSkillsUpdatedEvent(updateType, changedSkillName);
+
+        // 通知所有监听器
+        notifyListeners();
+    }
+
+    /**
+     * 发布 Skills 更新事件
+     */
+    private void publishSkillsUpdatedEvent(SkillsUpdatedEvent.UpdateType updateType, String changedSkillName) {
+        List<SkillToolDefinition> toolDefs = getSkillToolDefinitions();
+        SkillsUpdatedEvent event = new SkillsUpdatedEvent(this, toolDefs, updateType, changedSkillName);
+        eventPublisher.publishEvent(event);
+        logger.info("Published SkillsUpdatedEvent: type={}, changed={}, total={}",
+                updateType, changedSkillName, toolDefs.size());
+    }
+
+    /**
+     * 通知所有监听器
+     */
+    private void notifyListeners() {
+        List<ToolSpecification> specs = new ArrayList<>(cachedToolSpecifications);
+        for (SkillChangeListener listener : changeListeners) {
+            try {
+                listener.onSkillsChanged(specs);
+            } catch (Exception e) {
+                logger.error("Error notifying skill change listener: {}", e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 注册新目录的监听
+     */
+    private void registerNewDirectory(Path newDir) {
+        try {
+            Path fullPath = getSkillsDirectory().resolve(newDir);
+            if (Files.isDirectory(fullPath)) {
+                fullPath.register(watchService,
+                        StandardWatchEventKinds.ENTRY_CREATE,
+                        StandardWatchEventKinds.ENTRY_DELETE,
+                        StandardWatchEventKinds.ENTRY_MODIFY);
+                logger.info("Registered new skill directory for watching: {}", fullPath);
+            }
+        } catch (IOException e) {
+            logger.error("Failed to register new directory for watching: {}", e.getMessage());
         }
     }
 
@@ -259,5 +400,72 @@ public class SkillLoader {
             }
             watchService = null;
         }
+    }
+
+    // ==================== Getter Methods ====================
+
+    /**
+     * Get all currently loaded skills.
+     */
+    public Map<String, ParsedSkill> getLoadedSkills() {
+        return Collections.unmodifiableMap(loadedSkills);
+    }
+
+    /**
+     * Get a loaded skill by name.
+     */
+    public Optional<ParsedSkill> getSkill(String name) {
+        return Optional.ofNullable(loadedSkills.get(name));
+    }
+
+    /**
+     * 根据工具名称获取 Skill（支持 snake_case 格式）
+     */
+    public Optional<ParsedSkill> getSkillByToolName(String toolName) {
+        return loadedSkills.values().stream()
+                .filter(skill -> skill.toToolName().equals(toolName))
+                .findFirst();
+    }
+
+    // ==================== Private Helper Methods ====================
+
+    private String getString(Map<String, Object> map, String key) {
+        Object value = map.get(key);
+        return value != null ? value.toString() : null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<ParsedSkill.SkillParameter> parseParameters(Map<String, Object> metadata) {
+        List<ParsedSkill.SkillParameter> params = new ArrayList<>();
+        Object paramsObj = metadata.get("parameters");
+        if (paramsObj instanceof List) {
+            List<Map<String, Object>> paramsList = (List<Map<String, Object>>) paramsObj;
+            for (Map<String, Object> paramMap : paramsList) {
+                ParsedSkill.SkillParameter.SkillParameterBuilder builder = ParsedSkill.SkillParameter.builder()
+                        .name(getString(paramMap, "name"))
+                        .description(getString(paramMap, "description"))
+                        .defaultValue(getString(paramMap, "default"))
+                        .required(Boolean.TRUE.equals(paramMap.get("required")));
+
+                // 解析类型
+                String type = getString(paramMap, "type");
+                if (type != null) {
+                    builder.type(type);
+                }
+
+                // 解析枚举值
+                Object enumObj = paramMap.get("enum");
+                if (enumObj instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<String> enumValues = ((List<?>) enumObj).stream()
+                            .map(Object::toString)
+                            .collect(Collectors.toList());
+                    builder.enumValues(enumValues);
+                }
+
+                params.add(builder.build());
+            }
+        }
+        return params;
     }
 }

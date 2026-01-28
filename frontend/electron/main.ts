@@ -7,6 +7,7 @@ import { startBackend, stopBackend, getBackendStatus, setLogCallback } from './b
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
+let isQuitting = false;
 
 // 使用 app.isPackaged 作为主要判断依据，这是最可靠的方式
 // 环境变量作为开发模式的辅助判断
@@ -179,11 +180,8 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
     stopAlwaysOnTopEnforcer();
-    
-    // 如果窗口关闭且没有其他窗口，退出应用
-    if (BrowserWindow.getAllWindows().length === 0) {
-      app.quit();
-    }
+    // 不在这里调用 app.quit，改由 window-all-closed / 显式 Quit 统一触发，
+    // 避免重复触发 will-quit 清理逻辑
   });
 
   // 监听窗口失去焦点时重新置顶
@@ -501,10 +499,7 @@ ipcMain.on('show-context-menu', () => {
     {
       label: '退出 Lavis',
       click: () => {
-        // 关闭所有窗口并退出
-        BrowserWindow.getAllWindows().forEach(window => {
-          window.destroy();
-        });
+        // 统一走 app.quit，触发 will-quit 做异步清理
         app.quit();
       },
     },
@@ -751,12 +746,19 @@ ipcMain.handle('backend:request', async (_event, { method, endpoint, data, port 
 
 // Handle app quit
 app.on('window-all-closed', () => {
-  // 在所有平台上都退出应用，而不是在 macOS 上保持运行
-  // 如果用户想要退出，应该完全退出，而不是继续在后台运行
-  app.quit();
+  // macOS 上保留常驻，遵循平台惯例；其它平台关闭所有窗口即退出
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
 });
 
 app.on('activate', () => {
+  // 如果应用正在退出过程中，不要响应 dock 点击等激活事件，避免与 will-quit 清理逻辑竞争
+  if (isQuitting) {
+    console.log('⚠️ activate ignored because app is quitting');
+    return;
+  }
+
   // 只有在应用没有退出意图时才重新创建窗口
   // 如果用户已经关闭了所有窗口并退出，不应该重新创建
   if (BrowserWindow.getAllWindows().length === 0 && mainWindow === null) {
@@ -841,6 +843,7 @@ app.whenReady().then(async () => {
 // Clean up before quit
 app.on('before-quit', (event) => {
   // 标记应用正在退出，防止其他操作干扰
+  isQuitting = true;
   console.log('🛑 Application is quitting...');
 });
 
@@ -917,10 +920,7 @@ function createTray() {
     {
       label: 'Quit',
       click: () => {
-        // 关闭所有窗口并退出
-        BrowserWindow.getAllWindows().forEach(window => {
-          window.destroy();
-        });
+        // 统一走 app.quit，触发 will-quit 做异步清理
         app.quit();
       },
     },

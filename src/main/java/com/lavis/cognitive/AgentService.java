@@ -6,34 +6,38 @@ import com.lavis.memory.MemoryManager;
 import com.lavis.memory.SessionStore;
 import com.lavis.perception.ScreenCapturer;
 import com.lavis.service.llm.LlmFactory;
+import com.lavis.skills.SkillService;
+import com.lavis.skills.model.SkillExecutionContext;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.*;
 import com.lavis.cognitive.memory.ImageContentCleanableChatMemory;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.output.Response;
 import jakarta.annotation.PostConstruct;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * M2 思考模块 - Agent 服务
  * 核心 AI 服务，整合 LLM 模型与工具调用
- * 支持多模态 + 工具调用
- * 
+ * 支持多模态 + 工具调用 + 动态 Skill 挂载
+ *
  * 职责：
  * - 管理对话记忆（ChatMemory）
  * - 处理多模态消息（文本 + 截图）
  * - 协调工具调用循环
- * - 初始化 TaskOrchestrator
+ * - 动态挂载 Skills 作为工具
+ * - 实现 Skill 上下文注入
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class AgentService {
 
     private final ScreenCapturer screenCapturer;
@@ -41,6 +45,7 @@ public class AgentService {
     private final ToolExecutionService toolExecutionService;
     private final LlmFactory llmFactory;
     private final MemoryManager memoryManager;
+    private final SkillService skillService;
 
     @Value("${agent.retry.max:3}")
     private int maxRetries;
@@ -57,6 +62,26 @@ public class AgentService {
 
     private ChatLanguageModel chatModel;
     private ChatMemory chatMemory;
+
+    /** 动态 Skill 工具列表（实时更新） */
+    private final List<ToolSpecification> skillToolSpecifications = new CopyOnWriteArrayList<>();
+
+    /** 当前注入的 Skill 上下文（临时） */
+    private volatile SkillExecutionContext activeSkillContext;
+
+    public AgentService(ScreenCapturer screenCapturer,
+                        TaskOrchestrator taskOrchestrator,
+                        ToolExecutionService toolExecutionService,
+                        LlmFactory llmFactory,
+                        MemoryManager memoryManager,
+                        @Lazy SkillService skillService) {
+        this.screenCapturer = screenCapturer;
+        this.taskOrchestrator = taskOrchestrator;
+        this.toolExecutionService = toolExecutionService;
+        this.llmFactory = llmFactory;
+        this.memoryManager = memoryManager;
+        this.skillService = skillService;
+    }
 
     private static final String SYSTEM_PROMPT = """
             You are Lavis, a smart AI assistant with visual capabilities and macOS system control.
@@ -133,6 +158,15 @@ public class AgentService {
             - If user speaks English, respond in English
             """;
 
+    /** Skill 上下文注入的 System Prompt 模板 */
+    private static final String SKILL_CONTEXT_TEMPLATE = """
+
+            ## Active Skill Context
+            The following skill has been activated. You MUST follow its guidelines:
+
+            %s
+            """;
+
     // 工具执行后等待 UI 响应的时间（毫秒）
     @Value("${agent.tool.wait.ms:500}")
     private int toolWaitMs = 500;
@@ -145,7 +179,7 @@ public class AgentService {
                 log.warn("⚠️ 模型 '{}' 未配置或 API Key 缺失，Agent 功能将不可用", modelAlias);
                 return;
             }
-            
+
             this.chatModel = llmFactory.getModel(modelAlias);
 
             // 初始化聊天记忆（使用支持 ImageContent 清理的自定义实现）
@@ -154,10 +188,65 @@ public class AgentService {
             // 初始化调度器（传递 LLM 模型给 Planner 和 Executor）
             taskOrchestrator.initialize(chatModel);
 
-            log.info("✅ AgentService 初始化完成 - 模型: {}, 工具数: {}",
-                    modelAlias, toolExecutionService.getToolCount());
+            // 初始化 Skill 集成
+            initializeSkillIntegration();
+
+            log.info("✅ AgentService 初始化完成 - 模型: {}, 工具数: {}, Skill工具数: {}",
+                    modelAlias, toolExecutionService.getToolCount(), skillToolSpecifications.size());
         } catch (Exception e) {
             log.error("❌ AgentService 初始化失败", e);
+        }
+    }
+
+    /**
+     * 初始化 Skill 集成。
+     * 1. 加载当前所有 Skill 的 ToolSpecification
+     * 2. 注册工具更新监听器（热重载支持）
+     * 3. 注册上下文注入回调
+     */
+    private void initializeSkillIntegration() {
+        // 加载当前 Skill 工具
+        skillToolSpecifications.clear();
+        skillToolSpecifications.addAll(skillService.getToolSpecifications());
+        log.info("📦 加载了 {} 个 Skill 工具", skillToolSpecifications.size());
+
+        // 注册工具更新监听器（热重载支持）
+        skillService.addToolUpdateListener(newTools -> {
+            skillToolSpecifications.clear();
+            skillToolSpecifications.addAll(newTools);
+            log.info("🔄 Skill 工具列表已更新，当前数量: {}", skillToolSpecifications.size());
+        });
+
+        // 注册上下文注入回调
+        // 这是解决"Context Gap"的核心：当 Skill 被调用时，将其知识注入到对话中
+        skillService.setContextInjectionCallback(this::executeWithSkillContext);
+
+        log.info("✅ Skill 集成初始化完成");
+    }
+
+    /**
+     * 带 Skill 上下文的执行。
+     * 这是"上下文注入"的核心实现：
+     * 1. 将 Skill 的知识（Markdown 正文）注入到 System Prompt
+     * 2. 执行 Agent 命令
+     * 3. 清理临时上下文
+     *
+     * @param context Skill 执行上下文（包含知识内容）
+     * @param goal    要执行的目标
+     * @return 执行结果
+     */
+    private String executeWithSkillContext(SkillExecutionContext context, String goal) {
+        log.info("🎯 执行带 Skill 上下文的命令: skill={}, goal={}", context.getSkillName(), goal);
+
+        // 设置当前活动的 Skill 上下文
+        this.activeSkillContext = context;
+
+        try {
+            // 执行带截图的对话（上下文会在 processWithTools 中注入）
+            return chatWithScreenshot(goal);
+        } finally {
+            // 清理临时上下文
+            this.activeSkillContext = null;
         }
     }
 
@@ -171,7 +260,7 @@ public class AgentService {
 
     /**
      * 发送带截图的消息 (多模态 + 工具调用)，支持步进模式
-     * 
+     *
      * @param message  用户消息
      * @param maxSteps 最大执行步数限制。如果 > 0，则限制单次调用的最大工具调用次数；如果 <= 0，则使用全局配置
      *                 maxToolIterations
@@ -200,26 +289,31 @@ public class AgentService {
 
     /**
      * 核心方法：处理消息并执行工具调用循环
-     * 
-     * 【关键改进】工具执行后重新截图，让模型"看见"屏幕变化
-     * 
+     *
+     * 【关键改进】
+     * 1. 工具执行后重新截图，让模型"看见"屏幕变化
+     * 2. 支持 Skill 上下文注入（解决 Context Gap）
+     * 3. 动态合并 Skill 工具到工具列表
+     *
      * 执行流程：
-     * 1. 发送初始消息（含截图）给模型
-     * 2. 模型决定调用工具
-     * 3. 执行工具
-     * 4. 【新增】等待 UI 响应 + 重新截图
-     * 5. 【新增】将新截图作为观察结果注入上下文
+     * 1. 构建 System Prompt（如有活动 Skill，注入其知识）
+     * 2. 发送初始消息（含截图）给模型
+     * 3. 模型决定调用工具（包括 Skill 工具）
+     * 4. 执行工具（Skill 工具会触发上下文注入）
+     * 5. 等待 UI 响应 + 重新截图
      * 6. 模型根据新截图决定下一步
-     * 
+     *
      * @param userMessage 用户消息
-     * @param maxSteps    最大执行步数限制。如果 > 0，则限制单次调用的最大工具调用次数；如果 <= 0，则使用全局配置
-     *                    maxToolIterations
+     * @param maxSteps    最大执行步数限制
      */
     private String processWithTools(UserMessage userMessage, int maxSteps) {
-        // 【内存安全】ImageContent 清理现在在 ChatMemory.add() 中自动执行
         // 构建消息列表
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(SystemMessage.from(SYSTEM_PROMPT));
+
+        // 【关键】构建 System Prompt，如有活动 Skill 上下文则注入其知识
+        String systemPrompt = buildSystemPromptWithSkillContext();
+        messages.add(SystemMessage.from(systemPrompt));
+
         messages.addAll(chatMemory.messages());
         messages.add(userMessage);
 
@@ -244,6 +338,11 @@ public class AgentService {
 
         StringBuilder fullResponse = new StringBuilder();
 
+        // 【关键】合并工具列表：基础工具 + Skill 工具
+        List<ToolSpecification> allTools = buildCombinedToolSpecifications();
+        log.debug("可用工具总数: {} (基础: {}, Skill: {})",
+                allTools.size(), toolExecutionService.getToolCount(), skillToolSpecifications.size());
+
         // 工具调用循环 - 使用传入的 maxSteps，如果 <= 0 则使用全局配置（兼容旧代码）
         int limit = (maxSteps > 0) ? maxSteps : this.maxToolIterations;
         log.debug("工具调用循环限制: {} 步", limit);
@@ -251,13 +350,13 @@ public class AgentService {
         for (int iteration = 0; iteration < limit; iteration++) {
             log.info("🔄 工具调用迭代 {}/{}", iteration + 1, limit);
 
-            // 调用模型
-            Response<AiMessage> response = chatModel.generate(messages, toolExecutionService.getToolSpecifications());
+            // 调用模型（使用合并后的工具列表）
+            Response<AiMessage> response = chatModel.generate(messages, allTools);
             AiMessage aiMessage = response.content();
             log.info("🤖 Agent 响应: {}", aiMessage);
             // 添加 AI 响应到消息列表
             messages.add(aiMessage);
-            // 【修复】保存 AI 响应到记忆（包括工具调用请求）
+            // 保存 AI 响应到记忆（包括工具调用请求）
             chatMemory.add(aiMessage);
 
             // Save AI message to database
@@ -293,12 +392,12 @@ public class AgentService {
 
                 log.info("  → 调用工具: {}({})", toolName, toolArgs);
 
-                // 通过 ToolExecutionService 执行工具
-                String result = toolExecutionService.execute(toolName, toolArgs);
+                // 【关键】判断是基础工具还是 Skill 工具
+                String result = executeToolOrSkill(toolName, toolArgs);
                 log.info("  ← 工具结果: {}", result.split("\n")[0]); // 只打印第一行
 
                 // 检测工具执行失败（仅用于日志记录，让模型通过上下文自己判断）
-                if (result != null && (result.contains("❌") || result.contains("失败") || 
+                if (result != null && (result.contains("❌") || result.contains("失败") ||
                     result.contains("错误") || result.contains("异常") || result.contains("Error"))) {
                     hasError = true;
                     log.warn("⚠️ 工具执行失败: {}", result.split("\n")[0]);
@@ -309,13 +408,13 @@ public class AgentService {
                         request,
                         result);
                 messages.add(toolResult);
-                // 【修复】保存工具执行结果到记忆
+                // 保存工具执行结果到记忆
                 chatMemory.add(toolResult);
 
                 toolResultsSummary.append(String.format("[%s] %s\n", toolName, result.split("\n")[0]));
 
                 // 判断是否是可能影响屏幕的操作
-                if (toolExecutionService.isVisualImpactTool(toolName)) {
+                if (isVisualImpactTool(toolName)) {
                     hasVisualImpact = true;
                 }
             }
@@ -482,6 +581,91 @@ public class AgentService {
         return text.length() / 4;
     }
 
+    // ==================== Skill 集成辅助方法 ====================
+
+    /**
+     * 构建带 Skill 上下文的 System Prompt。
+     * 如果有活动的 Skill 上下文，将其知识注入到 System Prompt 中。
+     */
+    private String buildSystemPromptWithSkillContext() {
+        if (activeSkillContext == null) {
+            return SYSTEM_PROMPT;
+        }
+
+        // 注入 Skill 知识到 System Prompt
+        String skillInjection = activeSkillContext.toSystemPromptInjection();
+        String enhancedPrompt = SYSTEM_PROMPT + String.format(SKILL_CONTEXT_TEMPLATE, skillInjection);
+
+        log.info("📚 已注入 Skill 上下文: {}", activeSkillContext.getSkillName());
+        return enhancedPrompt;
+    }
+
+    /**
+     * 构建合并后的工具规格列表（基础工具 + Skill 工具）
+     */
+    private List<ToolSpecification> buildCombinedToolSpecifications() {
+        List<ToolSpecification> combined = new ArrayList<>();
+
+        // 添加基础工具
+        combined.addAll(toolExecutionService.getToolSpecifications());
+
+        // 添加 Skill 工具
+        combined.addAll(skillToolSpecifications);
+
+        return combined;
+    }
+
+    /**
+     * 执行工具或 Skill。
+     * 根据工具名称判断是基础工具还是 Skill 工具，分别调用对应的执行器。
+     */
+    private String executeToolOrSkill(String toolName, String argsJson) {
+        // 首先检查是否是基础工具
+        if (toolExecutionService.hasTool(toolName)) {
+            return toolExecutionService.execute(toolName, argsJson);
+        }
+
+        // 检查是否是 Skill 工具
+        if (isSkillTool(toolName)) {
+            log.info("🎯 执行 Skill 工具: {}", toolName);
+            var result = skillService.executeByToolName(toolName, argsJson);
+            return result.isSuccess() ? result.getOutput() : "❌ " + result.getError();
+        }
+
+        return "❌ 未知工具: " + toolName;
+    }
+
+    /**
+     * 判断是否是 Skill 工具
+     */
+    private boolean isSkillTool(String toolName) {
+        return skillToolSpecifications.stream()
+                .anyMatch(spec -> spec.name().equals(toolName));
+    }
+
+    /**
+     * 判断工具是否可能影响屏幕显示
+     */
+    private boolean isVisualImpactTool(String toolName) {
+        // 基础工具的判断
+        if (toolExecutionService.hasTool(toolName)) {
+            return toolExecutionService.isVisualImpactTool(toolName);
+        }
+
+        // Skill 工具默认认为有视觉影响（因为可能执行 agent: 命令）
+        if (isSkillTool(toolName)) {
+            return true;
+        }
+
+        return true; // 未知工具默认有影响
+    }
+
+    /**
+     * 获取当前 Skill 工具数量
+     */
+    public int getSkillToolCount() {
+        return skillToolSpecifications.size();
+    }
 
     @FunctionalInterface
     interface ThrowingSupplier<T> {

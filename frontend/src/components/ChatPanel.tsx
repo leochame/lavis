@@ -10,7 +10,7 @@ import { ManagementPanel } from './ManagementPanel';
 import { SchedulerPanel } from './SchedulerPanel';
 import { SkillsPanel } from './SkillsPanel';
 import { Sidebar, type PanelType } from './Sidebar';
-import { useWebSocket } from '../hooks/useWebSocket';
+import type { WorkflowState, ConnectionStatus } from '../hooks/useWebSocket';
 import { useUIStore } from '../store/uiStore';
 import type { AgentStatus } from '../types/agent';
 import type { UseGlobalVoiceReturn } from '../hooks/useGlobalVoice';
@@ -45,9 +45,24 @@ interface ChatPanelProps {
   status: AgentStatus | null;
   /** 全局语音控制 (来自 App.tsx) */
   globalVoice: UseGlobalVoiceReturn;
+  /** 复用 App.tsx 创建的 WebSocket 连接，避免重复连接 */
+  wsConnected: boolean;
+  wsStatus: ConnectionStatus;
+  workflow: WorkflowState;
+  resetWorkflow: () => void;
+  sendMessage: (type: string, data?: Record<string, unknown>) => void;
 }
 
-export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
+export function ChatPanel({
+  onClose,
+  status,
+  globalVoice,
+  wsConnected: connected,
+  wsStatus,
+  workflow,
+  resetWorkflow,
+  sendMessage,
+}: ChatPanelProps) {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -99,9 +114,6 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
     window.addEventListener('resize', updateHeight);
     return () => window.removeEventListener('resize', updateHeight);
   }, []);
-
-  // WebSocket connection for real-time workflow updates
-  const { connected, status: wsStatus, workflow, resetWorkflow, sendMessage } = useWebSocket(agentApi.getWebSocketUrl());
 
   // 自动滚动到底部（新消息到达时）
   useEffect(() => {
@@ -197,12 +209,13 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    const messageText = input.trim();
+    if (!messageText || isLoading) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: input,
+      content: messageText,
       timestamp: Date.now(),
     };
 
@@ -220,7 +233,8 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
     }
 
     try {
-      const response = await agentApi.chat({ message: input });
+      // 使用已捕获的 messageText，避免在清空 input 后发送空消息
+      const response = await agentApi.chat({ message: messageText });
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -277,9 +291,9 @@ export function ChatPanel({ onClose, status, globalVoice }: ChatPanelProps) {
       case 'management':
         return <ManagementPanel onClose={() => setActivePanel('chat')} />;
       case 'scheduler':
-        return <SchedulerPanel />;
+        return <SchedulerPanel onClose={() => setActivePanel('chat')} />;
       case 'skills':
-        return <SkillsPanel />;
+        return <SkillsPanel onClose={() => setActivePanel('chat')} />;
       case 'chat':
       default:
         return (

@@ -94,7 +94,7 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
   const isUnmountedRef = useRef(false);
   const ttsCallbacksRef = useRef(ttsCallbacks);
 
-  // 更新回调引用
+  // 更新回调引用：保持 connect / handleMessage 稳定，同时总是使用最新回调
   useEffect(() => {
     ttsCallbacksRef.current = ttsCallbacks;
   }, [ttsCallbacks]);

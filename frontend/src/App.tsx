@@ -41,7 +41,15 @@ export default function App() {
   const globalVoice = useGlobalVoice(isStarted);
 
   // 初始化 WebSocket，传入 TTS 回调
-  const { connected: wsConnected, workflow: wsWorkflow, isTtsGenerating } = useWebSocket(wsUrl, globalVoice.ttsCallbacks);
+  // 由 App 统一管理 WebSocket 连接，并将状态下发给子组件，避免重复连接
+  const {
+    connected: wsConnected,
+    status: wsStatus,
+    workflow: wsWorkflow,
+    isTtsGenerating,
+    resetWorkflow: wsResetWorkflow,
+    sendMessage: wsSendMessage,
+  } = useWebSocket(wsUrl, globalVoice.ttsCallbacks);
 
 
   // Start heartbeat on mount
@@ -53,7 +61,8 @@ export default function App() {
     return () => {
       agentApi.stopHeartbeat();
     };
-  }, [isElectron, platform, setViewMode]);
+    // 心跳与 Electron / 视图无关，只需在挂载/卸载时运行一次
+  }, []);
 
   // Handle capsule click - start recording (new behavior per design spec)
   const handleCapsuleClick = useCallback(() => {
@@ -86,7 +95,7 @@ export default function App() {
     if (globalVoice.wakeWordDetected) {
       setWindowState('listening');
     }
-  }, [globalVoice.wakeWordDetected, isElectron, platform, setWindowState]);
+  }, [globalVoice.wakeWordDetected, setWindowState]);
 
   // Auto-collapse to capsule when window state becomes idle or listening
   // This ensures that when the window shrinks (e.g., due to timeout), it returns to capsule mode
@@ -98,7 +107,7 @@ export default function App() {
     if (viewMode === 'chat' && (windowState === 'idle' || windowState === 'listening')) {
       setViewMode('capsule');
     }
-  }, [windowState, viewMode, isElectron, platform, setViewMode]);
+  }, [windowState, viewMode, setViewMode]);
 
   // 窗口模式变化时同步 Electron 物理窗口
   useEffect(() => {
@@ -284,6 +293,11 @@ export default function App() {
                 onClose={handleChatClose}
                 status={status}
                 globalVoice={globalVoice}
+                wsConnected={wsConnected}
+                wsStatus={wsStatus}
+                workflow={wsWorkflow}
+                resetWorkflow={wsResetWorkflow}
+                sendMessage={wsSendMessage}
               />
             </div>
           </div>
