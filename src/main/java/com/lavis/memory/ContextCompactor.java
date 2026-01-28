@@ -1,7 +1,7 @@
 package com.lavis.memory;
 
+import com.lavis.service.llm.LlmFactory;
 import dev.langchain4j.data.message.*;
-import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.input.Prompt;
 import dev.langchain4j.model.input.PromptTemplate;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +27,11 @@ public class ContextCompactor {
     private static final int DEFAULT_TOKEN_THRESHOLD = 100_000;
     private static final int KEEP_RECENT_MESSAGES = 10;
 
-    private final ChatLanguageModel chatModel;
+    /**
+     * 通过 LlmFactory 按需获取 Chat 模型，避免直接注入 ChatLanguageModel Bean
+     * 从而复用统一的模型配置与缓存逻辑。
+     */
+    private final LlmFactory llmFactory;
 
     /**
      * Check if conversation history needs compression
@@ -118,6 +122,7 @@ public class ContextCompactor {
         Prompt prompt = template.apply(variables);
 
         try {
+            var chatModel = llmFactory.getModel();
             String summary = chatModel.generate(prompt.text());
             log.debug("Generated summary: {} characters", summary.length());
             return summary;

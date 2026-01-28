@@ -1,12 +1,106 @@
 :root {
-  --font-body: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  /* ========================================
+     Design System - Modern Clean Theme
+     ======================================== */
+
+  /* Typography */
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Monaco, 'Cascadia Code', monospace;
+
+  /* Color Palette - German/industrial: neutral greys + single red accent */
+  --slate-50: #f8fafc;
+  --slate-100: #f1f5f9;
+  --slate-200: #e2e8f0;
+  --slate-300: #cbd5e1;
+  --slate-400: #94a3b8;
+  --slate-500: #64748b;
+  --slate-600: #475569;
+  --slate-700: #334155;
+  --slate-800: #1e293b;
+  --slate-900: #0f172a;
+  --slate-950: #020617;
+
+  /* Accent - Red */
+  --accent-50: #fef3f2;
+  --accent-100: #fee4e2;
+  --accent-200: #fecdca;
+  --accent-300: #fda29b;
+  --accent-400: #f97066;
+  --accent-500: #f04438;
+  --accent-600: #d92d20;
+  --accent-700: #b42318;
+
+  /* Semantic colors */
+  --color-success: #22c55e;
+  --color-success-subtle: rgba(34, 197, 94, 0.1);
+  --color-warning: #f59e0b;
+  --color-warning-subtle: rgba(245, 158, 11, 0.1);
+  --color-error: #ef4444;
+  --color-error-subtle: rgba(239, 68, 68, 0.1);
+  /* No blue: map info to neutral */
+  --color-info: var(--slate-300);
+  --color-info-subtle: rgba(203, 213, 225, 0.08);
+
+  /* Surface colors */
+  --surface-base: #0b0d10;
+  --surface-elevated: rgba(12, 14, 18, 0.98);
+  --surface-overlay: rgba(12, 14, 18, 0.96);
+  --surface-hover: rgba(248, 250, 252, 0.06);
+  --surface-active: rgba(248, 250, 252, 0.08);
+
+  /* Border colors */
+  --border-subtle: rgba(248, 250, 252, 0.12);
+  --border-default: rgba(248, 250, 252, 0.18);
+  --border-hover: rgba(248, 250, 252, 0.28);
+  --border-focus: var(--accent-600);
+
+  /* Text colors */
+  --text-primary: rgba(248, 250, 252, 0.98);
+  --text-secondary: rgba(226, 232, 240, 0.8);
+  --text-tertiary: rgba(148, 163, 184, 0.9);
+  --text-muted: rgba(100, 116, 139, 0.9);
+
+  /* Primary color tokens (single accent: red) */
+  --primary: var(--accent-600);
+  --primary-hover: var(--accent-500);
+  --primary-subtle: rgba(217, 45, 32, 0.12);
+  --primary-muted: rgba(217, 45, 32, 0.32);
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Border radius (no rounded corners) */
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-full: 0px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.7);
+  --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.75);
+  --shadow-lg: 0 18px 52px rgba(0, 0, 0, 0.78);
+  --shadow-xl: 0 26px 90px rgba(0, 0, 0, 0.82);
+  --shadow-glow: 0 0 0 rgba(0, 0, 0, 0);
+
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.2s ease;
+  --transition-slow: 0.3s ease;
+
+  /* Base styles */
   font-family: var(--font-body);
   line-height: 1.5;
   font-weight: 400;
 
   color-scheme: dark;
-  color: rgba(255, 255, 255, 0.87);
+  color: var(--text-primary);
   background-color: transparent;
 
   font-synthesis: none;
@@ -22,18 +116,17 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 3px;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 243, 255, 0.3);
-  border-radius: 3px;
-  transition: background 0.2s ease;
+  background: var(--border-default);
+  border-radius: var(--radius-full);
+  transition: background var(--transition-fast);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 243, 255, 0.6);
+  background: var(--border-hover);
 }
 
 ::-webkit-scrollbar-corner {
@@ -43,16 +136,17 @@
 /* Firefox scrollbar */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(0, 243, 255, 0.3) rgba(0, 0, 0, 0.3);
+  scrollbar-color: var(--border-default) transparent;
 }
 
 a {
   font-weight: 500;
-  color: #646cff;
+  color: var(--primary);
   text-decoration: inherit;
+  transition: color var(--transition-fast);
 }
 a:hover {
-  color: #535bf2;
+  color: var(--primary-hover);
 }
 
 /* 确保 html 和 body 填满整个窗口 */
@@ -71,20 +165,24 @@ h1 {
 }
 
 button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  padding: 0.5em 1em;
+  font-size: 0.875rem;
   font-weight: 500;
   font-family: inherit;
-  background-color: #1a1a1a;
+  background-color: var(--surface-elevated);
+  color: var(--text-secondary);
   cursor: pointer;
-  transition: border-color 0.25s;
+  transition: all var(--transition-fast);
 }
 button:hover {
-  border-color: #646cff;
+  background-color: var(--surface-hover);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
 }
 button:focus,
 button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }

@@ -3,6 +3,11 @@ package com.lavis.cognitive;
 import com.lavis.action.AppleScriptExecutor;
 import com.lavis.action.RobotDriver;
 import com.lavis.perception.ScreenCapturer;
+import com.lavis.skills.SkillExecutor;
+import com.lavis.skills.SkillService;
+import com.lavis.skills.dto.SkillResponse;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import lombok.extern.slf4j.Slf4j;
@@ -10,6 +15,8 @@ import org.springframework.stereotype.Component;
 
 import java.awt.Point;
 import java.io.IOException;
+import java.util.List;
+import java.util.Map;
 
 /**
  * AI 可调用的工具集 - 改进版
@@ -24,12 +31,15 @@ public class AgentTools {
     private final RobotDriver robotDriver;
     private final AppleScriptExecutor appleScriptExecutor;
     private final ScreenCapturer screenCapturer;
+    private final SkillService skillService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AgentTools(RobotDriver robotDriver, AppleScriptExecutor appleScriptExecutor,
-                      ScreenCapturer screenCapturer) {
+                      ScreenCapturer screenCapturer, SkillService skillService) {
         this.robotDriver = robotDriver;
         this.appleScriptExecutor = appleScriptExecutor;
         this.screenCapturer = screenCapturer;
+        this.skillService = skillService;
     }
 
     // ==================== 鼠标操作 (反馈语调更加中性) ====================
@@ -461,5 +471,53 @@ public class AgentTools {
             @P("Must include 1.success evidence seen in screenshot 2.specific manifestation of completion state") String summary) {
         log.info("✅ 里程碑完成: {}", summary);
         return "Milestone marked as completed: " + summary;
+    }
+
+    // ==================== Skills 工具 ====================
+
+    @Tool("Execute a skill by name. Skills are pre-defined automation commands that can perform complex tasks.")
+    public String executeSkill(
+            @P("Skill name to execute") String skillName,
+            @P("Parameters as JSON object, e.g. {\"key\": \"value\"}. Pass null or empty string if no parameters needed.") String params) {
+        try {
+            Map<String, String> paramMap = null;
+            if (params != null && !params.isEmpty() && !params.equals("null")) {
+                paramMap = objectMapper.readValue(params, new TypeReference<Map<String, String>>() {});
+            }
+            SkillExecutor.ExecutionResult result = skillService.executeSkill(skillName, paramMap);
+            if (result.isSuccess()) {
+                return String.format("✅ 技能 '%s' 执行成功。输出: %s", skillName, result.getOutput());
+            } else {
+                return String.format("❌ 技能 '%s' 执行失败: %s", skillName, result.getError());
+            }
+        } catch (Exception e) {
+            log.error("执行技能失败: {}", skillName, e);
+            return "❌ 执行技能异常: " + e.getMessage();
+        }
+    }
+
+    @Tool("List all available skills. Returns skill names, descriptions, and categories.")
+    public String listSkills() {
+        try {
+            List<SkillResponse> skills = skillService.getEnabledSkills();
+            if (skills.isEmpty()) {
+                return "当前没有可用的技能。";
+            }
+            StringBuilder sb = new StringBuilder("📋 可用技能列表:\n");
+            for (SkillResponse skill : skills) {
+                sb.append(String.format("- %s", skill.getName()));
+                if (skill.getCategory() != null) {
+                    sb.append(String.format(" [%s]", skill.getCategory()));
+                }
+                if (skill.getDescription() != null) {
+                    sb.append(String.format(": %s", skill.getDescription()));
+                }
+                sb.append("\n");
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            log.error("获取技能列表失败", e);
+            return "❌ 获取技能列表异常: " + e.getMessage();
+        }
     }
 }

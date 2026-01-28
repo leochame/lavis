@@ -1,0 +1,168 @@
+.sidebar {
+  width: 80px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 0 16px;
+  background: var(--surface-elevated);
+  border-right: 1px solid var(--border-subtle);
+  -webkit-app-region: drag;
+  flex-shrink: 0;
+}
+
+/* Status indicator at top */
+.sidebar__status {
+  padding: 4px 0 18px;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar__status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 0;
+  background: rgba(248, 250, 252, 0.35);
+  transition: all 0.3s ease;
+  box-shadow: none;
+}
+
+.sidebar__status-dot--connected {
+  background: rgba(248, 250, 252, 0.8);
+  box-shadow: none;
+}
+
+.sidebar__status-dot--working {
+  animation: status-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.2);
+  }
+}
+
+/* Main navigation */
+.sidebar__nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0 10px;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar__nav-item {
+  position: relative;
+  width: 52px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all 0.18s ease-out;
+}
+
+.sidebar__nav-item:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-hover);
+  color: var(--text-secondary);
+}
+
+.sidebar__nav-item--active {
+  background: rgba(248, 250, 252, 0.06);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+.sidebar__nav-item--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: var(--primary);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.sidebar__nav-icon {
+  flex-shrink: 0;
+  filter: none;
+}
+
+.sidebar__nav-label {
+  display: none;
+}
+
+/* Utility actions */
+.sidebar__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 0 10px;
+  border-top: 1px solid var(--border-subtle);
+  -webkit-app-region: no-drag;
+}
+
+.sidebar__action-btn {
+  width: 52px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: 0;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all 0.2s ease-out;
+  box-shadow: none;
+}
+
+.sidebar__action-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-hover);
+  color: var(--text-secondary);
+}
+
+.sidebar__action-btn--active {
+  background: var(--surface-active);
+  border-color: var(--primary);
+  color: var(--text-primary);
+}
+
+/* Close button */
+.sidebar__close {
+  width: 52px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: 0;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar__close:hover {
+  background: var(--primary-subtle);
+  border-color: var(--primary-muted);
+  color: var(--text-primary);
+}

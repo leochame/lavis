@@ -151,7 +151,6 @@ export function BrainPanel({ workflow, connectionStatus, onStop }: BrainPanelPro
       {/* Goal */}
       {workflow.userGoal && (
         <div className="brain-goal">
-          <span className="brain-goal__icon">🎯</span>
           <span className="brain-goal__text">{workflow.userGoal}</span>
         </div>
       )}
@@ -178,7 +177,7 @@ export function BrainPanel({ workflow, connectionStatus, onStop }: BrainPanelPro
           <div className="brain-steps" ref={stepsRef}>
             {workflow.steps.length === 0 ? (
               <div className="brain-empty">
-                <div className="brain-empty__icon">🧠</div>
+                <div className="brain-empty__mark" aria-hidden="true" />
                 <div className="brain-empty__text">
                   {workflow.status === 'planning'
                     ? 'AI is analyzing and planning...'

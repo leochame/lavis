@@ -31,6 +31,7 @@ export default function App() {
   // 全局语音大脑 (Global Voice Brain)
   // 无论 viewMode 如何变化，唤醒词监听始终运行
   // 必须在用户点击开始后才初始化音频功能（浏览器安全策略）
+  
   // ====================================
 
   // 先初始化 WebSocket 以获取 sessionId
@@ -63,13 +64,6 @@ export default function App() {
   const handleCapsuleDoubleClick = useCallback(() => {
     setViewMode('chat');
     setWindowState('expanded');
-    if (isElectron) {
-      platform.resizeWindow('expanded');
-      // 也支持旧的 resize-window-full IPC
-      if (window.electron?.platform?.resizeWindowFull) {
-        window.electron.platform.resizeWindowFull();
-      }
-    }
   }, [isElectron, platform, setViewMode, setWindowState]);
 
   // Handle capsule right-click - show context menu
@@ -84,24 +78,13 @@ export default function App() {
   // Handle chat close - switch back to capsule mode
   const handleChatClose = useCallback(() => {
     setViewMode('capsule');
-    if (isElectron) {
-      platform.resizeWindow('capsule');
-    }
-  }, [isElectron, platform, setViewMode]);
+    setWindowState('idle');
+  }, [setViewMode, setWindowState]);
 
   // Handle wake word detection - set window state to Listening
   useEffect(() => {
     if (globalVoice.wakeWordDetected) {
       setWindowState('listening');
-      if (isElectron) {
-        // 发送 resize-window-mini IPC
-        if (window.electron?.platform?.resizeWindowMini) {
-          window.electron.platform.resizeWindowMini();
-        } else {
-          // 降级到使用 resizeWindow
-          platform.resizeWindow('listening');
-        }
-      }
     }
   }, [globalVoice.wakeWordDetected, isElectron, platform, setWindowState]);
 
@@ -114,21 +97,24 @@ export default function App() {
     // When window shrinks to idle or listening state, we should show capsule instead of simplified chat panel
     if (viewMode === 'chat' && (windowState === 'idle' || windowState === 'listening')) {
       setViewMode('capsule');
-      if (isElectron) {
-        platform.resizeWindow('capsule');
-      }
     }
   }, [windowState, viewMode, isElectron, platform, setViewMode]);
 
   // 窗口模式变化时同步 Electron 物理窗口
   useEffect(() => {
     if (isElectron) {
-      platform.resizeWindow(viewMode);
+      const targetMode =
+        viewMode === 'chat'
+          ? 'expanded'
+          : windowState === 'idle' || windowState === 'listening'
+            ? windowState
+            : 'capsule';
+      platform.resizeWindow(targetMode);
       // 注意：不要在这里设置 setIgnoreMouseEvents
       // 透明区域穿透应该由 CSS 和窗口配置处理，而不是全局禁用鼠标事件
       // 否则会导致拖拽和点击都无法工作
     }
-  }, [isElectron, platform, viewMode]);
+  }, [isElectron, platform, viewMode, windowState]);
 
   // Listen for auto-record event (triggered by mic button on start overlay)
   useEffect(() => {
@@ -279,11 +265,28 @@ export default function App() {
           />
         )}
         {viewMode === 'chat' && (
-          <ChatPanel
-            onClose={handleChatClose}
-            status={status}
-            globalVoice={globalVoice}
-          />
+          <div className="app-window app-window--chat">
+            <div className="app-window__chrome">
+              <div className="app-window__controls">
+                <span
+                  className="app-window__control app-window__control--close"
+                  onClick={handleChatClose}
+                />
+                <span className="app-window__control app-window__control--minimize" />
+                <span className="app-window__control app-window__control--fullscreen" />
+              </div>
+              <div className="app-window__title">
+                <span className="app-window__stamp" aria-hidden="true">Lavis</span>
+              </div>
+            </div>
+            <div className="app-window__body">
+              <ChatPanel
+                onClose={handleChatClose}
+                status={status}
+                globalVoice={globalVoice}
+              />
+            </div>
+          </div>
         )}
       </div>
     </div>

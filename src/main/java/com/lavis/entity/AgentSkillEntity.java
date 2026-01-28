@@ -51,7 +51,8 @@ public class AgentSkillEntity {
     @Column(name = "use_count")
     private Integer useCount = 0;
 
-    @Lob
+    // NOTE: Do not use @Lob here. SQLite JDBC driver does not implement ResultSet#getBlob(),
+    // but it does support getBytes(). Mapping as plain byte[] makes Hibernate extract via getBytes().
     @Column(columnDefinition = "BLOB")
     private byte[] embedding;
 

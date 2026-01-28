@@ -7,9 +7,9 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #1a1a1a;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface-elevated);
+  border-radius: 0;
+  border: 1px solid var(--border-subtle);
   overflow: hidden;
 }
 
@@ -19,8 +19,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  background: rgba(0, 0, 0, 0.3);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--surface-overlay);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .brain-header__left {
@@ -37,19 +37,19 @@
 }
 
 .brain-status-indicator--connected {
-  background: #22c55e;
-  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+  background: var(--primary);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 0 10px var(--primary-subtle);
 }
 
 .brain-status-indicator--connecting {
-  background: #f59e0b;
-  box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+  background: rgba(248, 250, 252, 0.14);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 0 10px rgba(248, 250, 252, 0.08);
   animation: pulse-indicator 1s infinite;
 }
 
 .brain-status-indicator--disconnected {
-  background: #ef4444;
-  box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+  background: rgba(248, 250, 252, 0.14);
+  box-shadow: none;
 }
 
 @keyframes pulse-indicator {
@@ -60,37 +60,37 @@
 .brain-header__title {
   font-size: 12px;
   font-weight: 600;
-  color: #fff;
+  color: var(--text-primary);
   letter-spacing: 0.5px;
 }
 
 .brain-header__connection {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-muted);
 }
 
 .brain-stop-btn {
   padding: 4px 12px;
   font-size: 11px;
   font-weight: 500;
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 4px;
+  color: var(--primary);
+  background: var(--primary-subtle);
+  border: 1px solid var(--primary-muted);
+  border-radius: 0;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .brain-stop-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.18);
+  border-color: var(--primary);
 }
 
 /* Status Bar */
 .brain-status-bar {
   padding: 10px 16px;
-  background: rgba(0, 0, 0, 0.2);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.18);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .brain-status-bar__info {
@@ -104,52 +104,55 @@
   padding: 2px 8px;
   font-size: 10px;
   font-weight: 600;
-  border-radius: 4px;
+  border-radius: 0;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  border: 1px solid var(--border-default);
 }
 
 .brain-status-badge--planning {
-  background: rgba(168, 85, 247, 0.2);
-  color: #a855f7;
+  background: rgba(248, 250, 252, 0.06);
+  color: var(--text-muted);
 }
 
 .brain-status-badge--executing {
-  background: rgba(59, 130, 246, 0.2);
-  color: #3b82f6;
+  background: var(--primary-subtle);
+  color: var(--primary);
+  border-color: var(--primary-muted);
 }
 
 .brain-status-badge--completed {
-  background: rgba(34, 197, 94, 0.2);
-  color: #22c55e;
+  background: rgba(248, 250, 252, 0.06);
+  color: var(--text-primary);
 }
 
 .brain-status-badge--failed {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
+  background: rgba(239, 68, 68, 0.18);
+  color: var(--primary);
+  border-color: var(--primary);
 }
 
 .brain-status-badge--idle {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.5);
+  background: rgba(248, 250, 252, 0.04);
+  color: var(--text-muted);
 }
 
 .brain-status-bar__progress {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-muted);
 }
 
 .brain-progress-bar {
   height: 3px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 2px;
+  background: rgba(248, 250, 252, 0.08);
+  border-radius: 0;
   overflow: hidden;
 }
 
 .brain-progress-bar__fill {
   height: 100%;
-  background: linear-gradient(90deg, #3b82f6, #8b5cf6);
-  border-radius: 2px;
+  background: var(--primary);
+  border-radius: 0;
   transition: width 0.3s ease;
 }
 
@@ -159,18 +162,13 @@
   align-items: flex-start;
   gap: 8px;
   padding: 12px 16px;
-  background: rgba(59, 130, 246, 0.05);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.brain-goal__icon {
-  font-size: 14px;
-  flex-shrink: 0;
+  background: rgba(248, 250, 252, 0.03);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .brain-goal__text {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--text-primary);
   line-height: 1.4;
 }
 
@@ -178,15 +176,15 @@
 .brain-tabs {
   display: flex;
   padding: 0 16px;
-  background: rgba(0, 0, 0, 0.2);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.12);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .brain-tab {
   padding: 10px 16px;
   font-size: 12px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-muted);
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
@@ -195,12 +193,12 @@
 }
 
 .brain-tab:hover {
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--text-primary);
 }
 
 .brain-tab--active {
-  color: #fff;
-  border-bottom-color: #3b82f6;
+  color: var(--text-primary);
+  border-bottom-color: var(--primary);
 }
 
 /* Content */
@@ -219,7 +217,7 @@
 }
 
 .brain-content::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(248, 250, 252, 0.12);
   border-radius: 3px;
 }
 
@@ -237,15 +235,19 @@
   text-align: center;
 }
 
-.brain-empty__icon {
-  font-size: 32px;
+.brain-empty__mark {
+  width: 40px;
+  height: 40px;
   margin-bottom: 12px;
-  opacity: 0.5;
+  border: 1px solid var(--border-default);
+  background:
+    linear-gradient(90deg, transparent 48%, rgba(248, 250, 252, 0.12) 49%, rgba(248, 250, 252, 0.12) 51%, transparent 52%),
+    linear-gradient(transparent 48%, rgba(248, 250, 252, 0.12) 49%, rgba(248, 250, 252, 0.12) 51%, transparent 52%);
 }
 
 .brain-empty__text {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--text-muted);
 }
 
 .brain-empty__loader {
@@ -257,7 +259,7 @@
 .brain-empty__loader span {
   width: 6px;
   height: 6px;
-  background: #3b82f6;
+  background: var(--primary);
   border-radius: 50%;
   animation: loader-bounce 1.4s infinite ease-in-out both;
 }
