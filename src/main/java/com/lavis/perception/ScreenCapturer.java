@@ -3,6 +3,7 @@ package com.lavis.perception;
 import com.lavis.websocket.WorkflowEventService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.imageio.ImageIO;
@@ -12,6 +13,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Base64;
+import java.util.UUID;
 
 /**
  * 感知模块 - 屏幕截图器
@@ -39,6 +41,21 @@ public class ScreenCapturer {
 
     // 截图压缩宽度 (仅用于减少 token 消耗，不影响坐标系统)
     private static final int COMPRESS_WIDTH = 768;
+
+    // ========================================
+    // Context Engineering: 感知去重配置
+    // ========================================
+
+    @Value("${lavis.perception.dedup.enabled:true}")
+    private boolean dedupEnabled;
+
+    @Value("${lavis.perception.dedup.threshold:10}")
+    private int dedupThreshold;  // 汉明距离阈值，默认 10 (约 15% 变化)
+
+    // 感知哈希缓存
+    private volatile long lastImageHash = 0;
+    private volatile String lastImageId = null;
+    private volatile String lastImageBase64 = null;
 
     // ========================================
     // Gemini 坐标系统常量
@@ -586,4 +603,180 @@ public class ScreenCapturer {
     public BufferedImage captureRegion(int x, int y, int width, int height) {
         return robot.createScreenCapture(new Rectangle(x, y, width, height));
     }
+
+    // ========================================
+    // Context Engineering: 感知去重 (Perceptual Deduplication)
+    // ========================================
+
+    /**
+     * 截图捕获结果
+     *
+     * @param imageId   图片唯一标识
+     * @param base64    Base64 编码的图片数据（如果复用则为 null）
+     * @param isReused  是否复用了上一张图片
+     * @param hash      感知哈希值
+     */
+    public record ImageCapture(
+            String imageId,
+            String base64,
+            boolean isReused,
+            long hash
+    ) {
+        public boolean hasNewImage() {
+            return !isReused && base64 != null;
+        }
+    }
+
+    /**
+     * 带感知去重的屏幕捕获
+     *
+     * 如果当前屏幕与上一次截图的差异低于阈值，则复用上一张图片。
+     * 这可以显著减少 Token 消耗，特别是在等待 UI 响应时。
+     *
+     * @return ImageCapture 包含 imageId 和 base64（复用时 base64 为 null）
+     */
+    public ImageCapture captureWithDedup() throws IOException {
+        return captureWithDedup(true);
+    }
+
+    /**
+     * 带感知去重的屏幕捕获
+     *
+     * @param transparent 是否在截图前隐藏窗口
+     * @return ImageCapture 包含 imageId 和 base64
+     */
+    public ImageCapture captureWithDedup(boolean transparent) throws IOException {
+        BufferedImage original = captureScreen(transparent);
+        BufferedImage compressed = compressImage(original, COMPRESS_WIDTH);
+
+        // 计算感知哈希
+        long currentHash = computeDHash(compressed);
+
+        // 检查是否可以复用
+        if (dedupEnabled && lastImageHash != 0 && lastImageBase64 != null) {
+            int distance = hammingDistance(currentHash, lastImageHash);
+
+            if (distance <= dedupThreshold) {
+                log.debug("Screen unchanged (hamming distance: {}), reusing image: {}",
+                        distance, lastImageId);
+                return new ImageCapture(lastImageId, null, true, currentHash);
+            }
+
+            log.debug("Screen changed (hamming distance: {}), capturing new image", distance);
+        }
+
+        // 绘制标注
+        drawGeminiGrid(compressed);
+
+        Point mouseLogical = getMouseLogicalLocation();
+        Point mouseGemini = toGemini(mouseLogical.x, mouseLogical.y);
+        Point mouseOnImage = logicalToImageCoord(mouseLogical, compressed);
+        drawCursorMarker(compressed, mouseOnImage, mouseGemini);
+
+        if (lastClickPosition != null && (System.currentTimeMillis() - lastClickTime) < 5000) {
+            Point clickGemini = toGemini(lastClickPosition.x, lastClickPosition.y);
+            Point clickOnImage = logicalToImageCoord(lastClickPosition, compressed);
+            drawClickMarker(compressed, clickOnImage, clickGemini);
+        }
+
+        // 生成新图片
+        String newImageId = "img_" + UUID.randomUUID().toString().substring(0, 8);
+        String newBase64 = imageToBase64(compressed);
+
+        // 更新缓存
+        lastImageHash = currentHash;
+        lastImageId = newImageId;
+        lastImageBase64 = newBase64;
+
+        log.debug("New image captured: {}, hash: {}", newImageId, Long.toHexString(currentHash));
+        return new ImageCapture(newImageId, newBase64, false, currentHash);
+    }
+
+    /**
+     * 计算差异哈希 (dHash)
+     *
+     * dHash 算法：
+     * 1. 缩小图片到 9x8 (产生 8x8=64 位哈希)
+     * 2. 转为灰度
+     * 3. 比较相邻像素：左 > 右 则为 1，否则为 0
+     *
+     * 优点：
+     * - 对缩放、轻微颜色变化不敏感
+     * - 计算快速，无需外部依赖
+     * - 64 位哈希便于存储和比较
+     */
+    private long computeDHash(BufferedImage image) {
+        // 缩小到 9x8
+        BufferedImage small = new BufferedImage(9, 8, BufferedImage.TYPE_BYTE_GRAY);
+        Graphics2D g = small.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g.drawImage(image, 0, 0, 9, 8, null);
+        g.dispose();
+
+        // 计算哈希
+        long hash = 0;
+        for (int y = 0; y < 8; y++) {
+            for (int x = 0; x < 8; x++) {
+                int left = small.getRGB(x, y) & 0xFF;
+                int right = small.getRGB(x + 1, y) & 0xFF;
+
+                if (left > right) {
+                    hash |= (1L << (y * 8 + x));
+                }
+            }
+        }
+
+        return hash;
+    }
+
+    /**
+     * 计算两个哈希值的汉明距离
+     *
+     * 汉明距离 = 两个哈希值中不同位的数量
+     * 距离越小，图片越相似
+     */
+    private int hammingDistance(long hash1, long hash2) {
+        return Long.bitCount(hash1 ^ hash2);
+    }
+
+    /**
+     * 清除去重缓存
+     * 在需要强制刷新时调用
+     */
+    public void clearDedupCache() {
+        lastImageHash = 0;
+        lastImageId = null;
+        lastImageBase64 = null;
+        log.debug("Dedup cache cleared");
+    }
+
+    /**
+     * 获取上一张图片的 ID
+     */
+    public String getLastImageId() {
+        return lastImageId;
+    }
+
+    /**
+     * 获取上一张图片的 Base64
+     */
+    public String getLastImageBase64() {
+        return lastImageBase64;
+    }
+
+    /**
+     * 获取去重统计信息
+     */
+    public DedupStats getDedupStats() {
+        return new DedupStats(dedupEnabled, dedupThreshold, lastImageId != null);
+    }
+
+    /**
+     * 去重统计信息
+     */
+    public record DedupStats(
+            boolean enabled,
+            int threshold,
+            boolean hasCachedImage
+    ) {}
 }
