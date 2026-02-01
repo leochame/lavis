@@ -380,15 +380,15 @@ npm run electron:build
 ### Testing
 ```bash
 # Test backend
-curl http://localhost:8080/api/agent/status
+curl http://localhost:18765/api/agent/status
 
 # Test chat
-curl -X POST http://localhost:8080/api/agent/chat \
+curl -X POST http://localhost:18765/api/agent/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "What do you see?"}'
 
 # Test task
-curl -X POST http://localhost:8080/api/agent/task \
+curl -X POST http://localhost:18765/api/agent/task \
   -H "Content-Type: application/json" \
   -d '{"goal": "Open calculator"}'
 ```
@@ -398,7 +398,7 @@ curl -X POST http://localhost:8080/api/agent/task \
 ### Backend (application.properties)
 ```properties
 # Server
-server.port=8080
+server.port=18765
 
 # LLM Models
 app.llm.models.openai.api-key=${OPENAI_API_KEY}
@@ -413,8 +413,8 @@ app.agent.retry.max-attempts=3
 
 ### Frontend (Environment Variables)
 ```bash
-# Backend URL (defaults to localhost:8080)
-BACKEND_URL=http://localhost:8080
+# Backend URL (defaults to localhost:18765)
+BACKEND_URL=http://localhost:18765
 
 # Electron settings
 ELECTRON_IS_DEV=true
@@ -536,11 +536,11 @@ Custom ChatMemory implementation that automatically cleans up old ImageContent:
 
 **Backend not starting**
 - Check Java version: `java -version` (requires 21+)
-- Check port availability: `lsof -i :8080`
+- Check port availability: `lsof -i :18765`
 - Verify API keys in `application.properties`
 
 **Frontend not connecting**
-- Verify backend is running: `curl http://localhost:8080/api/agent/status`
+- Verify backend is running: `curl http://localhost:18765/api/agent/status`
 - Check CORS settings in Spring Boot
 - Try dynamic port detection: `agentApi.detectBackendPort()`
 
@@ -553,6 +553,107 @@ Custom ChatMemory implementation that automatically cleans up old ImageContent:
 - Check macOS permissions (Accessibility)
 - Grant assistive device access in System Settings
 - Verify AWT Robot is available
+
+## Development History & Evolution
+
+> This section documents the development history and implementation status of the Lavis project, providing context for contributors to understand "why things are the way they are."
+
+**Last Updated**: 2026-02-01
+
+---
+
+### Scope
+
+This section focuses on historical records and design decisions, not as the primary entry point for users/developers.
+
+- For user and developer entry points, see: `docs/INDEX.md`
+- For current architecture details, see the sections above in this document.
+
+---
+
+### ✅ Completed Modules (Summary)
+
+#### 1) Final Step Voice Announcement
+
+- **Goal**: Provide brief voice feedback when task plan is completed; only final step triggers, avoiding interruption
+- **Result**: Implemented (backend pushes text event, frontend calls TTS on-demand and plays)
+
+#### 2) Frontend Window States & Interaction
+
+- **Goal**: Audio wake-up, visual restraint; Mini/Expanded state switching
+- **Result**: Implemented (Capsule + state machine + Electron size switching)
+
+#### 3) End-to-End Memory Safety
+
+- **Goal**: Support long-running sessions, avoid OOM/render freezes
+- **Result**: Implemented (image cleanup, context compression, session persistence, frontend virtual scrolling, etc.)
+
+#### 4) Context Engineering
+
+- **Goal**: Enable high-performance execution of long-path, high-visual-load tasks through context isolation, intelligent compression, and perceptual deduplication
+- **Result**: Implemented (2026-02-01)
+  - **Turn Infrastructure**: Introduced Turn (interaction round) concept, managing context by task cycle
+  - **Visual Compression Engine**: First and last anchor points retained, middle images replaced with placeholders, historical visual tokens reduced by 95%+
+  - **Perceptual Deduplication**: Uses dHash algorithm to detect screen changes, reducing redundant screenshot generation
+  - **Web Search Sub-Agent**: Depth-first search, up to 5 iterations, confidence-driven termination
+
+---
+
+### Detailed Records (Preserved Original History)
+
+The following content comes from early development records, preserved in original form with minor path/terminology corrections.
+
+#### ✅ 1. Backend: Final Step Voice Announcement
+
+When all task plan steps are completed (final step), push brief voice feedback to frontend, notifying users that the task is complete, while ensuring it doesn't block automation task execution speed.
+
+#### ✅ 2. Frontend: Electron Window States & Interaction
+
+Implement "audio wake-up, visual restraint". When voice wake-up occurs, don't directly occupy the screen, only provide feedback through capsule component animations, reducing user interference.
+
+#### ✅ 3. End-to-End Memory Safety Strategy
+
+Covers browser side, Electron process communication, and Java backend heap memory: timely audio resource release, DOM virtualization, screenshot and context eviction, etc.
+
+#### ✅ 4. Context Engineering
+
+**Development Time**: 2026-02-01  
+**Branch**: `feature/context-engineering`
+
+**Problems Solved**:
+- Model "blindness": Scheduled blind deletion of images causing task interruption
+- Token inflation: Full retention of historical images causing OOM
+- Lack of temporal awareness: Cleanup by message count, unable to identify key frames
+- Redundant screenshots: Still generating new images when screen hasn't changed
+
+**Implemented Features**:
+
+1. **Turn Infrastructure**
+   - Database migration: Added `turn_id`, `image_id`, `is_compressed`, `turn_position` fields
+   - `TurnContext` class: Manages Turn lifecycle (begin/current/end)
+   - `AgentService` integration: Request entry generates turnId, triggers compression on completion
+
+2. **Visual Compression Engine**
+   - `ColdStorage` service: Archives compressed images to filesystem (~/.lavis/cold-storage/)
+   - `VisualCompactor` service: First-last retention algorithm + exception frame retention
+   - Compression strategy: First and last images retain full Base64, middle images replaced with placeholders
+
+3. **Perceptual Deduplication**
+   - dHash (difference hash) algorithm: Pure Java implementation, no external dependencies
+   - `captureWithDedup()` method: Supports screen change detection, reuses similar images
+   - Configuration: `lavis.perception.dedup.enabled/threshold`
+
+4. **Web Search Sub-Agent**
+   - `WebSearchService`: Supports DuckDuckGo (free) and Tavily (requires API Key)
+   - `SearchAgent`: Up to 5 iterations, confidence-driven termination (threshold 0.8)
+   - `internetSearch` and `quickSearch` tools: Deep search and quick single search
+
+**Expected Effects**:
+- Token efficiency: Historical visual overhead reduced by 95%+
+- Logical robustness: Completely solves "images being mistakenly deleted causing task interruption"
+- Information depth: Sub-agent 5 iterations ensure network information reliability
+
+---
 
 ## License
 

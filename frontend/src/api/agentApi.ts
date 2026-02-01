@@ -13,12 +13,12 @@ class AgentApi {
   private client: AxiosInstance;
   private heartbeatInterval: number | null = null;
   private heartbeatCallback?: (status: AgentStatus | null) => void;
-  private backendPort: number = 8080;
+  private backendPort: number = 18765;
   private lastStatus: AgentStatus | null = null;
   private consecutiveErrors: number = 0;
 
   constructor(port?: number) {
-    this.backendPort = port ?? 8080;
+    this.backendPort = port ?? 18765;
 
     // 使用 127.0.0.1 而不是 localhost，避免 DNS 解析问题
     // 这在 Electron 环境中可以防止 DNS 相关的崩溃
@@ -146,7 +146,7 @@ class AgentApi {
 
   // Dynamic port detection (for development)
   async detectBackendPort(): Promise<number> {
-    const commonPorts = [8080, 8081, 8082, 3000, 3001];
+    const commonPorts = [18765, 8080, 8081, 8082, 3000, 3001];
     for (const port of commonPorts) {
       try {
         const testClient = axios.create({

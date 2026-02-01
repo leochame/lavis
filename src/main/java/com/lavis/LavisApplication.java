@@ -52,7 +52,7 @@ public class LavisApplication {
         log.info("┌─────────────────────────────────────────┐");
         log.info("│          Lavis 启动成功!                 │");
         log.info("├─────────────────────────────────────────┤");
-        log.info("│  REST API: http://localhost:8080        │");
+        log.info("│  REST API: http://localhost:18765        │");
         log.info("│  状态:     GET  /api/agent/status       │");
         log.info("│  快系统:   POST /api/agent/chat         │");
         log.info("│  慢系统:   POST /api/agent/task         │");

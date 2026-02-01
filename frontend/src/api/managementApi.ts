@@ -94,10 +94,10 @@ export interface TaskRunLog {
 
 class ManagementApi {
   private client: AxiosInstance;
-  private backendPort: number = 8080;
+  private backendPort: number = 18765;
 
   constructor(port?: number) {
-    this.backendPort = port ?? 8080;
+    this.backendPort = port ?? 18765;
     this.client = axios.create({
       baseURL: `http://127.0.0.1:${this.backendPort}/api`,
       timeout: 30000,

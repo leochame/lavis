@@ -12,7 +12,7 @@
 spring.application.name=lavis
 
 # Server
-server.port=8080
+server.port=18765
 
 app.llm.default-model=fast-model
 app.llm.default-stt-model=whisper

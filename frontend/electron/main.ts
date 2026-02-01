@@ -680,7 +680,7 @@ ipcMain.handle('platform:register-shortcut', (_event, { accelerator, action }: {
 
 // Backend API proxy - 允许渲染进程通过 IPC 发送请求到后端
 // 这解决了在 Electron 环境中可能遇到的 CORS 或网络问题
-ipcMain.handle('backend:request', async (_event, { method, endpoint, data, port = 8080 }: {
+ipcMain.handle('backend:request', async (_event, { method, endpoint, data, port = 18765 }: {
   method: 'GET' | 'POST' | 'PUT' | 'DELETE';
   endpoint: string;
   data?: unknown;

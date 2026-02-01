@@ -280,16 +280,42 @@ public class AgentService {
 
         try {
             return executeWithRetry(() -> {
-                // 获取带标记的屏幕截图（显示鼠标位置和上次点击位置）
-                String base64Image = screenCapturer.captureScreenWithCursorAsBase64();
-                log.info("📸 截图大小: {} KB (含鼠标/点击标记)", base64Image.length() * 3 / 4 / 1024);
+                // Context Engineering: 使用感知去重截图
+                ScreenCapturer.ImageCapture capture = screenCapturer.captureWithDedup();
+                String imageId = capture.imageId();
+                String base64Image = capture.base64();
+                
+                // 如果图片被复用，base64 可能为 null，需要从缓存获取
+                if (base64Image == null && capture.isReused()) {
+                    base64Image = screenCapturer.getLastImageBase64();
+                    if (base64Image == null) {
+                        log.warn("图片复用但缓存数据丢失，强制重新截图");
+                        // 强制重新截图（清除缓存）
+                        screenCapturer.clearDedupCache();
+                        capture = screenCapturer.captureWithDedup();
+                        imageId = capture.imageId();
+                        base64Image = capture.base64();
+                    } else {
+                        log.debug("图片复用，使用缓存的 base64 数据: {}", imageId);
+                    }
+                }
+                
+                if (base64Image == null) {
+                    throw new IllegalStateException("无法获取截图数据");
+                }
+                
+                log.info("📸 截图完成: imageId={}, 复用={}, 大小: {} KB",
+                        imageId, capture.isReused(), base64Image.length() * 3 / 4 / 1024);
+
+                // 记录图片到 Turn 上下文
+                turn.recordImage(imageId);
 
                 // 构建多模态用户消息
                 UserMessage userMessage = UserMessage.from(
                         TextContent.from(message),
                         ImageContent.from(base64Image, "image/jpeg"));
 
-                return processWithTools(userMessage, maxSteps);
+                return processWithTools(userMessage, maxSteps, imageId);
             });
         } finally {
             // Context Engineering: Turn 结束，触发压缩
@@ -307,6 +333,7 @@ public class AgentService {
      * 1. 工具执行后重新截图，让模型"看见"屏幕变化
      * 2. 支持 Skill 上下文注入（解决 Context Gap）
      * 3. 动态合并 Skill 工具到工具列表
+     * 4. Context Engineering: 集成感知去重和 imageId 追踪
      *
      * 执行流程：
      * 1. 构建 System Prompt（如有活动 Skill，注入其知识）
@@ -318,8 +345,9 @@ public class AgentService {
      *
      * @param userMessage 用户消息
      * @param maxSteps    最大执行步数限制
+     * @param imageId     初始截图的 imageId（用于追踪）
      */
-    private String processWithTools(UserMessage userMessage, int maxSteps) {
+    private String processWithTools(UserMessage userMessage, int maxSteps, String imageId) {
         // 构建消息列表
         List<ChatMessage> messages = new ArrayList<>();
 
@@ -333,9 +361,16 @@ public class AgentService {
         // 保存用户消息到记忆
         chatMemory.add(userMessage);
 
-        // Save to database and perform memory management
+        // Context Engineering: 保存用户消息到数据库（带 imageId 追踪）
         try {
-            memoryManager.saveMessage(userMessage, estimateTokenCount(userMessage));
+            if (imageId != null) {
+                memoryManager.saveMessageWithImage(userMessage, estimateTokenCount(userMessage), imageId);
+                log.debug("用户消息已保存到数据库: imageId={}", imageId);
+            } else {
+                // 向后兼容：如果没有 imageId，使用旧方法
+                memoryManager.saveMessage(userMessage, estimateTokenCount(userMessage));
+                log.warn("用户消息保存时缺少 imageId，使用旧方法");
+            }
 
             // Perform periodic memory management
             if (chatMemory instanceof ImageContentCleanableChatMemory cleanableMemory) {
@@ -446,9 +481,39 @@ public class AgentService {
                     log.info("⏳ 等待 UI 响应 {}ms...", toolWaitMs);
                     Thread.sleep(toolWaitMs);
 
-                    // 重新截图
-                    String newScreenshot = screenCapturer.captureScreenWithCursorAsBase64();
-                    log.info("📸 重新截图完成，注入新的视觉观察");
+                    // Context Engineering: 使用感知去重重新截图
+                    ScreenCapturer.ImageCapture newCapture = screenCapturer.captureWithDedup();
+                    String newImageId = newCapture.imageId();
+                    String newScreenshot = newCapture.base64();
+                    
+                    // 如果图片被复用，base64 可能为 null，需要从缓存获取
+                    if (newScreenshot == null && newCapture.isReused()) {
+                        newScreenshot = screenCapturer.getLastImageBase64();
+                        if (newScreenshot == null) {
+                            log.warn("重新截图时图片复用但缓存数据丢失，强制重新截图");
+                            // 强制重新截图（清除缓存）
+                            screenCapturer.clearDedupCache();
+                            newCapture = screenCapturer.captureWithDedup();
+                            newImageId = newCapture.imageId();
+                            newScreenshot = newCapture.base64();
+                        } else {
+                            log.debug("重新截图时图片复用，使用缓存的 base64 数据: {}", newImageId);
+                        }
+                    }
+                    
+                    if (newScreenshot == null) {
+                        log.warn("重新截图失败，无法获取图片数据");
+                        continue; // 跳过本次观察
+                    }
+                    
+                    log.info("📸 重新截图完成: imageId={}, 复用={}, 注入新的视觉观察",
+                            newImageId, newCapture.isReused());
+
+                    // 记录图片到 Turn 上下文
+                    TurnContext currentTurn = TurnContext.current();
+                    if (currentTurn != null) {
+                        currentTurn.recordImage(newImageId);
+                    }
 
                     // 构建观察消息，告诉模型这是操作后的新截图
                     // 提示模型自己检查是否重复操作
@@ -479,8 +544,17 @@ public class AgentService {
                             TextContent.from(observationText),
                             ImageContent.from(newScreenshot, "image/jpeg"));
                     messages.add(observationMessage);
-                    // 【修复】保存观察消息到记忆 - 这是关键修复！
+                    // 保存观察消息到记忆
                     chatMemory.add(observationMessage);
+                    
+                    // Context Engineering: 保存观察消息到数据库（带 imageId 追踪）
+                    try {
+                        memoryManager.saveMessageWithImage(observationMessage, 
+                                estimateTokenCount(observationMessage), newImageId);
+                        log.debug("观察消息已保存到数据库: imageId={}", newImageId);
+                    } catch (Exception e) {
+                        log.warn("保存观察消息到数据库失败: {}", e.getMessage());
+                    }
                 } catch (Exception e) {
                     log.warn("截图失败，继续执行: {}", e.getMessage());
                 }

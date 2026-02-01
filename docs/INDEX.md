@@ -12,16 +12,15 @@
 
 | Document | Description | Audience |
 |----------|-------------|----------|
-| [User Guide (EN)](User-Guide-en.md) | Installation, running, basic usage | End users |
-| [User Guide (ZH)](User-Guide-zh.md) | Installation, running, basic usage | End users |
-| [Developer Guide (EN)](Developer-Build-and-Packaging-en.md) | Build, packaging, GraalVM Native Image | Developers |
-| [Developer Guide (ZH)](Developer-Build-and-Packaging-zh.md) | Build, packaging, GraalVM Native Image | Developers |
+| [User Guide](User-Guide-en.md) | Installation, running, basic usage | End users |
+| [Build & Packaging Guide (EN)](Build-and-Packaging-en.md) | Development mode, one-click packaging (JAR method), GraalVM Native Image, debugging | Developers & Packagers |
+| [Build & Packaging Guide (ZH)](Build-and-Packaging-zh.md) | 开发模式、一键打包（JAR 方式）、GraalVM Native Image、调试 | 开发者 & 打包者 |
 
 ### Architecture & Design
 
 | Document | Description |
 |----------|-------------|
-| [System Architecture](ARCHITECTURE.md) | System architecture and data flow |
+| [System Architecture](ARCHITECTURE.md) | System architecture, data flow, and development history |
 | [Database Implementation](Database-Implementation.md) | SQLite database details |
 
 ---
@@ -238,24 +237,15 @@ sqlite3 ~/.lavis/data/lavis.db ".tables"
 
 ### Scheduled Task Not Running
 ```bash
-curl http://localhost:8080/api/scheduler/tasks
-curl http://localhost:8080/api/scheduler/status
+curl http://localhost:18765/api/scheduler/tasks
+curl http://localhost:18765/api/scheduler/status
 ```
 
 ### Skills Not Loading
 ```bash
-curl http://localhost:8080/api/skills
-curl -X POST http://localhost:8080/api/skills/reload
+curl http://localhost:18765/api/skills
+curl -X POST http://localhost:18765/api/skills/reload
 ```
-
----
-
-## Archived Documents
-
-Historical documents are in `archive/` directory:
-- Phase implementation summaries
-- Development history
-- Technical comparisons
 
 ---
 

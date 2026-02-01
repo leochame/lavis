@@ -10,7 +10,7 @@
 - **Network**: Stable internet connection for cloud LLM and voice services
 - **Backend Service**:
   - Lavis backend installed and running (Spring Boot app, GraalVM Native Image binary recommended; see developer docs)
-  - Default port is `8080`. If you change it, update the frontend configuration accordingly.
+  - Default port is `18765`. If you change it, update the frontend configuration accordingly.
 
 ---
 
@@ -24,7 +24,7 @@
 ### 2.2 Start the Backend Service
 
 - The backend can run either as a regular Spring Boot JAR or as a GraalVM Native Image binary (see the Developer Build Guide).
-- Once started, visiting `http://localhost:8080/api/agent/status` in a browser should return a JSON status.
+- Once started, visiting `http://localhost:18765/api/agent/status` in a browser should return a JSON status.
 
 ### 2.3 Grant macOS Permissions
 

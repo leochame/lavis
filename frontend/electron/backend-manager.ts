@@ -15,7 +15,7 @@ import * as http from 'http';
 import { app } from 'electron';
 
 // 后端配置
-const BACKEND_PORT = 8080;
+const BACKEND_PORT = 18765;
 const HEALTH_CHECK_INTERVAL = 5000; // 5秒检查一次
 const STARTUP_TIMEOUT = 60000; // 60秒启动超时
 const MAX_RESTART_ATTEMPTS = 3;

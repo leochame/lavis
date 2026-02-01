@@ -1,11 +1,89 @@
-# Lavis 打包完整指南
+# Lavis 构建与打包指南
 
-本指南包含打包、调试和故障排除的完整信息。
+本指南包含构建、打包、调试和故障排除的完整信息。
 
-## 📦 打包流程
+> **注意**：本指南涵盖**默认 JAR 打包方式**（推荐大多数用户使用）和 **GraalVM Native Image**（高级选项，用于 AOT 编译和更强的代码保护）。
 
-### 一键打包
+---
 
+## 1. 环境准备
+
+### 1.1 必备工具
+
+1. **Java 开发环境**
+   - JDK 21 或更高版本
+   - Maven 3.9+（项目已包含 `mvnw`，无需单独安装；如需指定 Maven，可设置 `MAVEN_CMD`）
+
+2. **Node.js 环境**
+   - Node.js 18+
+   - npm（随 Node.js 安装）
+   - pnpm / yarn（可选替代方案）
+
+3. **macOS 开发环境**
+   - macOS 10.15+（用于构建 macOS 应用）
+
+### 1.2 GraalVM 安装（可选，用于 Native Image）
+
+> **注意**：GraalVM 仅在需要使用 Native Image 进行 AOT 编译时才需要。对于默认的 JAR 打包方式，普通 JDK 21 即可。
+
+- 从 GraalVM 官方或 SDKMAN 安装 `GraalVM for JDK 21`：
+  - 使用 SDKMAN: `sdk install java 21-graal`
+  - 或者从官网下载安装包并配置 `JAVA_HOME` 为 GraalVM。
+- 确认 `native-image` 工具可用：
+
+```bash
+native-image --version
+```
+
+---
+
+## 2. 开发模式
+
+### 2.1 后端开发
+
+**本地开发：**
+```bash
+./mvnw spring-boot:run
+```
+
+- 默认端口：`18765`
+- 修改端口：在 `application.properties` 中设置 `server.port` 或在命令行添加参数。
+
+**构建 JAR 用于测试：**
+```bash
+./mvnw clean package
+```
+
+生成物：`target/lavis-0.0.1-SNAPSHOT.jar`（文件名以实际版本为准），通过：
+
+```bash
+java -jar target/lavis-0.0.1-SNAPSHOT.jar
+```
+
+即可运行。
+
+### 2.2 前端开发
+
+```bash
+cd frontend
+npm install
+
+# 启动 Vite 开发服务器
+npm run dev
+
+# 启动 Electron（推荐，带热重载）
+npm run electron:dev
+```
+
+---
+
+## 3. 打包流程
+
+### 3.1 默认方式（推荐）：JAR 打包
+
+项目默认使用 JAR 文件打包后端，这是最简单、最稳定的方式。
+
+**一键打包：**
 ```bash
 cd frontend
 npm install  # 首次运行需要安装依赖
@@ -19,20 +97,7 @@ npm run package
 4. 编译 Electron 主进程代码
 5. 使用 electron-builder 打包应用
 
-### 前置要求
-
-1. **Java 开发环境**
-   - JDK 21 或更高版本
-   - Maven 3.9+（项目已包含 `mvnw`，无需单独安装；如需指定 Maven，可设置 `MAVEN_CMD`）
-
-2. **Node.js 环境**
-   - Node.js 18+
-   - npm（随 Node.js 安装）
-
-3. **macOS 开发环境**
-   - macOS 10.15+（用于构建 macOS 应用）
-
-## 📁 打包输出
+### 3.2 打包输出
 
 打包完成后，应用文件位于 `frontend/dist-electron/` 目录：
 
@@ -60,7 +125,77 @@ dist-electron/
                         └── Contents/Home/bin/java
 ```
 
-## 🔧 打包工具和文件
+---
+
+## 4. 高级选项：GraalVM Native Image
+
+> **注意**：这是可选的高级选项。项目默认使用 JAR 文件打包。  
+> 仅在需要 AOT 编译、更强的代码保护或特定性能优化时，才考虑使用 GraalVM Native Image。
+
+### 4.1 概念与优势
+
+- **AOT 编译**：GraalVM 将 Spring Boot + 业务代码在构建阶段编译为平台原生机器码。
+- **无字节码**：最终产物不包含 `.class` 文件，传统 Java 反编译工具（JD-GUI、CFR）无法还原源码。
+- **提升安全性**：逆向需基于汇编，配合编译优化（内联、死代码消除），极大增加破解成本。
+
+### 4.2 Maven 插件集成
+
+> 下面是推荐的配置示例，可根据项目实际情况添加到 `pom.xml` 中。
+
+在 `pom.xml` 的 `<build><plugins>` 部分中增加：
+
+```xml
+<plugin>
+    <groupId>org.graalvm.buildtools</groupId>
+    <artifactId>native-maven-plugin</artifactId>
+    <version>0.10.2</version>
+    <extensions>true</extensions>
+    <configuration>
+        <imageName>lavis-backend</imageName>
+        <buildArgs>
+            <!-- 根据需要开启调试/日志等参数 -->
+            <!-- <buildArg>--verbose</buildArg> -->
+        </buildArgs>
+    </configuration>
+</plugin>
+```
+
+> 实际版本号和配置请参考 GraalVM 官方文档，尤其是与 Spring Boot 3.5.9 的兼容性。
+
+### 4.3 构建 Native Image
+
+```bash
+./mvnw -Pnative -DskipTests native:compile
+```
+
+构建成功后，将在 `target/` 下生成可执行二进制（如 `lavis-backend`），直接运行：
+
+```bash
+./target/lavis-backend
+```
+
+### 4.4 反射与资源配置
+
+- GraalVM 采用「封闭世界」假设，默认只保留被静态分析到的代码路径。
+- 如果项目使用反射（如一些 Spring 或 LangChain4j 功能），可能需要额外的反射配置文件或使用官方 Spring Native 支持。
+
+### 4.5 在 Electron 中使用 Native Image
+
+如果需要使用 GraalVM Native Image 打包后端：
+
+1. 使用 GraalVM 将后端打包为 Native Image，可执行文件如 `lavis-backend`。
+2. 在 macOS 上测试该二进制，确保所有 API 正常工作。
+3. 在 Electron 主进程中：
+   - 启动应用时，检测/启动后端二进制进程（可选：嵌入或旁挂）。
+   - 监听应用退出事件，优雅关闭后端进程。
+4. 使用 `npm run electron:build` 打包为 `.dmg` 或 `.app` 进行分发。
+
+> **注意**：当前仓库中尚未完全自动化「Electron 内嵌 Native Image 后端进程」的逻辑，上述为推荐架构方向。  
+> 如需使用 Native Image，需要手动修改 Electron 主进程代码以支持启动二进制文件而非 JAR。
+
+---
+
+## 5. 打包工具和文件
 
 ### 核心打包文件
 
@@ -91,7 +226,9 @@ dist-electron/
 | `frontend/electron/preload.ts` | 提供安全的 API 桥接 |
 | `frontend/vite.config.ts` | 构建前端资源 |
 
-## 🛠️ 工作原理
+---
+
+## 6. 工作原理
 
 1. **自动启动后端**：应用启动时，Electron 主进程会自动检测并启动内嵌的 Java 后端
 2. **JRE 管理**：使用内嵌的 JRE 运行 Java 后端，无需用户安装 Java
@@ -110,9 +247,11 @@ dist-electron/
 - JAR 从应用 Resources 目录加载
 - 前端从打包的 `app.asar` 加载
 
-## 🐛 调试打包后的应用
+---
 
-### 打开开发者工具
+## 7. 调试与故障排除
+
+### 7.1 打开开发者工具
 
 #### 方法 1: 使用测试脚本（推荐）
 
@@ -145,7 +284,7 @@ open -a frontend/dist-electron/mac-arm64/Lavis.app
 - **macOS**: `Cmd+Alt+I`
 - **Windows/Linux**: `Ctrl+Alt+I`
 
-### 查看日志
+### 7.2 查看日志
 
 在开发者工具的 **Console** 标签中，查找以下日志：
 
@@ -154,9 +293,29 @@ open -a frontend/dist-electron/mac-arm64/Lavis.app
 - `[Vosk] 🎤 Recognized: "..."` - 识别到的文本
 - `[Vosk] ✅ Wake word matched!` - 唤醒词匹配成功
 
-## ❓ 常见问题
+### 7.3 后端调试
 
-### 1. 打包失败：JAR 文件未找到
+**使用普通 JAR 运行时：**
+```bash
+./mvnw spring-boot:run
+```
+
+**使用 Native Image 时，若启动失败：**
+- 加上 `--verbose` 构建参数重新构建；
+- 检查缺失的反射配置或资源文件。
+
+**后端连接检查：**
+- 使用 `curl http://localhost:18765/api/agent/status` 检查后端。
+
+### 7.4 前端调试
+
+**Electron 窗口空白：**
+- 打开 DevTools（`Cmd+Option+I`）查看报错；
+- 确认 Vite 开发服务器或打包资源是否正常。
+
+### 7.5 常见问题
+
+#### 1. 打包失败：JAR 文件未找到
 
 **错误信息**：
 ```
@@ -167,7 +326,7 @@ JAR file not found at: ...
 - 确保已运行 `mvn clean package` 构建后端
 - 检查 `target/lavis-0.0.1-SNAPSHOT.jar` 是否存在
 
-### 2. 打包失败：Maven 未找到
+#### 2. 打包失败：Maven 未找到
 
 **解决方法**：
 - 脚本会自动使用系统 Maven 或项目自带 `mvnw`
@@ -175,7 +334,7 @@ JAR file not found at: ...
 - 确认已安装 JDK 并且 `java -version` 可用
 - 如提示 `JAVA_HOME` 未设置，可先执行：`export JAVA_HOME=$(/usr/libexec/java_home)`
 
-### 3. JRE 未找到
+#### 3. JRE 未找到
 
 **错误信息**：
 ```
@@ -186,21 +345,21 @@ Java executable not found at: ...
 - 确保 `frontend/jre/mac-arm64/` 目录存在
 - 检查 JRE 目录结构是否正确
 
-### 4. 打包失败
+#### 4. 打包失败
 
 **可能原因**：
 - 缺少依赖：运行 `npm install` 安装依赖
 - electron-builder 未安装：运行 `npm install -D electron-builder`
 - 权限问题：确保有写入 `dist-electron` 目录的权限
 
-### 5. 应用无法启动后端
+#### 5. 应用无法启动后端
 
 **检查步骤**：
 1. 查看应用日志（Console.app 或终端）
 2. 确认 JAR 和 JRE 路径正确
 3. 检查 JRE 是否有执行权限
 
-### 6. 唤醒词不工作
+#### 6. 唤醒词不工作
 
 **检查步骤**：
 1. 模型文件是否从 asar 中解压（应在 `app.asar.unpacked/dist/models/`）
@@ -224,9 +383,11 @@ Java executable not found at: ...
   - 查看识别到的文本，可能需要调整音近词映射
   - 尝试更清晰地发音
 
-## ⚙️ 进阶配置
+---
 
-### 自定义应用图标
+## 8. 进阶配置
+
+### 8.1 自定义应用图标
 
 1. 准备图标文件（.icns 格式）
 2. 放置到 `frontend/build/icon.icns`
@@ -239,7 +400,7 @@ cd frontend
 node scripts/generate-icon.js
 ```
 
-### 代码签名
+### 8.2 代码签名
 
 如需代码签名，在 `frontend/electron-builder.config.js` 中添加：
 
@@ -250,7 +411,7 @@ mac: {
 }
 ```
 
-### 公证（Notarization）
+### 8.3 公证（Notarization）
 
 如需公证，配置环境变量：
 
@@ -260,9 +421,11 @@ export APPLE_ID_PASSWORD="app-specific-password"
 export APPLE_TEAM_ID="TEAM_ID"
 ```
 
-## 📚 相关资源
+---
+
+## 9. 相关资源
 
 - [Electron Builder 文档](https://www.electron.build/)
 - [项目根目录 README](../README.md)
-
+- [系统架构](ARCHITECTURE.md)
 

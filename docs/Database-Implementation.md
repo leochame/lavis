@@ -137,10 +137,17 @@ List<AgentSkillEntity> skills =
 - `has_image` (INTEGER) - 是否包含图片
 - `token_count` (INTEGER) - Token 数量
 - `created_at` (TEXT) - 创建时间
+- `turn_id` (TEXT) - Turn 标识符（Context Engineering，用于分组消息）
+- `image_id` (TEXT) - 图片标识符（用于占位符引用和冷存储检索）
+- `is_compressed` (INTEGER) - 是否已压缩（0=未压缩，1=已压缩）
+- `turn_position` (INTEGER) - Turn 内位置（用于识别首尾锚点）
 
 **索引**：
 - `idx_messages_session_id` - 按会话查询消息
 - `idx_messages_created_at` - 按时间查询消息
+- `idx_messages_turn_id` - 按 Turn 查询消息
+- `idx_messages_image_id` - 按图片 ID 查询
+- `idx_messages_turn_position` - 按 Turn 位置查询
 
 ### user_preferences - 用户偏好表
 
@@ -334,4 +341,9 @@ Lavis 数据库实现提供了：
 - ✅ 高性能的查询优化
 - ✅ 简单的备份方案
 
-数据库层已为 Phase 2（记忆管理）、Phase 3（定时任务）、Phase 4（技能系统）提供了坚实的基础。
+数据库层已为记忆管理、定时任务、技能系统和 Context Engineering（上下文工程）提供了坚实的基础。
+
+**Context Engineering 支持**：
+- Turn 追踪：通过 `turn_id` 和 `turn_position` 实现按任务周期管理上下文
+- 图片压缩：通过 `image_id` 和 `is_compressed` 实现智能压缩和冷存储归档
+- 感知去重：通过 `image_id` 追踪，减少冗余截图生成

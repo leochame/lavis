@@ -13,6 +13,8 @@ Lavis 是一个运行在 macOS 上的桌面 AI 智能体，能够通过**视觉�
 - **语音交互**: 唤醒词、ASR、TTS
 - **透明 UI**: HUD 式前端，展示 Agent 思考过程
 - **内存安全**: 历史截图与音频自动清理，支持长时间运行
+- **上下文工程**: 智能压缩与感知去重，历史视觉 Token 降低 95%+
+- **网络搜索**: 深度优先搜索子代理，最多 5 轮迭代
 
 ---
 
@@ -88,7 +90,7 @@ open /Applications/Lavis\ AI.app/Contents/Resources/backend/application.properti
 
 > **后端自动启动**: Java 后端已内嵌在应用中，会在应用启动时自动运行。如果后端启动失败，请检查日志或重新安装应用。
 
-> **获取打包版本**: 如果你需要打包应用，请参考 `docs/Packaging.md` 中的打包指南。打包脚本会自动下载 JRE、编译后端、构建前端并生成 DMG 安装包。
+> **获取打包版本**: 如果你需要打包应用，请参考 `docs/Build-and-Packaging-zh.md` 中的打包指南。打包脚本会自动下载 JRE、编译后端、构建前端并生成 DMG 安装包。
 
 ---
 
@@ -127,7 +129,7 @@ cp src/main/resources/application.properties.example src/main/resources/applicat
 ./mvnw spring-boot:run
 ```
 
-> 想要使用 GraalVM Native Image 进行 AOT 编译和更强的防逆向能力，请参考 `docs/Developer-Build-and-Packaging-zh.md`（中文）或 `docs/Developer-Build-and-Packaging-en.md`（English）。
+> 想要使用 GraalVM Native Image 进行 AOT 编译和更强的防逆向能力，请参考 `docs/Build-and-Packaging-zh.md`（中文）或 `docs/Build-and-Packaging-en.md`（English）。
 
 #### 3. 启动前端
 
@@ -162,10 +164,9 @@ lavis/
 │   ├── electron/                   # Electron 主进程
 │   └── src/                        # React UI & hooks
 ├── docs/                           # 文档
-│   ├── User-Guide-zh.md            # 用户使用说明（中文）
-│   ├── User-Guide-en.md            # 用户使用说明（英文）
-│   ├── Developer-Build-and-Packaging-zh.md  # 构建与打包指南（中文）
-│   ├── Developer-Build-and-Packaging-en.md  # 构建与打包指南（英文）
+│   ├── User-Guide-en.md            # 用户使用说明
+│   ├── Build-and-Packaging-zh.md  # 构建与打包指南（中文）
+│   ├── Build-and-Packaging-en.md  # 构建与打包指南（英文）
 │   └── ARCHITECTURE.md             # 详细架构文档
 ```
 
@@ -188,15 +189,15 @@ lavis/
 
 ```bash
 # 检查状态
-curl http://localhost:8080/api/agent/status
+curl http://localhost:18765/api/agent/status
 
 # 发送消息
-curl -X POST http://localhost:8080/api/agent/chat \
+curl -X POST http://localhost:18765/api/agent/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "当前屏幕上显示了什么?"}'
 
 # 执行任务
-curl -X POST http://localhost:8080/api/agent/task \
+curl -X POST http://localhost:18765/api/agent/task \
   -H "Content-Type: application/json" \
   -d '{"goal": "打开 Safari 并搜索天气"}'
 ```
@@ -205,16 +206,12 @@ curl -X POST http://localhost:8080/api/agent/task \
 
 ## 文档导航
 
-- `docs/User-Guide-zh.md`  
-  用户说明（中文）：安装、运行、权限、基础使用。
 - `docs/User-Guide-en.md`  
-  用户说明（英文）：安装、运行、权限、基础使用。
-- `docs/Developer-Build-and-Packaging-zh.md` / `docs/Developer-Build-and-Packaging-en.md`  
-  开发者指南：构建、GraalVM Native Image 打包、Electron 打包。
+  用户说明：安装、运行、权限、基础使用。
+- `docs/Build-and-Packaging-zh.md` / `docs/Build-and-Packaging-en.md`  
+  完整的构建与打包指南：开发模式、一键打包（JAR 方式）、GraalVM Native Image（高级选项）、调试、故障排除。
 - `docs/ARCHITECTURE.md`  
-  系统架构与数据流的详细说明。
-- `docs/Development-History.md`  
-  开发计划与实现状态（历史参考）。
+  系统架构、数据流详细说明与开发历史。
 - `frontend/README.md`  
   前端（Electron + React）开发说明。
 
