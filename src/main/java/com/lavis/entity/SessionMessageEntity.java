@@ -31,6 +31,19 @@ public class SessionMessageEntity {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
+    // Context Engineering: Turn tracking fields
+    @Column(name = "turn_id")
+    private String turnId;
+
+    @Column(name = "image_id")
+    private String imageId;
+
+    @Column(name = "is_compressed")
+    private Boolean isCompressed = false;
+
+    @Column(name = "turn_position")
+    private Integer turnPosition;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

@@ -4,6 +4,7 @@ import com.lavis.cognitive.executor.ToolExecutionService;
 import com.lavis.cognitive.orchestrator.TaskOrchestrator;
 import com.lavis.memory.MemoryManager;
 import com.lavis.memory.SessionStore;
+import com.lavis.memory.TurnContext;
 import com.lavis.perception.ScreenCapturer;
 import com.lavis.service.llm.LlmFactory;
 import com.lavis.skills.SkillService;
@@ -273,18 +274,30 @@ public class AgentService {
 
         log.info("📷 用户消息 (带截图, 步数限制 {}): {}", maxSteps > 0 ? maxSteps : "无限制", message);
 
-        return executeWithRetry(() -> {
-            // 获取带标记的屏幕截图（显示鼠标位置和上次点击位置）
-            String base64Image = screenCapturer.captureScreenWithCursorAsBase64();
-            log.info("📸 截图大小: {} KB (含鼠标/点击标记)", base64Image.length() * 3 / 4 / 1024);
+        // Context Engineering: 开始新的 Turn
+        String sessionKey = memoryManager.getCurrentSessionKey();
+        TurnContext turn = TurnContext.begin(sessionKey);
 
-            // 构建多模态用户消息
-            UserMessage userMessage = UserMessage.from(
-                    TextContent.from(message),
-                    ImageContent.from(base64Image, "image/jpeg"));
+        try {
+            return executeWithRetry(() -> {
+                // 获取带标记的屏幕截图（显示鼠标位置和上次点击位置）
+                String base64Image = screenCapturer.captureScreenWithCursorAsBase64();
+                log.info("📸 截图大小: {} KB (含鼠标/点击标记)", base64Image.length() * 3 / 4 / 1024);
 
-            return processWithTools(userMessage, maxSteps);
-        });
+                // 构建多模态用户消息
+                UserMessage userMessage = UserMessage.from(
+                        TextContent.from(message),
+                        ImageContent.from(base64Image, "image/jpeg"));
+
+                return processWithTools(userMessage, maxSteps);
+            });
+        } finally {
+            // Context Engineering: Turn 结束，触发压缩
+            TurnContext endedTurn = TurnContext.end();
+            if (endedTurn != null) {
+                memoryManager.onTurnEnd(endedTurn);
+            }
+        }
     }
 
     /**

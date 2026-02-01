@@ -56,6 +56,20 @@ public class SessionStore {
      */
     @Transactional
     public void saveMessage(String sessionKey, ChatMessage message, int tokenCount) {
+        saveMessage(sessionKey, message, tokenCount, null, null);
+    }
+
+    /**
+     * Save a message to session with Turn context
+     *
+     * @param sessionKey Session identifier
+     * @param message    Chat message to save
+     * @param tokenCount Token count for this message
+     * @param turnId     Turn identifier (nullable for backward compatibility)
+     * @param imageId    Image identifier if message contains image (nullable)
+     */
+    @Transactional
+    public void saveMessage(String sessionKey, ChatMessage message, int tokenCount, String turnId, String imageId) {
         UserSessionEntity session = sessionRepository.findBySessionKey(sessionKey)
                 .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionKey));
 
@@ -66,6 +80,17 @@ public class SessionStore {
         messageEntity.setHasImage(hasImageContent(message));
         messageEntity.setTokenCount(tokenCount);
 
+        // Context Engineering: Turn tracking
+        messageEntity.setTurnId(turnId);
+        messageEntity.setImageId(imageId);
+        messageEntity.setIsCompressed(false);
+
+        // Set turn position from TurnContext if available
+        TurnContext currentTurn = TurnContext.current();
+        if (currentTurn != null && turnId != null && turnId.equals(currentTurn.getTurnId())) {
+            messageEntity.setTurnPosition(currentTurn.nextPosition());
+        }
+
         messageRepository.save(messageEntity);
 
         // Update session statistics
@@ -73,7 +98,8 @@ public class SessionStore {
         session.setTotalTokens(session.getTotalTokens() + tokenCount);
         sessionRepository.save(session);
 
-        log.debug("Saved message to session {}: type={}, tokens={}", sessionKey, messageEntity.getMessageType(), tokenCount);
+        log.debug("Saved message to session {}: type={}, tokens={}, turnId={}",
+                sessionKey, messageEntity.getMessageType(), tokenCount, turnId);
     }
 
     /**

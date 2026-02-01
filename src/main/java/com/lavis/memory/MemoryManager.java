@@ -61,7 +61,53 @@ public class MemoryManager {
      */
     public void saveMessage(ChatMessage message, int tokenCount) {
         String sessionKey = getCurrentSessionKey();
-        sessionStore.saveMessage(sessionKey, message, tokenCount);
+        String turnId = TurnContext.currentTurnId();
+        sessionStore.saveMessage(sessionKey, message, tokenCount, turnId, null);
+    }
+
+    /**
+     * Save a message with image to current session
+     *
+     * @param message    Chat message
+     * @param tokenCount Token count
+     * @param imageId    Image identifier for tracking
+     */
+    public void saveMessageWithImage(ChatMessage message, int tokenCount, String imageId) {
+        String sessionKey = getCurrentSessionKey();
+        String turnId = TurnContext.currentTurnId();
+
+        // Record image in TurnContext for anchor tracking
+        TurnContext turn = TurnContext.current();
+        if (turn != null && imageId != null) {
+            turn.recordImage(imageId);
+        }
+
+        sessionStore.saveMessage(sessionKey, message, tokenCount, turnId, imageId);
+    }
+
+    /**
+     * Handle Turn end event
+     * Called when a user request completes, triggers compression of the completed turn
+     *
+     * @param turn The completed TurnContext
+     */
+    public void onTurnEnd(TurnContext turn) {
+        if (turn == null) {
+            log.warn("onTurnEnd called with null TurnContext");
+            return;
+        }
+
+        log.info("Turn ended: {} with {} images, {} messages",
+                turn.getTurnId(), turn.getImageCount(), turn.currentPosition());
+
+        // TODO Phase 2: Trigger visual compression for previous turns
+        // visualCompactor.compactPreviousTurns(turn.getSessionId(), turn.getTurnId());
+
+        // Log turn summary for debugging
+        if (turn.getImageCount() > 0) {
+            log.debug("Turn {} anchors: first={}, last={}",
+                    turn.getTurnId(), turn.getFirstImageId(), turn.getLastImageId());
+        }
     }
 
     /**
