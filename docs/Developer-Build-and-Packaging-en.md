@@ -3,9 +3,9 @@
 > This document targets **developers**, describing how to build and debug Lavis locally, and how to package the backend with **GraalVM Native Image** (advanced option) and the frontend with Electron.
 >
 > **Important Notes**:
-> - **Default Packaging**: The project uses JAR files for backend packaging by default. See `frontend/PACKAGING.md` for details.
+> - **Default Packaging**: The project uses JAR files for backend packaging by default. See `docs/Packaging.md` for details.
 > - **GraalVM Native Image**: This is an optional advanced option for AOT compilation and stronger code protection.
-> - **Production Recommendation**: For most use cases, the JAR packaging method described in `frontend/PACKAGING.md` is sufficient.
+> - **Production Recommendation**: For most use cases, the JAR packaging method described in `docs/Packaging.md` is sufficient.
 
 ---
 
@@ -59,7 +59,7 @@ java -jar target/lavis-0.0.1-SNAPSHOT.jar
 
 ## 3. Backend Packaging with GraalVM Native Image (Advanced Option)
 
-> **Note**: This is an optional advanced option. The project uses JAR files for packaging by default (see `frontend/PACKAGING.md`).  
+> **Note**: This is an optional advanced option. The project uses JAR files for packaging by default (see `docs/Packaging.md`).  
 > Consider using GraalVM Native Image only if you need AOT compilation, stronger code protection, or specific performance optimizations.
 
 ### 3.1 Concept & Benefits
@@ -153,7 +153,7 @@ cd frontend
 npm run package
 ```
 
-For detailed instructions, see `frontend/PACKAGING.md`.
+For detailed instructions, see `docs/Packaging.md`.
 
 ### 5.2 Advanced Method: GraalVM Native Image
 

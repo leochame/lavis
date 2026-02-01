@@ -26,7 +26,7 @@ npm run package
    - Maven 3.9+（项目已包含 `mvnw`，无需单独安装；如需指定 Maven，可设置 `MAVEN_CMD`）
 
 2. **Node.js 环境**
-   - Node.js 18+ 
+   - Node.js 18+
    - npm（随 Node.js 安装）
 
 3. **macOS 开发环境**
@@ -66,30 +66,30 @@ dist-electron/
 
 | 文件路径 | 说明 |
 |---------|------|
-| `scripts/package.js` | 一键打包脚本，自动化整个打包流程 |
-| `electron-builder.config.js` | electron-builder 配置文件 |
-| `package.json` | npm 脚本和依赖配置 |
-| `build/entitlements.mac.plist` | macOS 权限配置 |
-| `build/icon.icns` | 应用图标文件 |
+| `frontend/scripts/package.js` | 一键打包脚本，自动化整个打包流程 |
+| `frontend/electron-builder.config.js` | electron-builder 配置文件 |
+| `frontend/package.json` | npm 脚本和依赖配置 |
+| `frontend/build/entitlements.mac.plist` | macOS 权限配置 |
+| `frontend/build/icon.icns` | 应用图标文件 |
 
 ### 开发和测试工具
 
 | 文件路径 | 说明 |
 |---------|------|
-| `scripts/test-packaged-app.sh` | 测试打包后的应用，自动打开开发者工具 |
-| `scripts/diagnose-wake-word.sh` | 诊断打包后应用的唤醒词问题 |
-| `scripts/open-devtools.sh` | 打开打包后应用的开发者工具 |
-| `scripts/generate-icon.js` | 生成 macOS 应用图标 (.icns) |
-| `scripts/electron-dev.js` | 开发模式启动 Electron 应用 |
+| `frontend/scripts/test-packaged-app.sh` | 测试打包后的应用，自动打开开发者工具 |
+| `frontend/scripts/diagnose-wake-word.sh` | 诊断打包后应用的唤醒词问题 |
+| `frontend/scripts/open-devtools.sh` | 打开打包后应用的开发者工具 |
+| `frontend/scripts/generate-icon.js` | 生成 macOS 应用图标 (.icns) |
+| `frontend/scripts/electron-dev.js` | 开发模式启动 Electron 应用 |
 
 ### 相关源代码文件
 
 | 文件路径 | 打包相关功能 |
 |---------|------------|
-| `electron/main.ts` | 检测打包环境，管理后端进程 |
-| `electron/backend-manager.ts` | 在打包环境中启动内嵌 JRE 和 JAR |
-| `electron/preload.ts` | 提供安全的 API 桥接 |
-| `vite.config.ts` | 构建前端资源 |
+| `frontend/electron/main.ts` | 检测打包环境，管理后端进程 |
+| `frontend/electron/backend-manager.ts` | 在打包环境中启动内嵌 JRE 和 JAR |
+| `frontend/electron/preload.ts` | 提供安全的 API 桥接 |
+| `frontend/vite.config.ts` | 构建前端资源 |
 
 ## 🛠️ 工作原理
 
@@ -241,7 +241,7 @@ node scripts/generate-icon.js
 
 ### 代码签名
 
-如需代码签名，在 `electron-builder.config.js` 中添加：
+如需代码签名，在 `frontend/electron-builder.config.js` 中添加：
 
 ```javascript
 mac: {
@@ -264,3 +264,5 @@ export APPLE_TEAM_ID="TEAM_ID"
 
 - [Electron Builder 文档](https://www.electron.build/)
 - [项目根目录 README](../README.md)
+
+

@@ -116,7 +116,7 @@ npm run package
 - macOS: `frontend/dist-electron/Lavis-1.0.0-arm64.dmg` (~250MB)
 
 **详细文档 / Detailed Docs:**
-- [完整打包指南 / Complete Packaging Guide](frontend/PACKAGING.md) - 包含打包、调试、故障排除 / Includes packaging, debugging, troubleshooting
+- [完整打包指南 / Complete Packaging Guide](docs/Packaging.md) - 包含打包、调试、故障排除 / Includes packaging, debugging, troubleshooting
 
 ---
 
@@ -248,7 +248,7 @@ npm run build
   - **中文/English** 用户说明：安装、运行、权限、基础使用。
 - `docs/Developer-Build-and-Packaging-zh.md` / `docs/Developer-Build-and-Packaging-en.md`  
   - **开发者指南**：构建、GraalVM Native Image 打包（高级选项）、Electron 打包。
-- `frontend/PACKAGING.md`  
+- `docs/Packaging.md`  
   - **完整打包指南**：包含打包流程、调试方法、故障排除 / Complete packaging guide with debugging and troubleshooting
 - `docs/ARCHITECTURE.md`  
   - 系统架构与数据流的详细说明。

@@ -3,9 +3,9 @@
 > 本文面向 **开发者**，说明如何在本地构建、调试 Lavis，以及如何使用 **GraalVM Native Image**（高级选项）打包后端、Electron 打包前端。
 >
 > **重要提示**：
-> - **默认打包方式**：项目默认使用 JAR 文件打包后端，详见 `frontend/PACKAGING.md`
+> - **默认打包方式**：项目默认使用 JAR 文件打包后端，详见 `docs/Packaging.md`
 > - **GraalVM Native Image**：本节介绍的是可选的高级选项，用于 AOT 编译和更强的代码保护
-> - **生产环境推荐**：大多数情况下，使用 `frontend/PACKAGING.md` 中的 JAR 打包方式即可满足需求
+> - **生产环境推荐**：大多数情况下，使用 `docs/Packaging.md` 中的 JAR 打包方式即可满足需求
 
 ---
 
@@ -61,7 +61,7 @@ java -jar target/lavis-0.0.1-SNAPSHOT.jar
 
 ## 3. 使用 GraalVM Native Image 打包后端（高级选项）
 
-> **注意**：这是可选的高级选项。项目默认使用 JAR 文件打包（见 `frontend/PACKAGING.md`）。  
+> **注意**：这是可选的高级选项。项目默认使用 JAR 文件打包（见 `docs/Packaging.md`）。  
 > 仅在需要 AOT 编译、更强的代码保护或特定性能优化时，才考虑使用 GraalVM Native Image。
 
 ### 3.1 概念与优势
@@ -158,7 +158,7 @@ cd frontend
 npm run package
 ```
 
-详细说明请参考 `frontend/PACKAGING.md`。
+详细说明请参考 `docs/Packaging.md`。
 
 ### 5.2 高级方式：使用 GraalVM Native Image
 
