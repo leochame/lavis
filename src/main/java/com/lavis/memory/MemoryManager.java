@@ -33,6 +33,8 @@ public class MemoryManager {
     private final SessionStore sessionStore;
     private final ImageCleanupService imageCleanupService;
     private final ContextCompactor contextCompactor;
+    private final VisualCompactor visualCompactor;
+    private final ColdStorage coldStorage;
 
     private String currentSessionKey;
     private final MemoryMXBean memoryBean = ManagementFactory.getMemoryMXBean();
@@ -100,8 +102,18 @@ public class MemoryManager {
         log.info("Turn ended: {} with {} images, {} messages",
                 turn.getTurnId(), turn.getImageCount(), turn.currentPosition());
 
-        // TODO Phase 2: Trigger visual compression for previous turns
-        // visualCompactor.compactPreviousTurns(turn.getSessionId(), turn.getTurnId());
+        // Context Engineering: Trigger visual compression for previous turns
+        try {
+            VisualCompactor.CompactionResult result = visualCompactor.compactPreviousTurns(
+                    turn.getSessionId(), turn.getTurnId());
+
+            if (result.compactedCount() > 0) {
+                log.info("Visual compaction completed: {} images compressed, ~{} tokens saved",
+                        result.compactedCount(), result.estimatedTokensSaved());
+            }
+        } catch (Exception e) {
+            log.error("Error during visual compaction", e);
+        }
 
         // Log turn summary for debugging
         if (turn.getImageCount() > 0) {
@@ -148,6 +160,8 @@ public class MemoryManager {
 
     /**
      * Scheduled cleanup task - runs every hour
+     * Note: Image cleanup is now primarily handled by onTurnEnd (event-driven)
+     * This scheduled task handles session cleanup and cold storage maintenance
      */
     @Scheduled(fixedRate = 3600000) // Every hour
     public void scheduledCleanup() {
@@ -157,17 +171,20 @@ public class MemoryManager {
             // Clean up old sessions
             int deletedSessions = sessionStore.deleteOldSessions(DEFAULT_SESSION_RETENTION_DAYS);
 
-            // Clean up images in current session
-            if (currentSessionKey != null) {
-                int deletedImages = imageCleanupService.cleanupSessionImages(
-                        currentSessionKey, DEFAULT_KEEP_IMAGES);
-                log.info("Cleaned up {} images from current session", deletedImages);
+            // Clean up cold storage (remove files older than retention period)
+            int coldStorageCleaned = coldStorage.cleanup();
+            if (coldStorageCleaned > 0) {
+                log.info("Cleaned up {} files from cold storage", coldStorageCleaned);
             }
 
             // Log memory stats
             MemoryStats stats = getMemoryStats();
             log.info("Memory usage: Heap={} MB, Used={} MB ({}%)",
                     stats.heapMaxMB(), stats.heapUsedMB(), stats.heapUsagePercent());
+
+            // Log cold storage stats
+            ColdStorage.StorageStats coldStats = coldStorage.getStats();
+            log.info("Cold storage: {} files, {} MB", coldStats.totalFiles(), coldStats.totalSizeMB());
 
             log.info("Scheduled cleanup completed: {} old sessions deleted", deletedSessions);
         } catch (Exception e) {

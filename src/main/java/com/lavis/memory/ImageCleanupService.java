@@ -6,7 +6,6 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.data.message.ImageContent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -14,8 +13,17 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Image cleanup service
- * Automatically cleans up old screenshots from memory
- * Keeps only the last N screenshots to prevent memory overflow
+ *
+ * Note: As of Context Engineering Phase 2, image cleanup is now primarily
+ * event-driven via MemoryManager.onTurnEnd() and VisualCompactor.
+ *
+ * This service is retained for:
+ * - In-memory cleanup of ImageContentCleanableChatMemory
+ * - Legacy compatibility
+ * - Manual cleanup triggers
+ *
+ * The @Scheduled annotation has been removed to prevent blind deletion
+ * that could cause the model to "lose sight" of important images.
  */
 @Slf4j
 @Service
@@ -66,25 +74,12 @@ public class ImageCleanupService {
     }
 
     /**
-     * Clean up old images from database
-     * Scheduled to run every hour
-     */
-    @Scheduled(fixedRate = 3600000) // Every hour
-    public void scheduledCleanup() {
-        log.debug("Starting scheduled image cleanup...");
-
-        try {
-            // This will be called by MemoryManager with actual session keys
-            // For now, just log that the scheduler is working
-            log.debug("Scheduled image cleanup completed");
-        } catch (Exception e) {
-            log.error("Error during scheduled image cleanup", e);
-        }
-    }
-
-    /**
      * Clean up old images from a specific session
+     *
+     * @deprecated Use VisualCompactor for Turn-aware compression instead.
+     *             This method is retained for legacy compatibility.
      */
+    @Deprecated
     public int cleanupSessionImages(String sessionKey, int keepLastN) {
         try {
             int deletedCount = sessionStore.cleanupOldImages(sessionKey, keepLastN);
