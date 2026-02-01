@@ -155,6 +155,8 @@ public class ToolExecutionService {
             case "getMouseInfo", "verifyClickPosition", "captureScreen" -> false;
             case "getActiveApp", "getActiveWindowTitle", "copy" -> false;
             case "showNotification" -> false;
+            // 搜索工具 - 不影响屏幕
+            case "internetSearch", "quickSearch" -> false;
             // 未知工具默认认为有影响
             default -> true;
         };

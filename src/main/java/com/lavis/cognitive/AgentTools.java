@@ -2,7 +2,10 @@ package com.lavis.cognitive;
 
 import com.lavis.action.AppleScriptExecutor;
 import com.lavis.action.RobotDriver;
+import com.lavis.cognitive.agent.SearchAgent;
 import com.lavis.perception.ScreenCapturer;
+import com.lavis.service.llm.LlmFactory;
+import com.lavis.service.search.WebSearchService;
 import com.lavis.skills.SkillExecutor;
 import com.lavis.skills.SkillService;
 import com.lavis.skills.dto.SkillResponse;
@@ -32,14 +35,22 @@ public class AgentTools {
     private final AppleScriptExecutor appleScriptExecutor;
     private final ScreenCapturer screenCapturer;
     private final SkillService skillService;
+    private final SearchAgent searchAgent;
+    private final WebSearchService webSearchService;
+    private final LlmFactory llmFactory;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AgentTools(RobotDriver robotDriver, AppleScriptExecutor appleScriptExecutor,
-                      ScreenCapturer screenCapturer, SkillService skillService) {
+                      ScreenCapturer screenCapturer, SkillService skillService,
+                      SearchAgent searchAgent, WebSearchService webSearchService,
+                      LlmFactory llmFactory) {
         this.robotDriver = robotDriver;
         this.appleScriptExecutor = appleScriptExecutor;
         this.screenCapturer = screenCapturer;
         this.skillService = skillService;
+        this.searchAgent = searchAgent;
+        this.webSearchService = webSearchService;
+        this.llmFactory = llmFactory;
     }
 
     // ==================== 鼠标操作 (反馈语调更加中性) ====================
@@ -518,6 +529,43 @@ public class AgentTools {
         } catch (Exception e) {
             log.error("获取技能列表失败", e);
             return "❌ 获取技能列表异常: " + e.getMessage();
+        }
+    }
+
+    // ==================== 网络搜索工具 ====================
+
+    @Tool("Search the internet for information. Uses iterative deep search with up to 5 rounds. Returns a synthesized summary (~200 words) of the findings.")
+    public String internetSearch(
+            @P("Search query - be specific and include relevant keywords") String query,
+            @P("Whether to use deep search with multiple iterations (true) or quick single search (false)") boolean deepSearch) {
+        try {
+            log.info("🔍 Internet search: query={}, deepSearch={}", query, deepSearch);
+
+            if (deepSearch) {
+                // 使用 SearchAgent 进行深度搜索
+                var chatModel = llmFactory.getModel();
+                var report = searchAgent.execute(query, chatModel);
+                return report.toCompactSummary();
+            } else {
+                // 快速单次搜索
+                var result = webSearchService.search(query);
+                return result.toSummary();
+            }
+        } catch (Exception e) {
+            log.error("Internet search failed: {}", e.getMessage(), e);
+            return "❌ 搜索失败: " + e.getMessage();
+        }
+    }
+
+    @Tool("Quick web search - single query, no iteration. Use this for simple factual queries.")
+    public String quickSearch(@P("Search query") String query) {
+        try {
+            log.info("🔍 Quick search: {}", query);
+            var result = webSearchService.search(query);
+            return result.toSummary();
+        } catch (Exception e) {
+            log.error("Quick search failed: {}", e.getMessage(), e);
+            return "❌ 搜索失败: " + e.getMessage();
         }
     }
 }
