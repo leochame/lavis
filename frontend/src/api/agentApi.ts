@@ -172,13 +172,27 @@ class AgentApi {
 
   // Voice Chat API (异步 TTS 版本)
   // 返回文本响应，音频通过 WebSocket 异步推送
-  async voiceChat(audioFile: File, wsSessionId?: string, screenshot?: File): Promise<{
+  // 
+  // 参数：
+  // - audioFile: 音频文件（必需）
+  // - wsSessionId: WebSocket session ID（可选，用于 TTS 推送）
+  // - useOrchestrator: 是否使用 TaskOrchestrator（可选，默认 true，使用复杂路径）
+  // - screenshot: 截图文件（可选，暂未使用）
+  async voiceChat(
+    audioFile: File, 
+    wsSessionId?: string, 
+    screenshot?: File,
+    useOrchestrator?: boolean
+  ): Promise<{
     success: boolean;
     user_text: string;
     agent_text: string;
     request_id: string;
     audio_pending: boolean;
     duration_ms: number;
+    orchestrator_state?: string;
+    plan_summary?: string;
+    steps_total?: number;
   }> {
     const formData = new FormData();
     formData.append('file', audioFile);
@@ -187,6 +201,9 @@ class AgentApi {
     }
     if (screenshot) {
       formData.append('screenshot', screenshot);
+    }
+    if (useOrchestrator !== undefined) {
+      formData.append('use_orchestrator', String(useOrchestrator));
     }
 
     try {
@@ -197,6 +214,9 @@ class AgentApi {
         request_id: string;
         audio_pending: boolean;
         duration_ms: number;
+        orchestrator_state?: string;
+        plan_summary?: string;
+        steps_total?: number;
       }>('/voice-chat', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',

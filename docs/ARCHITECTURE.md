@@ -85,22 +85,25 @@ AgentService
 ├── isAvailable()
 └── getTaskOrchestrator()
 
-TaskOrchestrator
+TaskOrchestrator (Unified ReAct Loop)
 ├── executeGoal(goal) → OrchestratorResult
+│   └── Perceive → Decide → Execute loop
 ├── getState() → State enum
-├── getCurrentPlan() → TaskPlan
+├── interrupt()
 ├── reset()
-└── getExecutionSummary()
+└── generateSystemPrompt()
 
-Planner (LLM Chain)
-├── analyzeGoal(goal) → TaskPlan
-├── refinePlan(plan, feedback) → TaskPlan
-└── generateSteps(plan) → PlanStep[]
+LocalExecutor
+├── executeBatch(ExecuteNow) → BatchExecutionResult
+├── executeAction(Action) → ActionResult
+└── Semantic boundary detection
 
-Executor
-├── executePlan(plan) → ExecutionResult
-├── executeStep(step) → ActionResult
-└── handleErrors(error) → Correction
+DecisionBundle (LLM Output)
+├── thought: String
+├── last_action_result: String
+├── execute_now: ExecuteNow
+├── is_goal_complete: boolean
+└── completion_summary: String
 
 LlmFactory
 ├── createOpenAI(model, key)
@@ -110,8 +113,9 @@ LlmFactory
 
 **Key Files:**
 - `src/main/java/com/lavis/cognitive/AgentService.java`
-- `src/main/java/com/lavis/cognitive/orchestrator/`
-- `src/main/java/com/lavis/cognitive/llm/LlmFactory.java`
+- `src/main/java/com/lavis/cognitive/orchestrator/TaskOrchestrator.java`
+- `src/main/java/com/lavis/cognitive/react/` (DecisionBundle, ExecuteNow, Action, LocalExecutor, etc.)
+- `src/main/java/com/lavis/service/llm/LlmFactory.java`
 
 ### 3. Action Layer (Backend)
 
@@ -137,17 +141,18 @@ BezierMouseUtils
 
 ### 4. UI Layer (Frontend)
 
-**Purpose:** Display agent state, capture user input, show progress
+**Purpose:** Display agent state, capture user input, show progress, and manage skills/scheduled tasks.
 
 ```
 React Components
 ├── App (Main container, heartbeat)
 ├── Capsule (Floating status indicator)
 ├── ChatPanel (Chat interface, MD rendering)
-└── TaskPanel (Progress, steps, stop button)
+├── TaskPanel (Progress, steps, stop button)
+└── ManagementPanel (Tabs: SkillsPanel, SchedulerPanel, BrainPanel)
 
 API Layer
-├── AgentApi (Axios client)
+├── AgentApi (Axios client for /api/agent/**)
 │   ├── chat(message)
 │   ├── executeTask(goal)
 │   ├── stop()
@@ -155,7 +160,9 @@ API Layer
 │   ├── getStatus()
 │   ├── getScreenshot(thumbnail?)
 │   └── getHistory()
-└── Adaptive heartbeat polling (2000ms → 5000ms)
+└── ManagementApi (Axios client for /api/skills/** and /api/scheduler/**)
+    ├── Skills CRUD + execute + reload
+    └── Scheduler CRUD + start/stop + history
 
 Electron Process
 ├── main.ts (Window, tray, shortcuts)
@@ -167,7 +174,79 @@ Electron Process
 - `frontend/src/App.tsx`
 - `frontend/src/components/*.tsx`
 - `frontend/src/api/agentApi.ts`
+- `frontend/src/api/managementApi.ts`
 - `frontend/electron/main.ts`
+
+### 5. Scheduler Layer (Backend)
+
+**Purpose:** Run automation on schedule, persist definitions, and keep execution history.
+
+```
+ScheduledTaskService
+├── createTask()/updateTask()/deleteTask()
+├── startTask()/stopTask()
+├── getAllTasks()/getTaskHistory()
+└── executeTask() → TaskExecutor
+
+TaskExecutor
+├── execute(ScheduledTaskEntity)
+├── executeAgentTask("agent:...")
+└── executeShellTask("shell:..." or raw shell)
+```
+
+**Key Files:**
+- `src/main/java/com/lavis/scheduler/ScheduledTaskService.java`
+- `src/main/java/com/lavis/scheduler/TaskExecutor.java`
+- `src/main/java/com/lavis/scheduler/TaskStore.java`
+- `src/main/java/com/lavis/controller/SchedulerController.java`
+
+### 6. Skills & Plugin Layer (Backend)
+
+**Purpose:** Provide reusable, user-defined tools that the Agent and scheduler can call.
+
+```
+SkillService
+├── loadSkillsFromDisk()  (~/.lavis/skills/**/SKILL.md)
+├── getToolSpecifications()  → LangChain4j ToolSpecification list
+├── executeSkill(id, params) → SkillExecutionContext
+└── addToolUpdateListener()/setContextInjectionCallback()
+
+AgentTools
+├── executeSkill(name, params)
+└── listSkills()
+```
+
+**Key Files:**
+- `src/main/java/com/lavis/skills/*.java`
+- `src/main/java/com/lavis/skills/model/*.java`
+- `src/main/java/com/lavis/skills/dto/*.java`
+- `src/main/java/com/lavis/controller/SkillController.java`
+
+### 7. Cross-Cutting: Memory, Database & Context Engineering
+
+**Purpose:** Persist sessions, compress context, and keep long-running agents stable.
+
+```
+MemoryManager
+├── getCurrentSessionKey()
+├── onTurnEnd(TurnContext)
+└── coordinate cleanup & summaries
+
+TurnContext
+├── begin()/end()
+├── recordImage(imageId)
+└── track per-turn resources
+
+SessionStore (SQLite)
+├── persist messages, images, skills, tasks
+└── restore on startup
+```
+
+**Key Files:**
+- `src/main/java/com/lavis/memory/*.java`
+- `src/main/java/com/lavis/entity/*.java`
+- `src/main/java/com/lavis/repository/*.java`
+- `src/main/java/com/lavis/cognitive/memory/ImageContentCleanableChatMemory.java`
 
 ## REST API Endpoints
 
@@ -175,7 +254,7 @@ Electron Process
 |--------|----------|----------|----------|---------|
 | POST | `/api/agent/chat` | `{ message: string }` | `{ success, response, duration_ms }` | Fast system Q&A |
 | POST | `/api/agent/task` | `{ goal: string }` | `{ success, message, plan_summary, steps_total, execution_summary }` | Slow system task |
-| GET | `/api/agent/status` | - | `{ available, model, orchestrator_state, current_plan_progress }` | System state |
+| GET | `/api/agent/status` | - | `{ available, model, orchestrator_state }` | System state |
 | POST | `/api/agent/stop` | - | `{ status: string }` | Emergency stop |
 | POST | `/api/agent/reset` | - | `{ status: string }` | Reset state |
 | GET | `/api/agent/screenshot` | - | `{ success, image: base64, size }` | Screen capture |
@@ -230,7 +309,7 @@ AgentApi → ChatPanel
 ReactMarkdown Render → Display
 ```
 
-### 2. Slow System (Task) Flow
+### 2. Slow System (Task) Flow - Unified ReAct Loop
 
 ```
 User Goal (Task)
@@ -241,23 +320,25 @@ HTTP POST /api/agent/task
     ↓
 TaskOrchestrator.executeGoal()
     ↓
-Planner.generatePlan() → TaskPlan
+Loop: Perceive → Decide → Execute
     ↓
-Loop: PlanStep execution
+1. ScreenCapturer.captureScreenWithCursorAsBase64()
     ↓
-Executor.executeStep()
+2. LLM.chat(ChatRequest + ResponseFormat) → DecisionBundle
     ↓
-RobotDriver.click()/type()/move()
+3. Check: is_goal_complete?
+    ├── true → Return success
+    └── false → Continue
     ↓
-ScreenCapturer.captureScreenAsBase64()
+4. LocalExecutor.executeBatch(ExecuteNow)
     ↓
-LLM.analyzeObservation() → ActionResult
+5. RobotDriver.click()/type()/pressKeys()
     ↓
-Executor.handleErrors() → Correction or Continue
+Back to step 1 (next iteration)
     ↓
 OrchestratorResult → TaskPanel
     ↓
-Update Progress + Steps UI
+Update Progress UI
 ```
 
 ### 3. Heartbeat Flow
@@ -293,19 +374,28 @@ lavis/
 │   │   └── AgentController.java      # REST endpoints
 │   ├── cognitive/                     # AI logic
 │   │   ├── AgentService.java
+│   │   ├── AgentTools.java
 │   │   ├── orchestrator/
-│   │   │   ├── TaskOrchestrator.java
-│   │   │   ├── Planner.java
-│   │   │   └── Executor.java
-│   │   ├── llm/
-│   │   │   └── LlmFactory.java
-│   │   └── tools/
+│   │   │   └── TaskOrchestrator.java  # Unified ReAct loop
+│   │   ├── react/                     # ReAct loop components
+│   │   │   ├── DecisionBundle.java
+│   │   │   ├── ExecuteNow.java
+│   │   │   ├── Action.java
+│   │   │   ├── ReactTaskContext.java
+│   │   │   ├── LocalExecutor.java
+│   │   │   └── DecisionBundleSchema.java
+│   │   └── executor/
+│   │       └── ToolExecutionService.java
 │   ├── action/                        # Physical actions
 │   │   ├── RobotDriver.java
 │   │   └── BezierMouseUtils.java
 │   ├── perception/                    # Screen capture
 │   │   └── ScreenCapturer.java
-│   └── model/                        # Data models
+│   └── service/                       # Services
+│       ├── llm/
+│       │   └── LlmFactory.java
+│       └── chat/
+│           └── UnifiedChatService.java
 ├── frontend/                         # Electron + React
 │   ├── electron/
 │   │   ├── main.ts                   # Electron main process
@@ -558,7 +648,7 @@ Custom ChatMemory implementation that automatically cleans up old ImageContent:
 
 > This section documents the development history and implementation status of the Lavis project, providing context for contributors to understand "why things are the way they are."
 
-**Last Updated**: 2026-02-01
+**Last Updated**: 2026-02-04
 
 ---
 

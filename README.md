@@ -127,17 +127,24 @@ lavis/
 │   ├── action/                     # Actions
 │   ├── controller/                 # REST API
 │   ├── websocket/                  # WebSocket
-│   └── service/                    # Services (TTS/ASR)
+│   ├── service/                    # Services (TTS/ASR)
+│   ├── scheduler/                  # Scheduler (Cron tasks + history)
+│   ├── skills/                     # Skills plugin system (SKILL.md, dynamic load)
+│   ├── memory/                     # Memory & context engineering (sessions, images)
+│   ├── entity/                     # JPA entities (tasks, logs, sessions, skills, etc.)
+│   └── repository/                 # JPA repositories (SQLite)
 ├── frontend/                       # Electron + React frontend
-│   ├── electron/                  # Electron main process
+│   ├── electron/                  # Electron main process (tray, windows, shortcuts)
 │   │   ├── main.ts                 # Main process entry
 │   │   ├── backend-manager.ts     # Backend process manager
 │   │   └── preload.ts             # Preload script
-│   ├── src/                        # React UI & hooks
+│   ├── src/                        # React UI & hooks (including Skills/Scheduler management)
 │   │   ├── components/            # UI components
 │   │   │   ├── Capsule.tsx        # Floating capsule UI
 │   │   │   ├── ChatPanel.tsx      # Chat interface (virtual scroll)
 │   │   │   ├── TaskPanel.tsx      # Task progress panel
+│   │   │   ├── SkillsPanel.tsx    # Skills management
+│   │   │   ├── SchedulerPanel.tsx # Scheduler management
 │   │   │   └── VoicePanel.tsx     # Voice interaction panel
 │   │   ├── hooks/                 # React Hooks
 │   │   │   ├── useWebSocket.ts    # WebSocket connection

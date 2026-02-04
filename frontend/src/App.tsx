@@ -125,6 +125,22 @@ export default function App() {
     }
   }, [isElectron, platform, viewMode, windowState]);
 
+  // 监听主进程发送的切换回胶囊模式消息（当用户关闭控制板窗口时）
+  useEffect(() => {
+    if (isElectron && window.electron?.ipcRenderer) {
+      const handleSwitchToCapsule = () => {
+        console.log('📋 Received switch-to-capsule message from main process');
+        handleChatClose();
+      };
+
+      window.electron.ipcRenderer.on('switch-to-capsule', handleSwitchToCapsule);
+
+      return () => {
+        window.electron?.ipcRenderer?.removeAllListeners('switch-to-capsule');
+      };
+    }
+  }, [isElectron, handleChatClose]);
+
   // Listen for auto-record event (triggered by mic button on start overlay)
   useEffect(() => {
     const handleAutoRecord = () => {

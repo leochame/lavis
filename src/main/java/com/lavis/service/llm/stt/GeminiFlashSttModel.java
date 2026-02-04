@@ -66,9 +66,12 @@ public class GeminiFlashSttModel implements SttModel {
             throw new IllegalArgumentException("Audio file is required");
         }
 
+        long totalStartTime = System.currentTimeMillis();
         try {
-            log.info("🎤 Starting Gemini-flash STT for file: {}, model: {}",
-                    audioFile.getOriginalFilename(), config.getModelName());
+            long fileSize = audioFile.getSize();
+            log.info("🎤 Starting Gemini-flash STT for file: {} ({} bytes, {} MB), model: {}",
+                    audioFile.getOriginalFilename(), fileSize, 
+                    String.format("%.2f", fileSize / (1024.0 * 1024.0)), config.getModelName());
 
             // 1. 确定 API URL（优先使用配置文件中的 base-url）
             String baseUrl = config.getBaseUrl() != null && !config.getBaseUrl().isBlank()
@@ -106,8 +109,10 @@ public class GeminiFlashSttModel implements SttModel {
                             ? config.getApiKey().substring(0, 10) : "null");
 
             // 2. 将音频文件转换为 Base64
+            long encodeStartTime = System.currentTimeMillis();
             byte[] audioBytes = audioFile.getBytes();
             String audioBase64 = Base64.getEncoder().encodeToString(audioBytes);
+            long encodeDuration = System.currentTimeMillis() - encodeStartTime;
             String mimeType = getAudioMimeType(audioFile.getOriginalFilename());
             
             // 计算 Base64 编码后的数据大小（用于诊断）
@@ -115,15 +120,22 @@ public class GeminiFlashSttModel implements SttModel {
             double sizeMB = audioBytes.length / (1024.0 * 1024.0);
             double base64SizeMB = base64Size / (1024.0 * 1024.0);
             
-            log.info("📁 Audio MIME type: {}, original size: {} MB ({} bytes), base64 size: {} MB ({} chars)", 
+            log.info("📁 Audio MIME type: {}, original size: {} MB ({} bytes), base64 size: {} MB ({} chars), encode time: {}ms", 
                     mimeType, String.format("%.2f", sizeMB), audioBytes.length, 
-                    String.format("%.2f", base64SizeMB), base64Size);
+                    String.format("%.2f", base64SizeMB), base64Size, encodeDuration);
             
             // 警告：如果文件太大，可能会触发 Cloudflare 524 超时
             if (sizeMB > 10) {
                 log.warn("⚠️ Large audio file detected ({} MB). This may cause timeout issues (524 error).", 
                         String.format("%.2f", sizeMB));
                 log.warn("   Consider: splitting the audio, using a shorter clip, or compressing the audio.");
+            } else if (sizeMB > 5) {
+                log.warn("⚠️ Audio file is moderately large ({} MB). Response time may be slower.", 
+                        String.format("%.2f", sizeMB));
+            } else if (sizeMB > 1) {
+                log.info("ℹ️ Audio file size: {} MB - Expected processing time: ~{}s", 
+                        String.format("%.2f", sizeMB), 
+                        String.format("%.1f", sizeMB * 2)); // 粗略估算：每MB约2秒
             }
 
             // 3. 构建 Gemini generateContent 请求体
@@ -186,6 +198,7 @@ public class GeminiFlashSttModel implements SttModel {
             // 4. 发送请求（带重试逻辑）
             int maxRetries = config.getMaxRetries() != null ? config.getMaxRetries() : 3;
             IOException lastException = null;
+            long requestDuration = 0;
             
             for (int attempt = 0; attempt <= maxRetries; attempt++) {
                 try {
@@ -197,7 +210,11 @@ public class GeminiFlashSttModel implements SttModel {
                         Thread.sleep(backoffMs);
                     }
 
+                    long requestStartTime = System.currentTimeMillis();
                     try (Response response = httpClient.newCall(request).execute()) {
+                        requestDuration = System.currentTimeMillis() - requestStartTime;
+                        log.info("🌐 API request completed in {}ms ({}s)", 
+                                requestDuration, String.format("%.2f", requestDuration / 1000.0));
                         String responseBody = response.body() != null ? response.body().string() : "";
 
                         if (!response.isSuccessful()) {
@@ -221,7 +238,14 @@ public class GeminiFlashSttModel implements SttModel {
                         }
 
                         log.debug("📝 Gemini response: {}", responseBody);
-                        return parseGeminiResponse(responseBody);
+                        long parseStartTime = System.currentTimeMillis();
+                        String transcribedText = parseGeminiResponse(responseBody);
+                        long parseDuration = System.currentTimeMillis() - parseStartTime;
+                        long totalDuration = System.currentTimeMillis() - totalStartTime;
+                        log.info("⏱️ Total STT processing time: {}ms ({}s) - Breakdown: encode={}ms, network={}ms, parse={}ms", 
+                                totalDuration, String.format("%.2f", totalDuration / 1000.0),
+                                encodeDuration, requestDuration, parseDuration);
+                        return transcribedText;
                     }
                 } catch (SocketException | SocketTimeoutException e) {
                     // 连接错误：可以重试

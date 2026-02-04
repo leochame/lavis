@@ -159,10 +159,15 @@ lavis/
 │   ├── action/                     # 动作层（鼠标键盘）
 │   ├── controller/                 # REST API
 │   ├── websocket/                  # WebSocket 通信
-│   └── service/                    # TTS/ASR 等服务
+│   ├── service/                    # TTS/ASR 等服务
+│   ├── scheduler/                  # 定时任务调度（Cron + 历史记录）
+│   ├── skills/                     # Skills 插件系统（SKILL.md 动态加载）
+│   ├── memory/                     # 会话与截图内存管理（Context Engineering）
+│   ├── entity/                     # JPA 实体（任务、日志、会话、技能等）
+│   └── repository/                 # JPA 仓库（基于 SQLite）
 ├── frontend/                       # Electron + React 前端
-│   ├── electron/                   # Electron 主进程
-│   └── src/                        # React UI & hooks
+│   ├── electron/                   # Electron 主进程（托盘、窗口、快捷键）
+│   └── src/                        # React UI & hooks（包含 Skills/Scheduler 管理面板）
 ├── docs/                           # 文档
 │   ├── User-Guide-en.md            # 用户使用说明
 │   ├── Build-and-Packaging-zh.md  # 构建与打包指南（中文）

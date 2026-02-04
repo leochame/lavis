@@ -177,11 +177,36 @@ function createWindow() {
     }
   });
 
+  // 智能关闭处理：根据模式决定行为
+  mainWindow.on('close', (event) => {
+    // 如果正在退出过程中，允许关闭（由 will-quit 处理清理）
+    if (isQuitting) {
+      return;
+    }
+
+    // 控制板模式（chat/expanded）：阻止关闭，切换回胶囊模式
+    if (currentMode === 'chat' || currentMode === 'expanded') {
+      event.preventDefault();
+      console.log('📋 Control panel closed, switching back to capsule mode');
+      resizeWindowByMode('capsule');
+      // 通知渲染进程切换回胶囊模式
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('switch-to-capsule');
+      }
+      return;
+    }
+
+    // 胶囊模式（capsule/idle/listening）：完全退出应用
+    // 这会触发 before-quit -> will-quit 事件链，自动关闭后端
+    console.log('💊 Capsule closed, quitting application');
+    // 标记正在退出，避免重复触发
+    isQuitting = true;
+    app.quit();
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
     stopAlwaysOnTopEnforcer();
-    // 不在这里调用 app.quit，改由 window-all-closed / 显式 Quit 统一触发，
-    // 避免重复触发 will-quit 清理逻辑
   });
 
   // 监听窗口失去焦点时重新置顶
@@ -746,8 +771,12 @@ ipcMain.handle('backend:request', async (_event, { method, endpoint, data, port 
 
 // Handle app quit
 app.on('window-all-closed', () => {
-  // macOS 上保留常驻，遵循平台惯例；其它平台关闭所有窗口即退出
-  if (process.platform !== 'darwin') {
+  // 智能关闭方案：
+  // - 如果用户关闭了胶囊模式窗口，isQuitting 已为 true，会触发 app.quit()
+  // - 如果用户关闭了控制板模式窗口，窗口会切换回胶囊模式，不会触发此事件
+  // - macOS 上，如果所有窗口都关闭且不在退出过程中，保持常驻（但我们的逻辑已经处理了）
+  // 这里只处理非 macOS 平台或异常情况
+  if (process.platform !== 'darwin' && !isQuitting) {
     app.quit();
   }
 });

@@ -2,7 +2,7 @@
 
 > Complete documentation index for Lavis project.
 
-**Last Updated**: 2026-01-28
+**Last Updated**: 2026-02-04
 
 ---
 
@@ -22,10 +22,44 @@
 |----------|-------------|
 | [System Architecture](ARCHITECTURE.md) | System architecture, data flow, and development history |
 | [Database Implementation](Database-Implementation.md) | SQLite database details |
+| [Unified ReAct Loop Design](Unified-ReAct-Loop-Design.md) | One-layer architecture design (Completed) |
 
 ---
 
 ## Implemented Features
+
+### Phase 5: Unified ReAct Decision Loop
+
+**Status**: ✅ Completed (Core Implementation + Testing + JSON Schema)
+
+**Goal**: Reduce LLM calls by 50-70% by merging Planner and Executor into a unified decision loop.
+
+**Completed**:
+- ✅ Core data structures (`DecisionBundle`, `ExecuteNow`, `Action`, `ReactTaskContext`)
+- ✅ `LocalExecutor` service for batch action execution
+- ✅ `executeGoal()` method in TaskOrchestrator (unified loop)
+- ✅ `DecisionBundleSchema.createResponseFormat()` for API-level JSON enforcement
+- ✅ Unit tests (181 tests) and integration tests (10 tests)
+- ✅ Removed deprecated `PlannerService`, `MicroExecutorService`, `TaskPlan`, `PlanStep`
+
+**New Files**:
+```
+src/main/java/com/lavis/cognitive/react/
+├── DecisionBundle.java       # LLM output structure
+├── ExecuteNow.java           # Actions for current round
+├── Action.java               # Single action definition
+├── ReactTaskContext.java     # Simplified task context
+├── LocalExecutor.java        # Batch executor (no LLM)
+└── DecisionBundleSchema.java # JSON parsing/validation + ResponseFormat
+```
+
+**Configuration**:
+```properties
+lavis.orchestrator.max-iterations=50
+lavis.orchestrator.max-consecutive-failures=5
+lavis.executor.action-delay-ms=100
+lavis.executor.boundary-wait-ms=500
+```
 
 ### Phase 1: Database Integration
 
@@ -179,7 +213,17 @@ The Electron frontend includes a management panel (MGMT button) with:
 
 ```
 src/main/java/com/lavis/
-├── cognitive/           # Cognitive layer (AgentService, AgentTools)
+├── cognitive/           # Cognitive layer
+│   ├── orchestrator/    # TaskOrchestrator (unified ReAct loop)
+│   ├── react/           # Unified ReAct loop components
+│   │   ├── DecisionBundle.java
+│   │   ├── ExecuteNow.java
+│   │   ├── Action.java
+│   │   ├── ReactTaskContext.java
+│   │   ├── LocalExecutor.java
+│   │   └── DecisionBundleSchema.java
+│   ├── executor/        # ToolExecutionService
+│   └── AgentService.java, AgentTools.java
 ├── perception/          # Perception layer (screenshots)
 ├── action/              # Action layer (mouse, keyboard)
 ├── controller/          # REST API controllers

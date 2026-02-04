@@ -39,6 +39,7 @@ const http = __importStar(require("http"));
 const backend_manager_1 = require("./backend-manager");
 let mainWindow = null;
 let tray = null;
+let isQuitting = false;
 // 使用 app.isPackaged 作为主要判断依据，这是最可靠的方式
 // 环境变量作为开发模式的辅助判断
 const isDev = !electron_1.app.isPackaged ||
@@ -185,13 +186,33 @@ function createWindow() {
             event.preventDefault();
         }
     });
+    // 智能关闭处理：根据模式决定行为
+    mainWindow.on('close', (event) => {
+        // 如果正在退出过程中，允许关闭（由 will-quit 处理清理）
+        if (isQuitting) {
+            return;
+        }
+        // 控制板模式（chat/expanded）：阻止关闭，切换回胶囊模式
+        if (currentMode === 'chat' || currentMode === 'expanded') {
+            event.preventDefault();
+            console.log('📋 Control panel closed, switching back to capsule mode');
+            resizeWindowByMode('capsule');
+            // 通知渲染进程切换回胶囊模式
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('switch-to-capsule');
+            }
+            return;
+        }
+        // 胶囊模式（capsule/idle/listening）：完全退出应用
+        // 这会触发 before-quit -> will-quit 事件链，自动关闭后端
+        console.log('💊 Capsule closed, quitting application');
+        // 标记正在退出，避免重复触发
+        isQuitting = true;
+        electron_1.app.quit();
+    });
     mainWindow.on('closed', () => {
         mainWindow = null;
         stopAlwaysOnTopEnforcer();
-        // 如果窗口关闭且没有其他窗口，退出应用
-        if (electron_1.BrowserWindow.getAllWindows().length === 0) {
-            electron_1.app.quit();
-        }
     });
     // 监听窗口失去焦点时重新置顶
     mainWindow.on('blur', () => {
@@ -476,10 +497,7 @@ electron_1.ipcMain.on('show-context-menu', () => {
         {
             label: '退出 Lavis',
             click: () => {
-                // 关闭所有窗口并退出
-                electron_1.BrowserWindow.getAllWindows().forEach(window => {
-                    window.destroy();
-                });
+                // 统一走 app.quit，触发 will-quit 做异步清理
                 electron_1.app.quit();
             },
         },
@@ -699,11 +717,21 @@ electron_1.ipcMain.handle('backend:request', async (_event, { method, endpoint, 
 });
 // Handle app quit
 electron_1.app.on('window-all-closed', () => {
-    // 在所有平台上都退出应用，而不是在 macOS 上保持运行
-    // 如果用户想要退出，应该完全退出，而不是继续在后台运行
-    electron_1.app.quit();
+    // 智能关闭方案：
+    // - 如果用户关闭了胶囊模式窗口，isQuitting 已为 true，会触发 app.quit()
+    // - 如果用户关闭了控制板模式窗口，窗口会切换回胶囊模式，不会触发此事件
+    // - macOS 上，如果所有窗口都关闭且不在退出过程中，保持常驻（但我们的逻辑已经处理了）
+    // 这里只处理非 macOS 平台或异常情况
+    if (process.platform !== 'darwin' && !isQuitting) {
+        electron_1.app.quit();
+    }
 });
 electron_1.app.on('activate', () => {
+    // 如果应用正在退出过程中，不要响应 dock 点击等激活事件，避免与 will-quit 清理逻辑竞争
+    if (isQuitting) {
+        console.log('⚠️ activate ignored because app is quitting');
+        return;
+    }
     // 只有在应用没有退出意图时才重新创建窗口
     // 如果用户已经关闭了所有窗口并退出，不应该重新创建
     if (electron_1.BrowserWindow.getAllWindows().length === 0 && mainWindow === null) {
@@ -780,6 +808,7 @@ electron_1.app.whenReady().then(async () => {
 // Clean up before quit
 electron_1.app.on('before-quit', (event) => {
     // 标记应用正在退出，防止其他操作干扰
+    isQuitting = true;
     console.log('🛑 Application is quitting...');
 });
 // Clean up on quit
@@ -849,10 +878,7 @@ function createTray() {
         {
             label: 'Quit',
             click: () => {
-                // 关闭所有窗口并退出
-                electron_1.BrowserWindow.getAllWindows().forEach(window => {
-                    window.destroy();
-                });
+                // 统一走 app.quit，触发 will-quit 做异步清理
                 electron_1.app.quit();
             },
         },

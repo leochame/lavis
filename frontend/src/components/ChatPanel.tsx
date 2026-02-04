@@ -235,10 +235,12 @@ export function ChatPanel({
     try {
       // 使用已捕获的 messageText，避免在清空 input 后发送空消息
       const response = await agentApi.chat({ message: messageText });
+      // 支持统一格式：优先使用 agent_text，否则使用向后兼容的 response 字段
+      const responseText = response.agent_text || response.response;
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: response.response,
+        content: responseText,
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, assistantMessage]);
@@ -304,35 +306,81 @@ export function ChatPanel({
               style={{ position: 'relative' }}
             >
               {shouldRenderComplexComponents ? (
-                messages.length > 0 && FixedSizeList ? (
-                  <FixedSizeList
-                    ref={listRef}
-                    height={containerHeight}
-                    itemCount={messages.length + (isLoading ? 1 : 0)}
-                    itemSize={estimatedItemHeight}
-                    width="100%"
-                    style={{ padding: '20px' }}
-                  >
-                    {({ index, style }: { index: number; style: CSSProperties }) => {
-                      if (index === messages.length) {
+                messages.length > 0 ? (
+                  FixedSizeList ? (
+                    <FixedSizeList
+                      ref={listRef}
+                      height={containerHeight}
+                      itemCount={messages.length + (isLoading ? 1 : 0)}
+                      itemSize={estimatedItemHeight}
+                      width="100%"
+                      style={{ padding: '20px' }}
+                    >
+                      {({ index, style }: { index: number; style: CSSProperties }) => {
+                        if (index === messages.length) {
+                          return (
+                            <div style={style}>
+                              <div className="message message--assistant">
+                                <div className="message__content message__loading">
+                                  <span>.</span><span>.</span><span>.</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        const message = messages[index];
                         return (
-                          <div style={style}>
-                            <div className="message message--assistant">
-                              <div className="message__content message__loading">
-                                <span>.</span><span>.</span><span>.</span>
+                          <div style={{ ...style, paddingBottom: '16px' }}>
+                            <div
+                              key={message.id}
+                              className={`message message--${message.role}`}
+                            >
+                              <div className="message__content">
+                                {message.role === 'assistant' ? (
+                                  <ReactMarkdown
+                                    components={{
+                                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                      code({ className, children, ...props }: any) {
+                                        const match = /language-(\w+)/.exec(className || '');
+                                        const isInline = !match;
+                                        return !isInline && match ? (
+                                          <SyntaxHighlighter
+                                            style={oneDark}
+                                            language={match[1]}
+                                            PreTag="div"
+                                            {...props}
+                                          >
+                                            {String(children).replace(/\n$/, '')}
+                                          </SyntaxHighlighter>
+                                        ) : (
+                                          <code className={className} {...props}>
+                                            {children}
+                                          </code>
+                                        );
+                                      },
+                                    }}
+                                  >
+                                    {message.content}
+                                  </ReactMarkdown>
+                                ) : (
+                                  message.content
+                                )}
+                              </div>
+                              <div className="message__timestamp">
+                                {new Date(message.timestamp).toLocaleTimeString()}
                               </div>
                             </div>
                           </div>
                         );
-                      }
-
-                      const message = messages[index];
-                      return (
-                        <div style={{ ...style, paddingBottom: '16px' }}>
-                          <div
-                            key={message.id}
-                            className={`message message--${message.role}`}
-                          >
+                      }}
+                    </FixedSizeList>
+                  ) : (
+                    // Fallback: react-window 还未加载完成时，先用普通列表渲染，避免“有消息但不显示”
+                    <div style={{ padding: '20px' }}>
+                      {messages.map((message) => (
+                        <div key={message.id} style={{ paddingBottom: '16px' }}>
+                          <div className={`message message--${message.role}`}>
                             <div className="message__content">
                               {message.role === 'assistant' ? (
                                 <ReactMarkdown
@@ -369,9 +417,16 @@ export function ChatPanel({
                             </div>
                           </div>
                         </div>
-                      );
-                    }}
-                  </FixedSizeList>
+                      ))}
+                      {isLoading && (
+                        <div className="message message--assistant">
+                          <div className="message__content message__loading">
+                            <span>.</span><span>.</span><span>.</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
                 ) : isLoading ? (
                   <div className="message message--assistant">
                     <div className="message__content message__loading">

@@ -1,8 +1,9 @@
 package com.lavis.controller;
 
 import com.lavis.cognitive.AgentService;
-import com.lavis.cognitive.orchestrator.TaskOrchestrator;
-import com.lavis.perception.ScreenCapturer;
+import com.lavis.service.chat.ChatRequest;
+import com.lavis.service.chat.ChatResponse;
+import com.lavis.service.chat.UnifiedChatService;
 import com.lavis.service.llm.LlmFactory;
 import com.lavis.service.voice.VoiceChatService;
 import lombok.RequiredArgsConstructor;
@@ -12,7 +13,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -22,9 +22,10 @@ import java.util.concurrent.ConcurrentLinkedDeque;
  * Agent REST API Controller
  *
  * Architecture:
- * - Fast System (/chat): Vision-based instant Q&A
- * - Slow System (/task, /voice-chat): Plan-Execute orchestration
- * - System Control: status, reset, stop, screenshot
+ * - Unified Chat System: 统一处理文本和音频输入
+ *   - /chat: 文本输入（默认快速路径，支持 use_orchestrator 参数切换）
+ *   - /voice-chat: 音频输入（默认复杂路径，支持 use_orchestrator 参数切换）
+ * - System Control: status, stop
  */
 @Slf4j
 @RestController
@@ -33,9 +34,9 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 public class AgentController {
 
     private final AgentService agentService;
-    private final ScreenCapturer screenCapturer;
     private final LlmFactory llmFactory;
-    private final VoiceChatService voiceChatService;
+    private final VoiceChatService voiceChatService; // 保留用于向后兼容
+    private final UnifiedChatService unifiedChatService;
 
     private final Deque<TaskRecord> taskHistory = new ConcurrentLinkedDeque<>();
     private static final int MAX_HISTORY_SIZE = 50;
@@ -43,90 +44,105 @@ public class AgentController {
     // ==================== Core APIs ====================
 
     /**
-     * Chat (Fast System) - Visual Q&A, single-step commands
+     * Chat - 文本输入的统一处理接口
+     * 
+     * 支持参数：
+     * - message: 用户消息（必需）
+     * - use_orchestrator: 是否使用 TaskOrchestrator（可选，默认 false，使用快速路径）
+     * - needs_tts: 是否需要 TTS 语音反馈（可选，默认 false）
+     * - ws_session_id: WebSocket session ID（可选，用于 TTS 推送）
+     * 
+     * 默认行为：使用快速路径（chatWithScreenshot），适合简单问答和单步命令
+     * 设置 use_orchestrator=true 可切换到复杂任务路径（TaskOrchestrator）
      */
     @PostMapping("/chat")
-    public ResponseEntity<Map<String, Object>> chat(@RequestBody Map<String, String> request) {
-        String message = request.get("message");
+    public ResponseEntity<Map<String, Object>> chat(@RequestBody Map<String, Object> request) {
+        String message = (String) request.get("message");
         if (message == null || message.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Message cannot be empty"));
         }
 
-        log.info("[Chat] message: {}", message);
+        // 解析可选参数
+        Boolean useOrchestrator = parseBoolean(request.get("use_orchestrator"));
+        Boolean needsTts = parseBoolean(request.get("needs_tts"));
+        String wsSessionId = (String) request.get("ws_session_id");
+
+        log.info("[Chat] message: {}, use_orchestrator: {}, needs_tts: {}", 
+                message, useOrchestrator, needsTts);
         long startTime = System.currentTimeMillis();
 
         try {
-            String response = agentService.chatWithScreenshot(message);
-            long duration = System.currentTimeMillis() - startTime;
-            addToHistory("chat", message, response, true, duration);
+            // 使用统一服务处理
+            ChatRequest chatRequest = unifiedChatService.normalizeTextInput(
+                message, wsSessionId, useOrchestrator, needsTts
+            );
+            ChatResponse response = unifiedChatService.process(chatRequest);
+            
+            addToHistory("chat", message, response.agentText(), response.success(), response.durationMs());
 
-            return ResponseEntity.ok(Map.of(
-                "success", true,
-                "response", response,
-                "duration_ms", duration
-            ));
+            // 返回统一格式（包含向后兼容字段）
+            return ResponseEntity.ok(response.toResponseMap(true));
         } catch (Exception e) {
             return handleError("chat", message, startTime, e);
         }
     }
 
     /**
-     * Execute Task (Slow System) - Complex workflows via TaskOrchestrator
+     * 解析布尔值参数（支持多种格式）
      */
-    @PostMapping("/task")
-    public ResponseEntity<Map<String, Object>> executeTask(@RequestBody Map<String, String> request) {
-        String goal = request.get("goal");
-        if (goal == null || goal.isBlank()) goal = request.get("task");
-        if (goal == null || goal.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Task goal cannot be empty"));
+    private Boolean parseBoolean(Object value) {
+        if (value == null) {
+            return null;
         }
-
-        log.info("[Task] goal: {}", goal);
-        long startTime = System.currentTimeMillis();
-
-        try {
-            TaskOrchestrator orchestrator = agentService.getTaskOrchestrator();
-            TaskOrchestrator.OrchestratorResult result = orchestrator.executeGoal(goal);
-            long duration = System.currentTimeMillis() - startTime;
-            addToHistory("task", goal, result.getMessage(), result.isSuccess(), duration);
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", result.isSuccess());
-            response.put("message", result.getMessage());
-            response.put("duration_ms", duration);
-            response.put("execution_summary", orchestrator.getExecutionSummary());
-
-            if (result.getPlan() != null) {
-                response.put("plan_summary", result.getPlan().generateSummary());
-                response.put("steps_total", result.getPlan().getSteps().size());
-            }
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return handleError("task", goal, startTime, e);
+        if (value instanceof Boolean) {
+            return (Boolean) value;
         }
+        if (value instanceof String) {
+            return Boolean.parseBoolean((String) value);
+        }
+        return null;
     }
 
+
     /**
-     * Voice Chat - Audio input with async TTS response via WebSocket
+     * Voice Chat - 音频输入的统一处理接口
+     * 
+     * 支持参数：
+     * - file: 音频文件（必需）
+     * - use_orchestrator: 是否使用 TaskOrchestrator（可选，默认 true，使用复杂路径）
+     * - ws_session_id: WebSocket session ID（可选，用于 TTS 推送）
+     * - screenshot: 截图文件（可选，暂未使用）
+     * 
+     * 默认行为：使用复杂路径（TaskOrchestrator），适合复杂任务和需要规划的场景
+     * 设置 use_orchestrator=false 可切换到快速路径（chatWithScreenshot），适合简单问答
      */
     @PostMapping(value = "/voice-chat", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Map<String, Object>> voiceChat(
             @RequestParam("file") MultipartFile audioFile,
             @RequestParam(value = "ws_session_id", required = false) String wsSessionId,
+            @RequestParam(value = "use_orchestrator", required = false) Boolean useOrchestrator,
             @RequestParam(value = "screenshot", required = false) MultipartFile screenshot
     ) {
         if (audioFile == null || audioFile.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Audio file is required"));
         }
 
-        log.info("[Voice Chat] file: {}", audioFile.getOriginalFilename());
+        log.info("[Voice Chat] file: {}, use_orchestrator: {}", 
+                audioFile.getOriginalFilename(), useOrchestrator);
         long startTime = System.currentTimeMillis();
 
         try {
-            VoiceChatService.VoiceChatResult result = voiceChatService.process(audioFile, wsSessionId);
-            addToHistory("voice-chat", result.userText(), result.agentText(), result.success(), result.durationMs());
-            return ResponseEntity.ok(result.toResponseMap());
+            // 使用统一服务处理
+            ChatRequest chatRequest = unifiedChatService.normalizeAudioInput(
+                audioFile, wsSessionId, useOrchestrator
+            );
+            ChatResponse response = unifiedChatService.process(chatRequest);
+            
+            addToHistory("voice-chat", response.userText(), response.agentText(), 
+                    response.success(), response.durationMs());
+            
+            // 返回统一格式（不包含向后兼容字段，保持原有格式）
+            return ResponseEntity.ok(response.toResponseMap(false));
         } catch (Exception e) {
             return handleError("voice-chat", audioFile.getOriginalFilename(), startTime, e);
         }
@@ -147,15 +163,6 @@ public class AgentController {
         ));
     }
 
-    @PostMapping("/reset")
-    public ResponseEntity<Map<String, String>> reset() {
-        agentService.resetConversation();
-        var orchestrator = agentService.getTaskOrchestrator();
-        if (orchestrator != null) orchestrator.reset();
-
-        log.info("[Reset] System state reset");
-        return ResponseEntity.ok(Map.of("status", "System reset"));
-    }
 
     @GetMapping("/status")
     public ResponseEntity<Map<String, Object>> getStatus() {
@@ -166,11 +173,6 @@ public class AgentController {
         var orchestrator = agentService.getTaskOrchestrator();
         if (orchestrator != null) {
             status.put("orchestrator_state", orchestrator.getState());
-            var plan = orchestrator.getCurrentPlan();
-            if (plan != null) {
-                status.put("current_plan_progress", plan.getProgressPercent());
-                status.put("current_plan", plan);
-            }
         }
 
         return ResponseEntity.ok(status);
@@ -178,19 +180,6 @@ public class AgentController {
 
     // ==================== Utilities ====================
 
-    @GetMapping("/screenshot")
-    public ResponseEntity<Map<String, Object>> getScreenshot() {
-        try {
-            String base64 = screenCapturer.captureScreenAsBase64();
-            return ResponseEntity.ok(Map.of(
-                "success", true,
-                "image", base64,
-                "size", screenCapturer.getScreenSize()
-            ));
-        } catch (IOException e) {
-            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
-        }
-    }
 
     @PostMapping("/tts")
     public ResponseEntity<Map<String, Object>> textToSpeech(@RequestBody Map<String, String> request) {
@@ -216,16 +205,6 @@ public class AgentController {
         }
     }
 
-    @GetMapping("/history")
-    public ResponseEntity<List<TaskRecord>> getHistory() {
-        return ResponseEntity.ok(new ArrayList<>(taskHistory));
-    }
-
-    @DeleteMapping("/history")
-    public ResponseEntity<Void> clearHistory() {
-        taskHistory.clear();
-        return ResponseEntity.ok().build();
-    }
 
     // ==================== Private Helpers ====================
 

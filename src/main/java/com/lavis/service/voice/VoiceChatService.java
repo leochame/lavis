@@ -2,7 +2,6 @@ package com.lavis.service.voice;
 
 import com.lavis.cognitive.AgentService;
 import com.lavis.cognitive.orchestrator.TaskOrchestrator;
-import com.lavis.cognitive.model.TaskPlan;
 import com.lavis.service.llm.LlmFactory;
 import com.lavis.service.tts.AsyncTtsService;
 import com.lavis.service.tts.TtsDecisionService;
@@ -48,7 +47,12 @@ public class VoiceChatService {
         long startTime = System.currentTimeMillis();
 
         // 1. STT: Audio -> Text
+        long sttStartTime = System.currentTimeMillis();
         String userText = llmFactory.getSttModel().transcribe(audioFile);
+        long sttDuration = System.currentTimeMillis() - sttStartTime;
+        log.info("✅ STT completed in {}ms ({}s) - Audio: {} bytes, Transcribed: {} chars",
+                sttDuration, String.format("%.2f", sttDuration / 1000.0),
+                audioFile.getSize(), userText.length());
         log.info("User transcribed: {}", userText);
 
         // 2. Parallel: Check voice feedback need
@@ -87,8 +91,7 @@ public class VoiceChatService {
             requestId,
             audioPending,
             duration,
-            orchestrator.getState().name(),
-            result.getPlan()
+            orchestrator.getState().name()
         );
     }
 
@@ -109,8 +112,7 @@ public class VoiceChatService {
         String requestId,
         boolean audioPending,
         long durationMs,
-        String orchestratorState,
-        TaskPlan plan
+        String orchestratorState
     ) {
         public Map<String, Object> toResponseMap() {
             Map<String, Object> response = new HashMap<>();
@@ -121,11 +123,6 @@ public class VoiceChatService {
             response.put("audio_pending", audioPending);
             response.put("duration_ms", durationMs);
             response.put("orchestrator_state", orchestratorState);
-
-            if (plan != null) {
-                response.put("plan_summary", plan.generateSummary());
-                response.put("steps_total", plan.getSteps().size());
-            }
             return response;
         }
     }

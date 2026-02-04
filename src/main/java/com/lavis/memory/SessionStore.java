@@ -40,6 +40,7 @@ public class SessionStore {
         String sessionKey = UUID.randomUUID().toString();
 
         UserSessionEntity session = new UserSessionEntity();
+        session.setId(UUID.randomUUID().toString());
         session.setSessionKey(sessionKey);
         session.setMessageCount(0);
         session.setTotalTokens(0);

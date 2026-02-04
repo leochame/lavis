@@ -3,6 +3,7 @@ package com.lavis.entity;
 import jakarta.persistence.*;
 import lombok.Data;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Data
 @Entity
@@ -35,6 +36,9 @@ public class UserSessionEntity {
 
     @PrePersist
     protected void onCreate() {
+        if (id == null || id.isBlank()) {
+            id = UUID.randomUUID().toString();
+        }
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
         lastActiveAt = LocalDateTime.now();
