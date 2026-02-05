@@ -17,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.awt.Point;
+import java.awt.event.KeyEvent;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -289,8 +290,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("Press keyboard keys or combinations, such as \"Control+C\" or \"Enter\". Useful for triggering actions (like submitting a form with \"Enter\") or clipboard operations.")
-    public String keyCombination(@P("Keyboard key or combination, e.g. 'enter', 'esc', 'tab', 'backspace', 'cmd+c', 'cmd+v', 'cmd+a', 'cmd+s', 'cmd+z'") String keys) {
+    @Tool("Press keyboard keys or combinations. Use '+' to join keys for combinations, e.g. 'cmd+c', 'cmd+shift+p', 'ctrl+alt+delete'. Useful for submitting forms (\"enter\"), clipboard operations, navigation, etc.")
+    public String keyCombination(@P("Keyboard key or combination, e.g. 'enter', 'esc', 'tab', 'backspace', 'cmd+c', 'cmd+v', 'cmd+a', 'cmd+s', 'cmd+z', 'cmd+shift+p'") String keys) {
         if (keys == null || keys.isEmpty()) {
             return "❌ 错误: keys 不能为空，例如 'enter' 或 'cmd+c'";
         }
@@ -298,53 +299,79 @@ public class AgentTools {
         String normalized = keys.trim().toLowerCase();
 
         try {
-            switch (normalized) {
-                // 单键
-                case "enter" -> {
-                    robotDriver.pressEnter();
-                    return "已按下 Enter 键。请观察是否提交表单或换行。";
-                }
-                case "esc", "escape" -> {
-                    robotDriver.pressEscape();
-                    return "已按下 ESC 键。";
-                }
-                case "tab" -> {
-                    robotDriver.pressTab();
-                    return "已按下 Tab 键。请检查焦点位置。";
-                }
-                case "backspace" -> {
-                    robotDriver.pressBackspace();
-                    return "已按下 Backspace 键。请检查字符是否被删除。";
-                }
+            // 支持任意按键组合：使用 '+' 分隔，如 "cmd+shift+p"、"ctrl+alt+delete"
+            String[] parts = normalized.split("\\+");
+            int[] keyCodes = new int[parts.length];
 
-                // 组合键 - 复制/粘贴/全选/保存/撤销（支持常见写法）
-                case "cmd+c", "command+c", "meta+c", "control+c", "ctrl+c" -> {
-                    robotDriver.copy();
-                    return "已发送复制快捷键。";
+            for (int i = 0; i < parts.length; i++) {
+                String token = parts[i].trim();
+                Integer code = mapKeyToken(token);
+                if (code == null) {
+                    return "❌ 暂不支持的按键或别名: '" + token + "' 于组合 \"" + keys +
+                            "\"。请使用常见写法，如 cmd/ctrl/alt/shift + 字母/数字/enter/esc/tab/backspace 等。";
                 }
-                case "cmd+v", "command+v", "meta+v", "control+v", "ctrl+v" -> {
-                    robotDriver.paste();
-                    return "已发送粘贴快捷键。请检查内容是否出现。";
-                }
-                case "cmd+a", "command+a", "meta+a", "control+a", "ctrl+a" -> {
-                    robotDriver.selectAll();
-                    return "已发送全选快捷键。请检查高亮区域。";
-                }
-                case "cmd+s", "command+s", "meta+s", "control+s", "ctrl+s" -> {
-                    robotDriver.save();
-                    return "已发送保存快捷键。";
-                }
-                case "cmd+z", "command+z", "meta+z", "control+z", "ctrl+z" -> {
-                    robotDriver.undo();
-                    return "已发送撤销快捷键。";
-                }
-                default -> {
-                    return "❌ 暂不支持的按键组合: " + keys + "。请使用例如 'enter'、'esc'、'tab'、'backspace'、'cmd+c'、'cmd+v'、'cmd+a'、'cmd+s'、'cmd+z'。";
-                }
+                keyCodes[i] = code;
+            }
+
+            if (keyCodes.length == 1) {
+                // 单键
+                robotDriver.pressKey(keyCodes[0]);
+                return "已按下按键: " + normalized;
+            } else {
+                // 组合键：同时按下
+                robotDriver.pressKeys(keyCodes);
+                return "已发送组合键: " + normalized;
             }
         } catch (Exception e) {
             return "❌ 按键/组合键执行异常: " + e.getMessage();
         }
+    }
+
+    /**
+     * 将字符串按键标识映射为 KeyEvent keyCode
+     * 支持：
+     * - 修饰键：cmd/command/meta, ctrl/control, alt/option, shift
+     * - 功能键：enter/return, esc/escape, tab, backspace/delete/del
+     * - 字母：a-z
+     * - 数字：0-9
+     */
+    private Integer mapKeyToken(String token) {
+        if (token == null || token.isEmpty()) {
+            return null;
+        }
+
+        // 修饰键
+        switch (token) {
+            case "cmd", "command", "meta", "⌘":
+                return KeyEvent.VK_META;
+            case "ctrl", "control":
+                return KeyEvent.VK_CONTROL;
+            case "alt", "option":
+                return KeyEvent.VK_ALT;
+            case "shift":
+                return KeyEvent.VK_SHIFT;
+            case "enter", "return":
+                return KeyEvent.VK_ENTER;
+            case "esc", "escape":
+                return KeyEvent.VK_ESCAPE;
+            case "tab":
+                return KeyEvent.VK_TAB;
+            case "backspace", "delete", "del":
+                return KeyEvent.VK_BACK_SPACE;
+        }
+
+        // 单个字母 a-z
+        if (token.length() == 1) {
+            char c = token.charAt(0);
+            if (c >= 'a' && c <= 'z') {
+                return KeyEvent.VK_A + (c - 'a');
+            }
+            if (c >= '0' && c <= '9') {
+                return KeyEvent.VK_0 + (c - '0');
+            }
+        }
+
+        return null;
     }
 
     // ==================== 系统操作 ====================
