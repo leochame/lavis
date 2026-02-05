@@ -62,6 +62,12 @@ public class AgentController {
             return ResponseEntity.badRequest().body(Map.of("error", "Message cannot be empty"));
         }
 
+        // 每次新任务开始前，尝试重置 Orchestrator 的中断状态，避免上一次的 FAILED 状态残留
+        var orchestrator = agentService.getTaskOrchestrator();
+        if (orchestrator != null) {
+            orchestrator.reset();
+        }
+
         // 解析可选参数
         Boolean useOrchestrator = parseBoolean(request.get("use_orchestrator"));
         Boolean needsTts = parseBoolean(request.get("needs_tts"));
@@ -130,6 +136,12 @@ public class AgentController {
         log.info("[Voice Chat] file: {}, use_orchestrator: {}", 
                 audioFile.getOriginalFilename(), useOrchestrator);
         long startTime = System.currentTimeMillis();
+
+        // 语音入口同样在任务开始前重置 Orchestrator，清理可能存在的中断标记
+        var orchestrator = agentService.getTaskOrchestrator();
+        if (orchestrator != null) {
+            orchestrator.reset();
+        }
 
         try {
             // 使用统一服务处理
