@@ -38,17 +38,6 @@ public class TaskOrchestrator {
         this.state = OrchestratorState.IDLE;
     }
 
-    /**
-     * 已停用的统一 ReAct 决策入口。
-     * 当前复杂任务执行统一由 AgentService + AgentTools 完成，本方法仅保留签名以兼容旧调用方。
-     */
-    @Deprecated
-    public OrchestratorResult executeGoal(String userGoal) {
-        log.warn("TaskOrchestrator.executeGoal() 已停用，请通过 UnifiedChatService/AgentService 触发复杂任务。goal={}", userGoal);
-        return OrchestratorResult.partial(
-                "TaskOrchestrator ReAct 执行已停用，请通过 UnifiedChatService/AgentService 触发复杂任务执行。原始目标: " + userGoal
-        );
-    }
 
     /**
      * 外部中断

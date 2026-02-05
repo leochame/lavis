@@ -457,12 +457,15 @@ async function startBackend() {
 }
 /**
  * 停止后端进程
+ * 确保所有相关进程都被彻底关闭
  */
 async function stopBackend() {
     isShuttingDown = true;
     stopHealthCheck();
+    const backendPid = backendProcess?.pid;
+    const platform = process.platform;
     if (backendProcess) {
-        logCallback('info', 'Stopping backend...');
+        logCallback('info', `Stopping backend (PID: ${backendPid})...`);
         // 首先尝试优雅关闭
         try {
             // 发送 shutdown 请求
@@ -472,7 +475,7 @@ async function stopBackend() {
                     port: BACKEND_PORT,
                     path: '/actuator/shutdown',
                     method: 'POST',
-                    timeout: 5000,
+                    timeout: 3000,
                 }, () => resolve());
                 req.on('error', () => resolve());
                 req.on('timeout', () => {
@@ -481,23 +484,35 @@ async function stopBackend() {
                 });
                 req.end();
             });
-            // 等待进程退出
+            // 等待进程退出（缩短超时时间，快速进入强制关闭）
             await new Promise((resolve) => {
                 const timeout = setTimeout(() => {
-                    // 强制终止
-                    if (backendProcess) {
-                        logCallback('warn', 'Force killing backend process');
-                        backendProcess.kill('SIGKILL');
+                    // 超时后强制终止
+                    if (backendProcess && !backendProcess.killed) {
+                        logCallback('warn', 'Backend did not exit gracefully, force killing...');
+                        try {
+                            backendProcess.kill('SIGKILL');
+                        }
+                        catch (e) {
+                            logCallback('warn', `Error killing process: ${e}`);
+                        }
                     }
                     resolve();
-                }, 10000);
+                }, 5000); // 缩短到 5 秒
                 if (backendProcess) {
                     backendProcess.once('exit', () => {
                         clearTimeout(timeout);
                         resolve();
                     });
                     // 发送 SIGTERM
-                    backendProcess.kill('SIGTERM');
+                    try {
+                        backendProcess.kill('SIGTERM');
+                    }
+                    catch (e) {
+                        logCallback('warn', `Error sending SIGTERM: ${e}`);
+                        clearTimeout(timeout);
+                        resolve();
+                    }
                 }
                 else {
                     clearTimeout(timeout);
@@ -507,15 +522,76 @@ async function stopBackend() {
         }
         catch (error) {
             logCallback('error', `Error stopping backend: ${error}`);
-            // 强制终止
-            if (backendProcess) {
+        }
+        // 如果进程仍然存在，强制终止
+        if (backendProcess && !backendProcess.killed) {
+            logCallback('warn', 'Backend process still running, force killing...');
+            try {
                 backendProcess.kill('SIGKILL');
+                // 等待一小段时间确保进程被终止
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            catch (e) {
+                logCallback('warn', `Error force killing: ${e}`);
             }
         }
         backendProcess = null;
-        logCallback('info', 'Backend stopped');
+    }
+    // 额外的清理：使用系统命令确保所有相关进程都被关闭
+    // 这对于处理僵尸进程或子进程特别有用
+    if (backendPid) {
+        try {
+            await killProcessTree(backendPid, platform);
+        }
+        catch (error) {
+            logCallback('warn', `Error killing process tree: ${error}`);
+        }
+    }
+    // 在 macOS 上，额外检查并关闭可能残留的 Java 进程
+    if (platform === 'darwin') {
+        try {
+            await killLavisJavaProcesses();
+        }
+        catch (error) {
+            logCallback('warn', `Error killing Java processes: ${error}`);
+        }
     }
     isShuttingDown = false;
+    logCallback('info', 'Backend stopped completely');
+}
+/**
+ * 杀死进程树（包括所有子进程）
+ */
+async function killProcessTree(pid, platform) {
+    return new Promise((resolve) => {
+        let command;
+        if (platform === 'darwin' || platform === 'linux') {
+            // macOS/Linux: 使用 pkill 杀死子进程
+            command = `pkill -P ${pid} 2>/dev/null || true`;
+        }
+        else {
+            // Windows: 使用 taskkill
+            command = `taskkill /F /T /PID ${pid} 2>nul || exit 0`;
+        }
+        (0, child_process_1.exec)(command, (error) => {
+            // 忽略错误，因为进程可能已经不存在
+            resolve();
+        });
+    });
+}
+/**
+ * 在 macOS 上杀死所有 Lavis 相关的 Java 进程
+ * 通过检查进程命令行参数来识别
+ */
+async function killLavisJavaProcesses() {
+    return new Promise((resolve) => {
+        // 查找所有包含 lavis.jar 的 Java 进程并强制杀死
+        const command = `ps aux | grep -i "lavis.jar" | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null || true`;
+        (0, child_process_1.exec)(command, (error) => {
+            // 忽略错误，因为可能没有找到进程
+            resolve();
+        });
+    });
 }
 /**
  * 启动健康检查

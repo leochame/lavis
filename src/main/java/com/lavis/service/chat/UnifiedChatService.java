@@ -79,12 +79,16 @@ public class UnifiedChatService {
     private ChatResponse processWithFastPath(ChatRequest request, String requestId, long startTime) throws Exception {
         log.info("[UnifiedChat] Using fast path (chatWithScreenshot)");
         
+        long agentStartTime = System.currentTimeMillis();
         String agentText = agentService.chatWithScreenshot(request.text());
-        long duration = System.currentTimeMillis() - startTime;
+        long agentDuration = System.currentTimeMillis() - agentStartTime;
+        long totalDuration = System.currentTimeMillis() - startTime;
         
-        log.info("[UnifiedChat] Fast path completed in {}ms", duration);
+        log.info("[UnifiedChat] Fast path completed - Agent: {}ms ({}s), Total: {}ms ({}s)", 
+                agentDuration, String.format("%.2f", agentDuration / 1000.0),
+                totalDuration, String.format("%.2f", totalDuration / 1000.0));
         
-        return ChatResponse.fastPath(request.text(), agentText, requestId, duration);
+        return ChatResponse.fastPath(request.text(), agentText, requestId, totalDuration);
     }
 
     /**
@@ -106,17 +110,21 @@ public class UnifiedChatService {
         // 不再调用 TaskOrchestrator 的 ReAct 循环，而是复用 AgentService 的工具执行能力。
         //
         // 对外仍然保留 "orchestrator 路径" 的语义，仅内部实现改为基于 AgentTools 的统一引擎。
+        long agentStartTime = System.currentTimeMillis();
         String agentText = agentService.chatWithScreenshot(request.text());
+        long agentDuration = System.currentTimeMillis() - agentStartTime;
+        long totalDuration = System.currentTimeMillis() - startTime;
         
-        long duration = System.currentTimeMillis() - startTime;
-        log.info("[UnifiedChat] Orchestrator path completed in {}ms", duration);
+        log.info("[UnifiedChat] Orchestrator path completed - Agent: {}ms ({}s), Total: {}ms ({}s)", 
+                agentDuration, String.format("%.2f", agentDuration / 1000.0),
+                totalDuration, String.format("%.2f", totalDuration / 1000.0));
 
         // 创建响应
         ChatResponse response = ChatResponse.orchestratorPath(
             request.text(),
             agentText,
             requestId,
-            duration,
+            totalDuration,
             true,
             TaskOrchestrator.OrchestratorState.COMPLETED.name()
         );
@@ -173,11 +181,11 @@ public class UnifiedChatService {
      * 
      * @param text 用户文本
      * @param wsSessionId WebSocket session ID
-     * @param useOrchestrator 是否使用 TaskOrchestrator
-     * @param needsTts 是否需要 TTS
+     * @param useOrchestrator 是否使用 TaskOrchestrator（可选，默认 false）
+     * @param needsTts 是否需要 TTS（可选，默认 false）
      */
     public ChatRequest normalizeTextInput(String text, String wsSessionId, Boolean useOrchestrator, Boolean needsTts) {
-        // 默认值：文本输入通常使用快速路径，不需要 TTS
+        // 默认值：统一使用 false（快速路径，不需要 TTS）
         boolean useOrch = useOrchestrator != null ? useOrchestrator : false;
         boolean needsTtsFlag = needsTts != null ? needsTts : false;
         
@@ -189,24 +197,58 @@ public class UnifiedChatService {
      * 
      * @param audioFile 音频文件
      * @param wsSessionId WebSocket session ID
-     * @param useOrchestrator 是否使用 TaskOrchestrator
+     * @param useOrchestrator 是否使用 TaskOrchestrator（可选，默认 false）
+     * @param needsTts 是否需要 TTS（可选，默认 false）
      * @return 标准化的请求（包含转录后的文本）
+     * @throws Exception 如果 STT 转换失败，抛出包含友好错误消息的异常
      */
-    public ChatRequest normalizeAudioInput(MultipartFile audioFile, String wsSessionId, Boolean useOrchestrator) throws Exception {
-        // STT 转换
+    public ChatRequest normalizeAudioInput(MultipartFile audioFile, String wsSessionId, Boolean useOrchestrator, Boolean needsTts) throws Exception {
+        // STT 转换（性能监控）
         long sttStartTime = System.currentTimeMillis();
+        double audioSizeMB = audioFile.getSize() / 1024.0 / 1024.0;
+        log.info("🎤 Starting STT transcription - Audio: {} MB ({} bytes), filename: {}", 
+                String.format("%.2f", audioSizeMB), audioFile.getSize(), audioFile.getOriginalFilename());
+        
+        try {
         String transcribedText = llmFactory.getSttModel().transcribe(audioFile);
         long sttDuration = System.currentTimeMillis() - sttStartTime;
         
-        log.info("✅ STT completed in {}ms ({}s) - Audio: {} bytes, Transcribed: {} chars",
+            log.info("✅ STT completed in {}ms ({}s) - Audio: {} bytes, Transcribed: {} chars, Rate: {} MB/s",
                 sttDuration, String.format("%.2f", sttDuration / 1000.0),
-                audioFile.getSize(), transcribedText.length());
+                    audioFile.getSize(), transcribedText.length(),
+                    String.format("%.2f", audioSizeMB / (sttDuration / 1000.0)));
         log.info("User transcribed: {}", transcribedText);
 
-        // 默认值：音频输入通常使用复杂路径（TaskOrchestrator），需要 TTS
-        boolean useOrch = useOrchestrator != null ? useOrchestrator : true;
+        // 默认值：统一使用 false（快速路径，不需要 TTS），与文本输入保持一致
+        // 唯一差异：这里多了一个 STT 转换步骤
+        boolean useOrch = useOrchestrator != null ? useOrchestrator : false;
+        boolean needsTtsFlag = needsTts != null ? needsTts : false;
         
-        return ChatRequest.audioInput(transcribedText, wsSessionId, useOrch);
+        return ChatRequest.audioInput(transcribedText, wsSessionId, useOrch, needsTtsFlag);
+        } catch (RuntimeException e) {
+            long sttDuration = System.currentTimeMillis() - sttStartTime;
+            String errorMessage = e.getMessage();
+            
+            // 提取友好的错误消息
+            if (errorMessage != null) {
+                if (errorMessage.contains("500") || errorMessage.contains("服务器错误")) {
+                    errorMessage = "语音识别服务暂时不可用，请稍后重试";
+                } else if (errorMessage.contains("429")) {
+                    errorMessage = "请求过于频繁，请稍后再试";
+                } else if (errorMessage.contains("401") || errorMessage.contains("403")) {
+                    errorMessage = "API 密钥无效或权限不足，请检查配置";
+                } else if (errorMessage.contains("timeout") || errorMessage.contains("超时")) {
+                    errorMessage = "语音识别请求超时，请检查网络连接或稍后重试";
+                } else if (errorMessage.contains("connection") || errorMessage.contains("连接")) {
+                    errorMessage = "无法连接到语音识别服务，请检查网络连接";
+                }
+            } else {
+                errorMessage = "语音识别失败，请稍后重试";
+            }
+            
+            log.error("❌ STT transcription failed after {}ms: {}", sttDuration, errorMessage, e);
+            throw new RuntimeException("语音识别失败: " + errorMessage, e);
+        }
     }
 }
 

@@ -269,7 +269,7 @@ export function Capsule({
             <div className="capsule__ripple capsule__ripple--2"></div>
           </div>
           {/* Debug: 添加一个可见的测试标记 */}
-          {process.env.NODE_ENV === 'development' && (
+          {process.env?.NODE_ENV === 'development' && (
             <div style={{
               position: 'absolute',
               top: '-30px',

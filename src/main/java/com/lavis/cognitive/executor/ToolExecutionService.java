@@ -3,6 +3,8 @@ package com.lavis.cognitive.executor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lavis.cognitive.AgentTools;
+import com.lavis.skills.SkillService;
+import com.lavis.skills.SkillExecutor;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.agent.tool.ToolSpecifications;
 import jakarta.annotation.PostConstruct;
@@ -31,22 +33,27 @@ import java.util.*;
 public class ToolExecutionService {
 
     private final AgentTools agentTools;
+    private final SkillService skillService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    /** 工具规格列表（供 LLM 使用） */
+    /** 基础工具规格列表（供 LLM 使用） */
     @Getter
     private List<ToolSpecification> toolSpecifications;
+
+    /** Skill 工具规格列表（来自 SkillService，实时更新） */
+    private final List<ToolSpecification> skillToolSpecifications = new ArrayList<>();
     
-    /** 工具名称 -> Method 映射 */
+    /** 基础工具名称 -> Method 映射 */
     private Map<String, Method> toolMethods;
 
-    public ToolExecutionService(AgentTools agentTools) {
+    public ToolExecutionService(AgentTools agentTools, SkillService skillService) {
         this.agentTools = agentTools;
+        this.skillService = skillService;
     }
 
     @PostConstruct
     public void init() {
-        // 初始化工具规格
+        // 初始化基础工具规格
         this.toolSpecifications = ToolSpecifications.toolSpecificationsFrom(agentTools);
 
         // 建立工具名称到方法的映射
@@ -57,32 +64,79 @@ public class ToolExecutionService {
             }
         }
 
-        log.info("✅ ToolExecutionService 初始化完成，工具数: {}", toolSpecifications.size());
-        log.info("📦 可用工具: {}", toolMethods.keySet());
+        // 初始化 Skill 工具规格
+        this.skillToolSpecifications.clear();
+        this.skillToolSpecifications.addAll(skillService.getToolSpecifications());
+
+        // 注册 Skill 工具更新监听器，保持与 SkillService 同步
+        skillService.addToolUpdateListener(newTools -> {
+            synchronized (skillToolSpecifications) {
+                skillToolSpecifications.clear();
+                skillToolSpecifications.addAll(newTools);
+            }
+            log.info("🔄 Skill 工具列表已更新，当前数量: {}", skillToolSpecifications.size());
+        });
+
+        log.info("✅ ToolExecutionService 初始化完成，基础工具数: {}，Skill 工具数: {}",
+                toolSpecifications.size(), skillToolSpecifications.size());
+        log.info("📦 可用基础工具: {}", toolMethods.keySet());
     }
 
+    // ==================== 统一工具视图 ====================
+
     /**
-     * 获取工具数量
+     * 获取基础工具数量（不含 Skill 工具）
      */
     public int getToolCount() {
         return toolMethods != null ? toolMethods.size() : 0;
     }
 
     /**
-     * 获取所有工具名称
+     * 获取所有基础工具名称
      */
     public Set<String> getToolNames() {
         return toolMethods != null ? toolMethods.keySet() : Set.of();
     }
 
     /**
-     * 通过反射执行工具方法
-     * 
-     * @param toolName 工具名称
-     * @param argsJson 参数 JSON 字符串
-     * @return 执行结果字符串
+     * 获取合并后的工具规格列表（基础工具 + Skill 工具）
      */
-    public String execute(String toolName, String argsJson) {
+    public List<ToolSpecification> getCombinedToolSpecifications() {
+        List<ToolSpecification> combined = new ArrayList<>();
+        if (toolSpecifications != null) {
+            combined.addAll(toolSpecifications);
+        }
+        synchronized (skillToolSpecifications) {
+            combined.addAll(skillToolSpecifications);
+        }
+        return combined;
+    }
+
+    /**
+     * 统一执行入口：根据名称路由到基础工具或 Skill 工具。
+     */
+    public String executeUnified(String toolName, String argsJson) {
+        // 基础工具优先
+        if (hasTool(toolName)) {
+            return executeBaseTool(toolName, argsJson);
+        }
+
+        // Skill 工具
+        if (isSkillTool(toolName)) {
+            log.info("🎯 执行 Skill 工具: {}", toolName);
+            SkillExecutor.ExecutionResult result = skillService.executeByToolName(toolName, argsJson);
+            return result.isSuccess()
+                    ? result.getOutput()
+                    : "❌ " + result.getError();
+        }
+
+        return "❌ 未知工具: " + toolName;
+    }
+
+    /**
+     * 通过反射执行基础工具方法
+     */
+    private String executeBaseTool(String toolName, String argsJson) {
         try {
             Method method = toolMethods.get(toolName);
             if (method == null) {
@@ -132,41 +186,66 @@ public class ToolExecutionService {
 
     /**
      * 判断工具是否可能影响屏幕显示
-     * 
+     *
      * 用于决定工具执行后是否需要重新截图
-     * 
+     *
      * @param toolName 工具名称
      * @return true 表示可能影响屏幕，需要重新截图
      */
     public boolean isVisualImpactTool(String toolName) {
-        return switch (toolName) {
-            // 鼠标操作 - 影响屏幕
-            case "click", "doubleClick", "rightClick", "drag" -> true;
-            // 键盘操作 - 影响屏幕
-            case "typeText", "pressEnter", "pressTab", "pressEscape", "pressBackspace" -> true;
-            // 系统操作 - 影响屏幕
-            case "openApplication", "quitApplication", "openURL", "openFile" -> true;
-            case "scroll", "paste", "selectAll", "save", "undo" -> true;
-            case "executeAppleScript", "executeShell", "revealInFinder" -> true;
-            // wait 通常用于等待屏幕状态变化，需要重新截图以观察变化
-            case "wait" -> true;
-            // 这些工具只是获取信息，不改变屏幕
-            case "moveMouse" -> true;
-            case "getMouseInfo", "verifyClickPosition", "captureScreen" -> false;
-            case "getActiveApp", "getActiveWindowTitle", "copy" -> false;
-            case "showNotification" -> false;
-            // 搜索工具 - 不影响屏幕
-            case "internetSearch", "quickSearch" -> false;
-            // 未知工具默认认为有影响
-            default -> true;
-        };
+        // 基础工具的判断逻辑保持不变
+        if (hasTool(toolName)) {
+            return switch (toolName) {
+                // 鼠标操作 - 影响屏幕
+                case "click", "doubleClick", "rightClick", "drag" -> true;
+                // 键盘操作 - 影响屏幕
+                case "type_text_at", "keyCombination" -> true;
+                // 系统操作 - 影响屏幕
+                case "openApplication", "quitApplication", "openURL", "openFile" -> true;
+                case "scroll" -> true;
+                case "executeAppleScript", "executeShell", "revealInFinder" -> true;
+                // wait 通常用于等待屏幕状态变化，需要重新截图以观察变化
+                case "wait" -> true;
+                // 这些工具只是获取信息，不改变屏幕
+                case "moveMouse" -> true;
+                case "getMouseInfo", "captureScreen" -> false;
+                case "getActiveApp", "getActiveWindowTitle" -> false;
+                case "showNotification" -> false;
+                // 认知类工具：仅记录思考，不改变屏幕
+                case "think_tool" -> false;
+                // 任务终止标记工具：只写日志，不改变屏幕
+                case "complete_tool" -> false;
+                // 搜索工具 - 不影响屏幕
+                case "internetSearch", "quickSearch" -> false;
+                // 未知基础工具默认认为有影响
+                default -> true;
+            };
+        }
+
+        // Skill 工具默认认为有视觉影响（可能触发 agent: 命令）
+        if (isSkillTool(toolName)) {
+            return true;
+        }
+
+        // 未知工具默认认为有影响
+        return true;
     }
 
     /**
-     * 检查工具是否存在
+     * 检查是否为基础工具
      */
     public boolean hasTool(String toolName) {
         return toolMethods != null && toolMethods.containsKey(toolName);
+    }
+
+    /**
+     * 判断是否为 Skill 工具（基于当前 Skill ToolSpecifications）
+     */
+    public boolean isSkillTool(String toolName) {
+        synchronized (skillToolSpecifications) {
+            return skillToolSpecifications.stream()
+                    .anyMatch(spec -> spec.name().equals(toolName));
+        }
     }
 
     // ==================== 私有辅助方法 ====================

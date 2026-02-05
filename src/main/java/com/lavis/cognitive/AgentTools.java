@@ -53,16 +53,46 @@ public class AgentTools {
         this.llmFactory = llmFactory;
     }
 
+    // ==================== 认知 / 反思工具 ====================
+
+    /**
+     * 纯思考/反思/规划工具（无任何外部副作用）
+     *
+     * 用途：
+     * - 在「开始执行前」先梳理整体思路和步骤规划。
+     * - 在「执行过程中」对当前进展进行反思、调整策略。
+     * - 在「出现异常或卡住」时，总结问题、提出假设和下一步计划。
+     *
+     * 设计约束：
+     * - 本工具绝不调用任何外部系统，不做点击/输入/网络请求等操作，仅在内部记录一段文字。
+     * - 每次调用时，入参中的思考内容会被**原样作为 tool_result 返回**，便于编排器/上层系统记录和展示思考链路。
+     *
+     * 使用建议（对 LLM）：
+     * - 当任务复杂、多步骤或存在不确定性时，优先调用本工具进行显式规划。
+     * - 反思内容应尽量结构化，例如：
+     *   1) 当前目标
+     *   2) 已知信息
+     *   3) 风险与不确定点
+     *   4) 接下来 1~3 步的具体行动计划（对应可调用的工具）
+     */
+    @Tool("Reflect, analyze, and plan before or during actions. This tool has NO side effects: it only records your structured thinking. The input reflection text will be returned verbatim as the tool_result so orchestrators can log your reasoning.")
+    public String think_tool(
+            @P("Your detailed reflection or step-by-step plan. Suggest structure: (1) goal, (2) known info, (3) risks/uncertainties, (4) next 1-3 concrete tool calls you plan to make.") String reflection
+    ) {
+        // 关键点：不做任何外部动作，只是把思考原样返回作为 tool_result
+        return reflection == null ? "" : reflection;
+    }
+
     // ==================== 鼠标操作 (反馈语调更加中性) ====================
 
     /**
-     * 将 Gemini 归一化坐标 (0-1000) 转为 macOS AWT Robot 使用的逻辑屏幕坐标 (points)。
+     * 将 Gemini 归一化坐标 (0-999) 转为 macOS AWT Robot 使用的逻辑屏幕坐标 (points)。
      * 说明：
-     * - 屏幕截图叠加网格/模型输出使用 Gemini 坐标系 (0-1000)；
+     * - 屏幕截图叠加网格/模型输出使用 Gemini 坐标系 (0-999)；
      * - Java 9+ macOS 下 AWT Robot 使用逻辑坐标，不是物理像素；
      * - 因此这里需要做"坐标系转换"，而不是乘以 Retina 缩放因子。
      * 
-     * 【修复】添加坐标验证和钳制，确保输入坐标在有效范围内 (0-1000)
+     * 【修复】添加坐标验证和钳制，确保输入坐标在有效范围内 (0-999)
      */
     private Point toLogicalPoint(int[] geminiCoords) {
         if (geminiCoords == null || geminiCoords.length < 2) return null;
@@ -70,7 +100,7 @@ public class AgentTools {
         int geminiX = geminiCoords[0];
         int geminiY = geminiCoords[1];
         
-        // 验证并钳制 Gemini 坐标到有效范围 (0-1000)
+        // 验证并钳制 Gemini 坐标到有效范围 (0-999)
         boolean clamped = false;
         if (geminiX < 0 || geminiX > ScreenCapturer.COORD_MAX) {
             geminiX = Math.max(0, Math.min(ScreenCapturer.COORD_MAX, geminiX));
@@ -93,7 +123,7 @@ public class AgentTools {
         return logical;
     }
 
-    public String moveMouse(@P("Coordinate position array [x, y] in Gemini format (0-1000)") int[] coords) {
+    public String moveMouse(@P("Coordinate position array [x, y] in Gemini format (0-999)") int[] coords) {
         if (coords == null || coords.length < 2) return "❌ 错误: 坐标无效";
         try {
             Point logical = toLogicalPoint(coords);
@@ -106,8 +136,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("Click at specified screen position. Coordinates must be in Gemini format [x, y] where x and y are integers between 0 and 1000. Note: After click operation executes must observe screen changes such as button color change page jump popup disappearance to confirm if click took effect")
-    public String click(@P("Coordinate position array [x, y] in Gemini format (0-1000)") int[] coords) {
+    @Tool("Click at specified screen position. Coordinates must be in Gemini format [x, y] where x and y are integers between 0 and 999. Note: After click operation executes must observe screen changes such as button color change page jump popup disappearance to confirm if click took effect")
+    public String click(@P("Coordinate position array [x, y] in Gemini format (0-999)") int[] coords) {
         if (coords == null || coords.length < 2) {
             return String.format("❌ 错误: 坐标无效 (需要 [x, y] 数组，Gemini 格式 0-%d)", ScreenCapturer.COORD_MAX);
         }
@@ -135,8 +165,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("Double click at specified screen position. Coordinates must be in Gemini format [x, y] where x and y are integers between 0 and 1000. If single click did not trigger expected UI changes try using this tool")
-    public String doubleClick(@P("Coordinate position array [x, y] in Gemini format (0-1000)") int[] coords) {
+    @Tool("Double click at specified screen position. Coordinates must be in Gemini format [x, y] where x and y are integers between 0 and 999. If single click did not trigger expected UI changes try using this tool")
+    public String doubleClick(@P("Coordinate position array [x, y] in Gemini format (0-999)") int[] coords) {
         if (coords == null || coords.length < 2) {
             return String.format("❌ 错误: 坐标无效 (需要 [x, y] 数组，Gemini 格式 0-%d)", ScreenCapturer.COORD_MAX);
         }
@@ -160,8 +190,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("Right click at specified screen position. Coordinates must be in Gemini format [x, y] where x and y are integers between 0 and 1000")
-    public String rightClick(@P("Coordinate position array [x, y] in Gemini format (0-1000)") int[] coords) {
+    @Tool("Right click at specified screen position. Coordinates must be in Gemini format [x, y] where x and y are integers between 0 and 999")
+    public String rightClick(@P("Coordinate position array [x, y] in Gemini format (0-999)") int[] coords) {
         if (coords == null || coords.length < 2) return "❌ 错误: 坐标无效";
         try {
             Point logical = toLogicalPoint(coords);
@@ -175,8 +205,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("Drag operation. Coordinates must be in Gemini format [x, y] where x and y are integers between 0 and 1000")
-    public String drag(@P("Start position [x, y] in Gemini format (0-1000)") int[] from, @P("Target position [x, y] in Gemini format (0-1000)") int[] to) {
+    @Tool("Drag operation. Coordinates must be in Gemini format [x, y] where x and y are integers between 0 and 999")
+    public String drag(@P("Start position [x, y] in Gemini format (0-999)") int[] from, @P("Target position [x, y] in Gemini format (0-999)") int[] to) {
         try {
             if (from == null || from.length < 2 || to == null || to.length < 2) return "❌ 错误: 坐标无效";
             Point fromLogical = toLogicalPoint(from);
@@ -201,8 +231,7 @@ public class AgentTools {
 
     // ==================== 键盘操作 ====================
 
-    @Tool("Input text. Note: Ensure input box is focused. After input check if text is correctly displayed on screen")
-    public String typeText(@P("Text to input") String text) {
+    public String type_at(String text) {
         try {
             robotDriver.type(text);
             return String.format("⌨️ 键盘敲击已发送: \"%s\"。请通过截图验证文字是否上屏。", text);
@@ -211,93 +240,110 @@ public class AgentTools {
         }
     }
 
-    @Tool("Press Enter key")
-    public String pressEnter() {
+    /**
+     * 在指定坐标输入文本（1000x1000 Gemini 坐标系）
+     *
+     * 说明：
+     * - x、y 使用与点击工具相同的 Gemini 坐标（0-1000），内部会自动转换为逻辑坐标。
+     * - 默认会先点击该坐标位置以聚焦输入框。
+     * - 默认会先全选并清空原有内容（clear_before_typing = true）。
+     *
+     * 【关键约束】
+     * - 即使传入 press_enter=true，本工具也绝不会自动按下 Enter。
+     * - 如需回车提交，请单独调用 keyCombination("enter")。
+     */
+    @Tool("Type text at a specific 1000x1000 Gemini coordinate. This tool NEVER presses Enter automatically, even if press_enter is true. Use keyCombination('enter') explicitly if you need to submit.")
+    public String type_text_at(
+            @P("y: int (0-999) Gemini Y coordinate") int y,
+            @P("x: int (0-999) Gemini X coordinate") int x,
+            @P("Text to input") String text,
+            @P("Whether to clear existing text before typing; default true if null") Boolean clear_before_typing
+    ) {
         try {
-            robotDriver.pressEnter();
-            return "已按下 Enter 键。请观察是否提交表单或换行。";
+            int[] coords = new int[]{x, y};
+            Point logical = toLogicalPoint(coords);
+            if (logical == null) {
+                return "❌ 错误: 坐标无效，无法转换为逻辑坐标";
+            }
+
+            // 1. 在该位置点击以获得输入焦点
+            robotDriver.clickAt(logical.x, logical.y);
+
+            // 2. 是否清空原有内容（默认 true）
+            boolean shouldClear = clear_before_typing == null || clear_before_typing;
+            if (shouldClear) {
+                robotDriver.selectAll();
+                robotDriver.pressBackspace();
+            }
+
+            // 3. 输入文本（不包含 Enter）
+            robotDriver.type(text != null ? text : "");
+
+            // 4. 返回提示信息，强调不会自动按 Enter
+            return String.format(
+                    "⌨️ 已在 逻辑坐标(%d, %d) 输入文本: \"%s\"（Gemini 坐标:%d,%d）。本工具不会自动按下 Enter，如需提交请单独调用 keyCombination(\"enter\")。",
+                    logical.x, logical.y, text, x, y
+            );
         } catch (Exception e) {
-            return "❌ 按键异常: " + e.getMessage();
+            return "❌ 坐标输入异常: " + e.getMessage();
         }
     }
 
-    @Tool("Press Escape key")
-    public String pressEscape() {
-        try {
-            robotDriver.pressEscape();
-            return "已按下 ESC 键。";
-        } catch (Exception e) {
-            return "❌ 按键异常: " + e.getMessage();
+    @Tool("Press keyboard keys or combinations, such as \"Control+C\" or \"Enter\". Useful for triggering actions (like submitting a form with \"Enter\") or clipboard operations.")
+    public String keyCombination(@P("Keyboard key or combination, e.g. 'enter', 'esc', 'tab', 'backspace', 'cmd+c', 'cmd+v', 'cmd+a', 'cmd+s', 'cmd+z'") String keys) {
+        if (keys == null || keys.isEmpty()) {
+            return "❌ 错误: keys 不能为空，例如 'enter' 或 'cmd+c'";
         }
-    }
 
-    @Tool("Press Tab key")
-    public String pressTab() {
-        try {
-            robotDriver.pressTab();
-            return "已按下 Tab 键。请检查焦点位置。";
-        } catch (Exception e) {
-            return "❌ 按键异常: " + e.getMessage();
-        }
-    }
+        String normalized = keys.trim().toLowerCase();
 
-    @Tool("Press Backspace key")
-    public String pressBackspace() {
         try {
-            robotDriver.pressBackspace();
-            return "已按下 Backspace 键。请检查字符是否被删除。";
-        } catch (Exception e) {
-            return "❌ 按键异常: " + e.getMessage();
-        }
-    }
+            switch (normalized) {
+                // 单键
+                case "enter" -> {
+                    robotDriver.pressEnter();
+                    return "已按下 Enter 键。请观察是否提交表单或换行。";
+                }
+                case "esc", "escape" -> {
+                    robotDriver.pressEscape();
+                    return "已按下 ESC 键。";
+                }
+                case "tab" -> {
+                    robotDriver.pressTab();
+                    return "已按下 Tab 键。请检查焦点位置。";
+                }
+                case "backspace" -> {
+                    robotDriver.pressBackspace();
+                    return "已按下 Backspace 键。请检查字符是否被删除。";
+                }
 
-    @Tool("Copy Cmd+C")
-    public String copy() {
-        try {
-            robotDriver.copy();
-            return "已发送复制快捷键。";
+                // 组合键 - 复制/粘贴/全选/保存/撤销（支持常见写法）
+                case "cmd+c", "command+c", "meta+c", "control+c", "ctrl+c" -> {
+                    robotDriver.copy();
+                    return "已发送复制快捷键。";
+                }
+                case "cmd+v", "command+v", "meta+v", "control+v", "ctrl+v" -> {
+                    robotDriver.paste();
+                    return "已发送粘贴快捷键。请检查内容是否出现。";
+                }
+                case "cmd+a", "command+a", "meta+a", "control+a", "ctrl+a" -> {
+                    robotDriver.selectAll();
+                    return "已发送全选快捷键。请检查高亮区域。";
+                }
+                case "cmd+s", "command+s", "meta+s", "control+s", "ctrl+s" -> {
+                    robotDriver.save();
+                    return "已发送保存快捷键。";
+                }
+                case "cmd+z", "command+z", "meta+z", "control+z", "ctrl+z" -> {
+                    robotDriver.undo();
+                    return "已发送撤销快捷键。";
+                }
+                default -> {
+                    return "❌ 暂不支持的按键组合: " + keys + "。请使用例如 'enter'、'esc'、'tab'、'backspace'、'cmd+c'、'cmd+v'、'cmd+a'、'cmd+s'、'cmd+z'。";
+                }
+            }
         } catch (Exception e) {
-            return "❌ 复制异常: " + e.getMessage();
-        }
-    }
-
-    @Tool("Paste Cmd+V")
-    public String paste() {
-        try {
-            robotDriver.paste();
-            return "已发送粘贴快捷键。请检查内容是否出现。";
-        } catch (Exception e) {
-            return "❌ 粘贴异常: " + e.getMessage();
-        }
-    }
-
-    @Tool("Select All Cmd+A")
-    public String selectAll() {
-        try {
-            robotDriver.selectAll();
-            return "已发送全选快捷键。请检查高亮区域。";
-        } catch (Exception e) {
-            return "❌ 全选异常: " + e.getMessage();
-        }
-    }
-
-    @Tool("Save Cmd+S")
-    public String save() {
-        try {
-            robotDriver.save();
-            return "已发送保存快捷键。";
-        } catch (Exception e) {
-            return "❌ 保存异常: " + e.getMessage();
-        }
-    }
-
-    @Tool("Undo Cmd+Z")
-    public String undo() {
-        try {
-            robotDriver.undo();
-            return "已发送撤销快捷键。";
-        } catch (Exception e) {
-            return "❌ 撤销异常: " + e.getMessage();
+            return "❌ 按键/组合键执行异常: " + e.getMessage();
         }
     }
 
@@ -383,15 +429,6 @@ public class AgentTools {
         }
     }
 
-    @Tool("Show notification")
-    public String showNotification(@P("Title") String title, @P("Content") String message) {
-        try {
-            appleScriptExecutor.showNotification(title, message);
-            return "通知已发送。";
-        } catch (Exception e) {
-            return "❌ 异常: " + e.getMessage();
-        }
-    }
 
     @Tool("Execute AppleScript")
     public String executeAppleScript(@P("Script") String script) {
@@ -436,8 +473,6 @@ public class AgentTools {
         }
     }
 
-    // ==================== 诊断工具 ====================
-
     @Tool("Get mouse information")
     public String getMouseInfo() {
         try {
@@ -449,37 +484,21 @@ public class AgentTools {
             return "❌ 获取失败: " + e.getMessage();
         }
     }
-
-    @Tool("Verify if coordinates are within screen")
-    public String verifyClickPosition(@P("Coordinates [x, y]") int[] coords) {
-        if (coords == null || coords.length < 2) return "❌ 错误: 坐标无效";
-        try {
-            java.awt.Dimension screenSize = screenCapturer.getScreenSize();
-            Point logical = toLogicalPoint(coords);
-            if (logical == null) return "❌ 错误: 坐标无效";
-            boolean inRange = logical.x >= 0 && logical.x < screenSize.width &&
-                    logical.y >= 0 && logical.y < screenSize.height;
-            return inRange
-                    ? String.format("✅ 坐标有效：逻辑(%d,%d) in %dx%d（输入Gemini:%d,%d）",
-                    logical.x, logical.y, screenSize.width, screenSize.height, coords[0], coords[1])
-                    : String.format("⚠️ 坐标超出屏幕范围：逻辑(%d,%d) vs %dx%d（输入Gemini:%d,%d）",
-                    logical.x, logical.y, screenSize.width, screenSize.height, coords[0], coords[1]);
-        } catch (Exception e) {
-            return "❌ 验证失败: " + e.getMessage();
-        }
-    }
-
     // ==================== 任务完成工具 ====================
 
     /**
-     * 里程碑完成工具
-     * 
-     * 【重要规则】只能在观察到屏幕变化后调用，不能在执行动作的同一轮调用。
-     * 调用此工具即代表流程结束（Success）。
+     * 任务完成工具（单层架构下，表示“整个用户任务”已经完成）
+     *
+     * 【架构规则】
+     * 1. 单层任务：当前架构下不存在子任务/里程碑分层；调用本工具 == 当前用户给定的整个任务已完成。
+     * 2. 必须在「观察轮」调用：只能在收到最新截图并确认界面已达到最终目标状态后调用。
+     * 3. 严禁在「执行动作的同一轮」调用：如果本轮你刚刚执行了 click / type / keyCombination / scroll 等会改变界面的动作，
+     *    必须等待下一轮截图验证动作结果，再根据截图决定是否调用本工具。
+     * 4. 调用本工具即视为整个任务成功结束，编排器会退出当前任务循环，不再规划或调用任何其他工具。
      */
-    @Tool("Call only when clear visual evidence of complete task achievement can be seen in screenshot. This call will end current task loop. CRITICAL: Do NOT call this tool in the same turn as executing an action (click, type, etc). You must wait for the next screenshot to verify the action succeeded before calling this tool.")
-    public String completeMilestone(
-            @P("Must include 1.success evidence seen in screenshot 2.specific manifestation of completion state") String summary) {
+    @Tool("Use ONLY when the entire user task is fully completed and the latest screenshot clearly proves the final goal state. This tool marks the WHOLE task as SUCCESS and ends the current task loop completely. CRITICAL ARCHITECTURE RULE: never call this tool in the same turn as any visual-impact action (click, type_text_at, keyCombination, scroll, drag, etc). Always wait for the next screenshot, verify full task success, then (and only then) call this tool. After calling this tool, you must NOT plan or call any further tools.")
+    public String complete_tool(
+            @P("Summarize: (1) concrete visual evidence from the latest screenshot proving that the ENTIRE user task is completed; (2) the final completed state / user goal in natural language.") String summary) {
         log.info("✅ 里程碑完成: {}", summary);
         return "Milestone marked as completed: " + summary;
     }
@@ -534,28 +553,28 @@ public class AgentTools {
 
     // ==================== 网络搜索工具 ====================
 
-    @Tool("Search the internet for information. Uses iterative deep search with up to 5 rounds. Returns a synthesized summary (~200 words) of the findings.")
-    public String internetSearch(
-            @P("Search query - be specific and include relevant keywords") String query,
-            @P("Whether to use deep search with multiple iterations (true) or quick single search (false)") boolean deepSearch) {
-        try {
-            log.info("🔍 Internet search: query={}, deepSearch={}", query, deepSearch);
+    // @Tool("Search the internet for information. Uses iterative deep search with up to 5 rounds. Returns a synthesized summary (~200 words) of the findings.")
+    // public String internetSearch(
+    //         @P("Search query - be specific and include relevant keywords") String query,
+    //         @P("Whether to use deep search with multiple iterations (true) or quick single search (false)") boolean deepSearch) {
+    //     try {
+    //         log.info("🔍 Internet search: query={}, deepSearch={}", query, deepSearch);
 
-            if (deepSearch) {
-                // 使用 SearchAgent 进行深度搜索
-                var chatModel = llmFactory.getModel();
-                var report = searchAgent.execute(query, chatModel);
-                return report.toCompactSummary();
-            } else {
-                // 快速单次搜索
-                var result = webSearchService.search(query);
-                return result.toSummary();
-            }
-        } catch (Exception e) {
-            log.error("Internet search failed: {}", e.getMessage(), e);
-            return "❌ 搜索失败: " + e.getMessage();
-        }
-    }
+    //         if (deepSearch) {
+    //             // 使用 SearchAgent 进行深度搜索
+    //             var chatModel = llmFactory.getModel();
+    //             var report = searchAgent.execute(query, chatModel);
+    //             return report.toCompactSummary();
+    //         } else {
+    //             // 快速单次搜索
+    //             var result = webSearchService.search(query);
+    //             return result.toSummary();
+    //         }
+    //     } catch (Exception e) {
+    //         log.error("Internet search failed: {}", e.getMessage(), e);
+    //         return "❌ 搜索失败: " + e.getMessage();
+    //     }
+    // }
 
     @Tool("Quick web search - single query, no iteration. Use this for simple factual queries.")
     public String quickSearch(@P("Search query") String query) {

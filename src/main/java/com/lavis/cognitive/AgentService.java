@@ -70,10 +70,7 @@ public class AgentService {
     private ChatLanguageModel chatModel;
     private ChatMemory chatMemory;
 
-    /** 动态 Skill 工具列表（实时更新） */
-    private final List<ToolSpecification> skillToolSpecifications = new CopyOnWriteArrayList<>();
-
-    /** 当前注入的 Skill 上下文（临时） */
+        /** 当前注入的 Skill 上下文（临时） */
     private volatile SkillExecutionContext activeSkillContext;
 
     public AgentService(ScreenCapturer screenCapturer,
@@ -111,11 +108,11 @@ public class AgentService {
             // 初始化调度器（传递 LLM 模型给 Planner 和 Executor）
             taskOrchestrator.initialize(chatModel);
 
-            // 初始化 Skill 集成
+            // 初始化 Skill 集成（仅上下文注入，工具注册统一由 ToolExecutionService 处理）
             initializeSkillIntegration();
-
-            log.info("✅ AgentService 初始化完成 - 模型: {}, 工具数: {}, Skill工具数: {}",
-                    modelAlias, toolExecutionService.getToolCount(), skillToolSpecifications.size());
+    
+            log.info("✅ AgentService 初始化完成 - 模型: {}, 基础工具数: {}, Skill工具数: {}",
+                    modelAlias, toolExecutionService.getToolCount(), toolExecutionService.getCombinedToolSpecifications().size() - toolExecutionService.getToolCount());
         } catch (Exception e) {
             log.error("❌ AgentService 初始化失败", e);
         }
@@ -128,19 +125,9 @@ public class AgentService {
      * 3. 注册上下文注入回调
      */
     private void initializeSkillIntegration() {
-        // 加载当前 Skill 工具
-        skillToolSpecifications.clear();
-        skillToolSpecifications.addAll(skillService.getToolSpecifications());
-        log.info("📦 加载了 {} 个 Skill 工具", skillToolSpecifications.size());
-
-        // 注册工具更新监听器（热重载支持）
-        skillService.addToolUpdateListener(newTools -> {
-            skillToolSpecifications.clear();
-            skillToolSpecifications.addAll(newTools);
-            log.info("🔄 Skill 工具列表已更新，当前数量: {}", skillToolSpecifications.size());
-        });
-
-        // 注册上下文注入回调
+                // 工具注册与更新监听统一放在 ToolExecutionService 中，这里只负责上下文注入
+    
+                // 注册上下文注入回调
         // 这是解决"Context Gap"的核心：当 Skill 被调用时，将其知识注入到对话中
         skillService.setContextInjectionCallback(this::executeWithSkillContext);
 
@@ -270,7 +257,20 @@ public class AgentService {
      * @param imageId     初始截图的 imageId（用于追踪）
      */
     private String processWithTools(UserMessage userMessage, int maxSteps, String imageId) {
-        // 构建消息列表
+        // 构建初始消息列表
+        List<ChatMessage> messages = buildInitialMessages(userMessage);
+        
+        // 保存用户消息到记忆和数据库
+        saveUserMessageToMemory(userMessage, imageId);
+        
+        // 执行工具调用循环
+        return executeToolCallLoop(messages, maxSteps);
+    }
+
+    /**
+     * 构建初始消息列表（包含系统提示、历史消息和用户消息）
+     */
+    private List<ChatMessage> buildInitialMessages(UserMessage userMessage) {
         List<ChatMessage> messages = new ArrayList<>();
 
         // 【关键】构建 System Prompt，如有活动 Skill 上下文则注入其知识
@@ -280,6 +280,13 @@ public class AgentService {
         messages.addAll(chatMemory.messages());
         messages.add(userMessage);
 
+        return messages;
+    }
+
+    /**
+     * 保存用户消息到记忆和数据库
+     */
+    private void saveUserMessageToMemory(UserMessage userMessage, String imageId) {
         // 保存用户消息到记忆
         chatMemory.add(userMessage);
 
@@ -305,13 +312,17 @@ public class AgentService {
         } catch (Exception e) {
             log.warn("Failed to persist message to database", e);
         }
+        }
 
+    /**
+     * 执行工具调用循环
+     */
+    private String executeToolCallLoop(List<ChatMessage> messages, int maxSteps) {
         StringBuilder fullResponse = new StringBuilder();
 
-        // 【关键】合并工具列表：基础工具 + Skill 工具
-        List<ToolSpecification> allTools = buildCombinedToolSpecifications();
-        log.debug("可用工具总数: {} (基础: {}, Skill: {})",
-                allTools.size(), toolExecutionService.getToolCount(), skillToolSpecifications.size());
+        // 【关键】合并工具列表：基础工具 + Skill 工具（由 ToolExecutionService 统一管理）
+        List<ToolSpecification> allTools = toolExecutionService.getCombinedToolSpecifications();
+        log.debug("可用工具总数: {}", allTools.size());
 
         // 工具调用循环 - 使用传入的 maxSteps，如果 <= 0 则使用全局配置（兼容旧代码）
         int limit = (maxSteps > 0) ? maxSteps : this.maxToolIterations;
@@ -320,41 +331,97 @@ public class AgentService {
         for (int iteration = 0; iteration < limit; iteration++) {
             log.info("🔄 工具调用迭代 {}/{}", iteration + 1, limit);
 
-            // 调用模型（使用合并后的工具列表）
-            Response<AiMessage> response = chatModel.generate(messages, allTools);
-            AiMessage aiMessage = response.content();
-            log.info("🤖 Agent 响应: {}", aiMessage);
-            // 添加 AI 响应到消息列表
-            messages.add(aiMessage);
-            // 保存 AI 响应到记忆（包括工具调用请求）
-            chatMemory.add(aiMessage);
-
-            // Save AI message to database
-            try {
-                memoryManager.saveMessage(aiMessage, estimateTokenCount(aiMessage));
-            } catch (Exception e) {
-                log.warn("Failed to persist AI message to database", e);
+            // 处理单次迭代
+            IterationOutcome outcome = processSingleIteration(messages, allTools, fullResponse);
+            if (outcome.finished()) {
+                // 没有工具调用，或收到明确的终止信号（例如 complete_tool）
+                return outcome.response();
             }
+        }
 
-            // 检查是否有工具调用请求
-            if (!aiMessage.hasToolExecutionRequests()) {
-                // 没有工具调用，返回文本响应
-                String textResponse = aiMessage.text();
-                if (textResponse != null && !textResponse.isBlank()) {
-                    fullResponse.append(textResponse);
-                }
+        log.warn("⚠️ 达到最大工具调用次数 {}", maxToolIterations);
+        return fullResponse + "\n(达到最大迭代次数)";
+    }
 
-                log.info("🤖 Agent 响应: {}", fullResponse);
-                return fullResponse.toString();
+    /**
+     * 处理单次迭代：调用模型、保存响应、检查工具调用
+     * @return 迭代结果：是否已经结束，以及当前累计响应
+     */
+    private IterationOutcome processSingleIteration(List<ChatMessage> messages,
+                                                    List<ToolSpecification> allTools,
+                                                    StringBuilder fullResponse) {
+        // 调用模型（使用合并后的工具列表），并统计响应耗时
+        log.info("📨 发送给模型的消息数量: {}", messages.size());
+        long llmStartTime = System.currentTimeMillis();
+        Response<AiMessage> response = chatModel.generate(messages, allTools);
+        long llmEndTime = System.currentTimeMillis();
+        long llmLatencyMs = llmEndTime - llmStartTime;
+
+        AiMessage aiMessage = response.content();
+        log.info("🤖 Agent 响应: {}", aiMessage);
+        
+        // 添加 AI 响应到消息列表
+        messages.add(aiMessage);
+        // 保存 AI 响应到记忆（包括工具调用请求）
+        chatMemory.add(aiMessage);
+
+        // Save AI message to database
+        try {
+            memoryManager.saveMessage(aiMessage, estimateTokenCount(aiMessage));
+        } catch (Exception e) {
+            log.warn("Failed to persist AI message to database", e);
+        }
+
+        // 检查是否有工具调用请求
+        if (!aiMessage.hasToolExecutionRequests()) {
+            // 没有工具调用，返回文本响应
+            String textResponse = aiMessage.text();
+            if (textResponse != null && !textResponse.isBlank()) {
+                fullResponse.append(textResponse);
             }
+            // 统一日志：LLM 耗时 + 工具消息数量（此处为 0）
+            log.info("📊 本轮统计 | LLM 响应耗时: {} ms | 发送工具消息数量: {}", llmLatencyMs, 0);
+            log.info("🤖 Agent 响应: {}", fullResponse);
+            return new IterationOutcome(true, fullResponse.toString());
+        }
 
-            // 执行工具调用
-            List<ToolExecutionRequest> toolRequests = aiMessage.toolExecutionRequests();
+        // 执行工具调用
+        List<ToolExecutionRequest> toolRequests = aiMessage.toolExecutionRequests();
+        ToolExecutionResult result = executeToolRequests(toolRequests, messages);
+
+        // 统一日志：LLM 耗时 + 工具消息数量（工具调用请求数）
+        log.info("📊 本轮统计 | LLM 响应耗时: {} ms | 发送工具消息数量: {}", llmLatencyMs, toolRequests.size());
+        
+        // 更新响应
+        fullResponse.append(result.summary());
+        if (aiMessage.text() != null && !aiMessage.text().isBlank()) {
+            fullResponse.append(aiMessage.text()).append("\n");
+        }
+
+        // 如果有视觉影响，重新截图并注入观察
+        if (result.hasVisualImpact()) {
+            captureAndInjectObservation(messages, result.summary());
+        }
+
+        // 如果工具结果中包含"终止信号"（例如 complete_tool），结束循环
+        if (result.shouldTerminate()) {
+            log.info("✅ 收到终止信号工具调用，结束主循环");
+            return new IterationOutcome(true, fullResponse.toString());
+        }
+
+        return new IterationOutcome(false, fullResponse.toString()); // 继续循环
+    }
+
+        /**
+         * 执行工具调用请求列表（通过统一工具执行服务路由基础工具和 Skill 工具）
+         */
+        private ToolExecutionResult executeToolRequests(List<ToolExecutionRequest> toolRequests,
+                                                     List<ChatMessage> messages) {
             log.info("🔧 执行 {} 个工具调用", toolRequests.size());
 
             StringBuilder toolResultsSummary = new StringBuilder();
-            boolean hasVisualImpact = false; // 是否有可能影响屏幕的操作
-            boolean hasError = false; // 是否有工具执行失败
+        boolean hasVisualImpact = false;
+        boolean shouldTerminate = false;
 
             for (ToolExecutionRequest request : toolRequests) {
                 String toolName = request.name();
@@ -362,42 +429,42 @@ public class AgentService {
 
                 log.info("  → 调用工具: {}({})", toolName, toolArgs);
 
-                // 【关键】判断是基础工具还是 Skill 工具
-                String result = executeToolOrSkill(toolName, toolArgs);
+                // 【关键】通过统一工具执行服务路由（基础工具 + Skill 工具）
+                String result = toolExecutionService.executeUnified(toolName, toolArgs);
                 log.info("  ← 工具结果: {}", result.split("\n")[0]); // 只打印第一行
 
                 // 检测工具执行失败（仅用于日志记录，让模型通过上下文自己判断）
                 if (result != null && (result.contains("❌") || result.contains("失败") ||
                     result.contains("错误") || result.contains("异常") || result.contains("Error"))) {
-                    hasError = true;
                     log.warn("⚠️ 工具执行失败: {}", result.split("\n")[0]);
                 }
 
                 // 添加工具执行结果
-                ToolExecutionResultMessage toolResult = ToolExecutionResultMessage.from(
-                        request,
-                        result);
+            ToolExecutionResultMessage toolResult = ToolExecutionResultMessage.from(request, result);
                 messages.add(toolResult);
                 // 保存工具执行结果到记忆
                 chatMemory.add(toolResult);
 
                 toolResultsSummary.append(String.format("[%s] %s\n", toolName, result.split("\n")[0]));
 
-                // 判断是否是可能影响屏幕的操作
-                if (isVisualImpactTool(toolName)) {
+                // 判断是否是可能影响屏幕的操作（统一由 ToolExecutionService 决定）
+                if (toolExecutionService.isVisualImpactTool(toolName)) {
                     hasVisualImpact = true;
+                }
+
+                // 如果调用了里程碑完成工具，视为显式终止信号
+                if ("complete_tool".equals(toolName)) {
+                    shouldTerminate = true;
                 }
             }
 
-            fullResponse.append(toolResultsSummary);
+        return new ToolExecutionResult(toolResultsSummary.toString(), hasVisualImpact, shouldTerminate);
+    }
 
-            // 如果 AI 也有文本响应，添加到结果
-            if (aiMessage.text() != null && !aiMessage.text().isBlank()) {
-                fullResponse.append(aiMessage.text()).append("\n");
-            }
-
-            // 【关键改进】工具执行后重新截图，注入新的视觉观察
-            if (hasVisualImpact) {
+    /**
+     * 重新截图并注入观察消息
+     */
+    private void captureAndInjectObservation(List<ChatMessage> messages, String toolResultsSummary) {
                 try {
                     // 等待 UI 响应
                     log.info("⏳ 等待 UI 响应 {}ms...", toolWaitMs);
@@ -425,7 +492,7 @@ public class AgentService {
                     
                     if (newScreenshot == null) {
                         log.warn("重新截图失败，无法获取图片数据");
-                        continue; // 跳过本次观察
+                return; // 跳过本次观察
                     }
                     
                     log.info("📸 重新截图完成: imageId={}, 复用={}, 注入新的视觉观察",
@@ -460,7 +527,7 @@ public class AgentService {
                             - Do NOT repeat the same operation if it hasn't worked after 2-3 attempts
 
                             **Note**: Always make decisions based on this latest screenshot and your action history
-                            """, toolResultsSummary.toString());
+                    """, toolResultsSummary);
 
                     UserMessage observationMessage = UserMessage.from(
                             TextContent.from(observationText),
@@ -481,11 +548,39 @@ public class AgentService {
                     log.warn("截图失败，继续执行: {}", e.getMessage());
                 }
             }
+
+    /**
+     * 单轮工具执行的封装结果
+     */
+    private static class ToolExecutionResult {
+        private final String summary;
+        private final boolean hasVisualImpact;
+        /** 是否收到显式终止信号（例如 complete_tool） */
+        private final boolean shouldTerminate;
+
+        ToolExecutionResult(String summary, boolean hasVisualImpact, boolean shouldTerminate) {
+            this.summary = summary;
+            this.hasVisualImpact = hasVisualImpact;
+            this.shouldTerminate = shouldTerminate;
         }
 
-        log.warn("⚠️ 达到最大工具调用次数 {}", maxToolIterations);
-        return fullResponse + "\n(达到最大迭代次数)";
+        String summary() {
+            return summary;
+        }
+
+        boolean hasVisualImpact() {
+            return hasVisualImpact;
+        }
+
+        boolean shouldTerminate() {
+            return shouldTerminate;
+        }
     }
+
+    /**
+     * 单次迭代的返回结果：是否结束 + 累计响应
+     */
+    private record IterationOutcome(boolean finished, String response) {}
 
     /**
      * 获取调度器
@@ -584,8 +679,26 @@ public class AgentService {
             text = userMsg.hasSingleText() ? userMsg.singleText() : userMsg.toString();
         } else if (message instanceof AiMessage aiMsg) {
             text = aiMsg.text();
+            // 如果 text 为 null（只有工具调用），估算工具调用的 token 数
+            if (text == null) {
+                if (aiMsg.hasToolExecutionRequests()) {
+                    // 估算每个工具调用的 token 数（工具名 + 参数）
+                    int toolTokenCount = 0;
+                    for (var toolRequest : aiMsg.toolExecutionRequests()) {
+                        // 工具名大约 10 tokens，参数大约按长度估算
+                        String args = toolRequest.arguments() != null ? toolRequest.arguments() : "";
+                        toolTokenCount += 10 + (args.length() / 4);
+                    }
+                    return toolTokenCount;
+                }
+                return 0;
+            }
         } else {
             text = message.toString();
+        }
+        // 确保 text 不为 null
+        if (text == null) {
+            text = "";
         }
         return text.length() / 4;
     }
@@ -610,72 +723,7 @@ public class AgentService {
         return enhancedPrompt;
     }
 
-    /**
-     * 构建合并后的工具规格列表（基础工具 + Skill 工具）
-     */
-    private List<ToolSpecification> buildCombinedToolSpecifications() {
-        List<ToolSpecification> combined = new ArrayList<>();
-
-        // 添加基础工具
-        combined.addAll(toolExecutionService.getToolSpecifications());
-
-        // 添加 Skill 工具
-        combined.addAll(skillToolSpecifications);
-
-        return combined;
-    }
-
-    /**
-     * 执行工具或 Skill。
-     * 根据工具名称判断是基础工具还是 Skill 工具，分别调用对应的执行器。
-     */
-    private String executeToolOrSkill(String toolName, String argsJson) {
-        // 首先检查是否是基础工具
-        if (toolExecutionService.hasTool(toolName)) {
-            return toolExecutionService.execute(toolName, argsJson);
-        }
-
-        // 检查是否是 Skill 工具
-        if (isSkillTool(toolName)) {
-            log.info("🎯 执行 Skill 工具: {}", toolName);
-            var result = skillService.executeByToolName(toolName, argsJson);
-            return result.isSuccess() ? result.getOutput() : "❌ " + result.getError();
-        }
-
-        return "❌ 未知工具: " + toolName;
-    }
-
-    /**
-     * 判断是否是 Skill 工具
-     */
-    private boolean isSkillTool(String toolName) {
-        return skillToolSpecifications.stream()
-                .anyMatch(spec -> spec.name().equals(toolName));
-    }
-
-    /**
-     * 判断工具是否可能影响屏幕显示
-     */
-    private boolean isVisualImpactTool(String toolName) {
-        // 基础工具的判断
-        if (toolExecutionService.hasTool(toolName)) {
-            return toolExecutionService.isVisualImpactTool(toolName);
-        }
-
-        // Skill 工具默认认为有视觉影响（因为可能执行 agent: 命令）
-        if (isSkillTool(toolName)) {
-            return true;
-        }
-
-        return true; // 未知工具默认有影响
-    }
-
-    /**
-     * 获取当前 Skill 工具数量
-     */
-    public int getSkillToolCount() {
-        return skillToolSpecifications.size();
-    }
+    // Skill 工具数量可通过 ToolExecutionService 的合并视图间接获得，如有需要可在此处添加包装方法
 
     @FunctionalInterface
     interface ThrowingSupplier<T> {

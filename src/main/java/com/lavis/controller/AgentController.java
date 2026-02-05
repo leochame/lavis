@@ -5,7 +5,6 @@ import com.lavis.service.chat.ChatRequest;
 import com.lavis.service.chat.ChatResponse;
 import com.lavis.service.chat.UnifiedChatService;
 import com.lavis.service.llm.LlmFactory;
-import com.lavis.service.voice.VoiceChatService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -35,7 +34,6 @@ public class AgentController {
 
     private final AgentService agentService;
     private final LlmFactory llmFactory;
-    private final VoiceChatService voiceChatService; // 保留用于向后兼容
     private final UnifiedChatService unifiedChatService;
 
     private final Deque<TaskRecord> taskHistory = new ConcurrentLinkedDeque<>();
@@ -115,26 +113,30 @@ public class AgentController {
      * 
      * 支持参数：
      * - file: 音频文件（必需）
-     * - use_orchestrator: 是否使用 TaskOrchestrator（可选，默认 true，使用复杂路径）
+     * - use_orchestrator: 是否使用 TaskOrchestrator（可选，默认 false，使用快速路径）
+     * - needs_tts: 是否需要 TTS 语音反馈（可选，默认 false）
      * - ws_session_id: WebSocket session ID（可选，用于 TTS 推送）
      * - screenshot: 截图文件（可选，暂未使用）
      * 
-     * 默认行为：使用复杂路径（TaskOrchestrator），适合复杂任务和需要规划的场景
-     * 设置 use_orchestrator=false 可切换到快速路径（chatWithScreenshot），适合简单问答
+     * 默认行为：使用快速路径（chatWithScreenshot），适合简单问答和单步命令
+     * 设置 use_orchestrator=true 可切换到复杂任务路径（TaskOrchestrator）
+     * 
+     * 注意：与文字接口的唯一差异是多了一个 STT（语音转文字）步骤
      */
     @PostMapping(value = "/voice-chat", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Map<String, Object>> voiceChat(
             @RequestParam("file") MultipartFile audioFile,
             @RequestParam(value = "ws_session_id", required = false) String wsSessionId,
             @RequestParam(value = "use_orchestrator", required = false) Boolean useOrchestrator,
+            @RequestParam(value = "needs_tts", required = false) Boolean needsTts,
             @RequestParam(value = "screenshot", required = false) MultipartFile screenshot
     ) {
         if (audioFile == null || audioFile.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Audio file is required"));
         }
 
-        log.info("[Voice Chat] file: {}, use_orchestrator: {}", 
-                audioFile.getOriginalFilename(), useOrchestrator);
+        log.info("[Voice Chat] file: {}, use_orchestrator: {}, needs_tts: {}", 
+                audioFile.getOriginalFilename(), useOrchestrator, needsTts);
         long startTime = System.currentTimeMillis();
 
         // 语音入口同样在任务开始前重置 Orchestrator，清理可能存在的中断标记
@@ -144,9 +146,9 @@ public class AgentController {
         }
 
         try {
-            // 使用统一服务处理
+            // 使用统一服务处理（唯一差异：多了一个 STT 转换步骤）
             ChatRequest chatRequest = unifiedChatService.normalizeAudioInput(
-                audioFile, wsSessionId, useOrchestrator
+                audioFile, wsSessionId, useOrchestrator, needsTts
             );
             ChatResponse response = unifiedChatService.process(chatRequest);
             

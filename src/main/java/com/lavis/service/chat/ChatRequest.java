@@ -43,8 +43,8 @@ public record ChatRequest(
     /**
      * 创建音频输入的请求（需要先进行 STT 转换）
      */
-    public static ChatRequest audioInput(String transcribedText, String wsSessionId, boolean useOrchestrator) {
-        return new ChatRequest(transcribedText, "audio", wsSessionId, useOrchestrator, true);
+    public static ChatRequest audioInput(String transcribedText, String wsSessionId, boolean useOrchestrator, boolean needsTts) {
+        return new ChatRequest(transcribedText, "audio", wsSessionId, useOrchestrator, needsTts);
     }
 }
 

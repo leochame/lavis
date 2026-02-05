@@ -81,6 +81,36 @@ public final class AgentPrompts {
               * Before executing any tool, review your conversation history to check if you've already tried the same operation
               * If you notice you've executed the same tool with similar parameters multiple times (2-3 times) without success, STOP and try a different approach
 
+            ## Reasoning & Control Tools
+            You have two special meta-level tools that control your reasoning and the task lifecycle:
+
+            1. **think_tool** (reflection / planning, NO side effects)
+               - Purpose: write down your structured thinking, plans, and self-reflection.
+               - This tool NEVER interacts with the computer or external systems; it only logs your reasoning.
+               - The text you pass into think_tool will be returned verbatim as the tool_result and recorded by the orchestrator.
+               - Use it:
+                 * Before starting a complex task, to plan steps.
+                 * When you feel stuck or after several failed attempts, to summarize what happened and adjust strategy.
+                 * To explicitly list the next 1-3 tools you intend to call.
+
+            2. **complete_tool** (hard task-completion signal)
+               - Purpose: signal that the ENTIRE user task is fully completed.
+               - CRITICAL RULES:
+                 * Only call complete_tool AFTER you have received the latest screenshot that clearly proves the final goal state.
+                 * NEVER call complete_tool in the same turn as any action that can change the screen (click, type_text_at, keyCombination, scroll, drag, openApplication, etc.).
+                 * After calling complete_tool you MUST NOT plan or call any further tools in this task.
+               - When you call complete_tool, the orchestrator will stop the main loop and end the task.
+
+            ## Loop Termination Guidelines
+            - You should naturally stop calling tools and just answer in text when:
+              * The user goal is already achieved on the latest screenshot.
+              * No available tool can reasonably move you closer to the goal.
+              * Further actions would only repeat already-failed attempts.
+            - In these cases you SHOULD:
+              * Summarize clearly what has been achieved and any limitations.
+              * If the whole task is done and visually confirmed, call complete_tool once (and only once).
+              * Otherwise, just respond in text without any further tool calls.
+
             ## Language
             - Respond in the same language as the user's query
             - If user speaks Chinese, respond in Chinese

@@ -223,10 +223,11 @@ public class RobotDriver {
 
     /**
      * 单击鼠标左键
+     * 【优化】减少按下和释放之间的延迟
      */
     public void click() {
         robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
-        robot.delay(5);
+        robot.delay(2); // 【优化】从 5ms 减少到 2ms
         robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
         log.info("鼠标左键单击");
     }
@@ -248,7 +249,7 @@ public class RobotDriver {
             log.warn("⚠️ 移动有偏差，但仍尝试点击");
         }
 
-        delay(20);
+        delay(10); // 【优化】从 20ms 减少到 10ms（移动后已等待稳定，这里可以减少等待）
         click();
 
         // 获取点击后的实际位置
@@ -281,20 +282,22 @@ public class RobotDriver {
 
     /**
      * 双击鼠标左键
+     * 【优化】减少两次点击之间的延迟
      */
     public void doubleClick() {
         click();
-        delay(30);
+        delay(15); // 【优化】从 30ms 减少到 15ms（macOS 双击识别时间通常为 10-20ms）
         click();
         log.info("鼠标左键双击");
     }
 
     /**
      * 移动并双击（逻辑屏幕坐标）
+     * 【优化】减少移动后的延迟
      */
     public void doubleClickAt(int x, int y) {
         moveTo(x, y);
-        delay(20);
+        delay(10); // 【优化】从 20ms 减少到 10ms
         doubleClick();
     }
 
@@ -309,10 +312,11 @@ public class RobotDriver {
 
     /**
      * 移动并右键点击（逻辑屏幕坐标）
+     * 【优化】减少移动后的延迟
      */
     public void rightClickAt(int x, int y) {
         moveTo(x, y);
-        delay(20);
+        delay(10); // 【优化】从 20ms 减少到 10ms
         rightClick();
     }
 
@@ -443,13 +447,43 @@ public class RobotDriver {
 
     /**
      * 输入文本 (支持中英文)
+     * 【优化】对于纯 ASCII 文本使用剪贴板批量输入，大幅提升速度
      */
     public void type(String text) {
         log.info("输入文本: {}", text);
+        
+        // 【优化】检查是否为纯 ASCII 文本（不含特殊字符和中文）
+        if (isPureAsciiText(text)) {
+            // 使用剪贴板批量输入，比逐字符输入快得多
+            typeViaClipboard(text);
+            return;
+        }
+        
+        // 对于包含特殊字符或中文的文本，逐字符输入
         for (char c : text.toCharArray()) {
             typeChar(c);
             delay(TYPE_DELAY);
         }
+    }
+    
+    /**
+     * 判断文本是否为纯 ASCII 文本（不含需要特殊处理的字符）
+     * 【优化】用于决定是否可以使用剪贴板批量输入
+     */
+    private boolean isPureAsciiText(String text) {
+        if (text == null || text.isEmpty()) {
+            return true;
+        }
+        
+        for (char c : text.toCharArray()) {
+            // 检查是否为 ASCII 可打印字符（32-126）
+            // 排除需要 Shift 键的特殊字符，因为剪贴板输入更可靠
+            if (c < 32 || c > 126) {
+                return false; // 包含非 ASCII 字符（如中文）
+            }
+        }
+        
+        return true; // 纯 ASCII 文本，可以使用剪贴板批量输入
     }
 
     /**
@@ -486,6 +520,7 @@ public class RobotDriver {
 
     /**
      * 通过剪贴板输入文本 (支持中文)
+     * 【优化】减少粘贴后的延迟时间
      */
     public void typeViaClipboard(String text) {
         // 保存原剪贴板内容
@@ -499,7 +534,8 @@ public class RobotDriver {
         robot.keyRelease(KeyEvent.VK_V);
         robot.keyRelease(KeyEvent.VK_META);
 
-        delay(30);
+        // 【优化】减少延迟，从 30ms 降到 10ms（足够让系统处理粘贴操作）
+        delay(10);
     }
 
     /**

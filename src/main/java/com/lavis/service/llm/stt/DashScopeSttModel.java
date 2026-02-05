@@ -12,6 +12,8 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.util.Base64;
 import java.util.concurrent.TimeUnit;
+import okhttp3.ConnectionPool;
+import okhttp3.Protocol;
 
 /**
  * 阿里云 DashScope 原生 STT (语音识别) 实现
@@ -40,10 +42,18 @@ public class DashScopeSttModel implements SttModel {
 
     public DashScopeSttModel(ModelConfig config) {
         this.config = config;
+        // 优化超时设置：
+        // 1. 连接超时：10秒（快速失败，避免长时间等待连接）
+        // 2. 读取超时：使用配置的超时时间（API 处理音频需要时间）
+        // 3. 写入超时：30秒（上传音频文件需要时间，但不应过长）
+        int timeoutSeconds = config.getTimeoutSeconds() != null ? config.getTimeoutSeconds() : 60;
         this.httpClient = new OkHttpClient.Builder()
-                .connectTimeout(config.getTimeoutSeconds(), TimeUnit.SECONDS)
-                .readTimeout(config.getTimeoutSeconds(), TimeUnit.SECONDS)
-                .writeTimeout(config.getTimeoutSeconds(), TimeUnit.SECONDS)
+                .connectTimeout(10, TimeUnit.SECONDS)  // 连接超时：快速失败
+                .readTimeout(timeoutSeconds, TimeUnit.SECONDS)  // 读取超时：API 处理时间
+                .writeTimeout(30, TimeUnit.SECONDS)  // 写入超时：上传文件时间
+                .connectionPool(new ConnectionPool(5, 30, TimeUnit.SECONDS))  // 连接池优化
+                .retryOnConnectionFailure(true)  // 启用连接失败重试
+                .protocols(java.util.Arrays.asList(Protocol.HTTP_2, Protocol.HTTP_1_1))  // 支持 HTTP/2
                 .build();
     }
 
@@ -89,13 +99,19 @@ public class DashScopeSttModel implements SttModel {
                 config.getApiKey() != null && config.getApiKey().length() > 10
                         ? config.getApiKey().substring(0, 10) : "null");
 
-        // 1. 将音频文件转换为 Base64 Data URI
+        // 1. 将音频文件转换为 Base64 Data URI（记录编码时间）
+        long encodeStartTime = System.currentTimeMillis();
         byte[] audioBytes = audioFile.getBytes();
         String audioBase64 = Base64.getEncoder().encodeToString(audioBytes);
+        long encodeDuration = System.currentTimeMillis() - encodeStartTime;
         String mimeType = getAudioMimeType(audioFile.getOriginalFilename());
         String dataUri = "data:" + mimeType + ";base64," + audioBase64;
         
-        log.info("📁 Audio MIME type: {}, size: {} bytes", mimeType, audioBytes.length);
+        double audioSizeMB = audioBytes.length / 1024.0 / 1024.0;
+        double base64SizeMB = audioBase64.length() * 3.0 / 4.0 / 1024.0 / 1024.0;
+        log.info("📁 Audio MIME type: {}, original size: {} MB ({} bytes), base64 size: {} MB ({} chars), encode time: {}ms", 
+                mimeType, String.format("%.2f", audioSizeMB), audioBytes.length, 
+                String.format("%.2f", base64SizeMB), audioBase64.length(), encodeDuration);
 
         // 2. 构建多模态请求体 (按照官方文档格式)
         // 格式: {
@@ -148,16 +164,21 @@ public class DashScopeSttModel implements SttModel {
                 .post(requestBody)
                 .build();
 
-        // 3. 发送请求
+        // 3. 发送请求（记录性能指标）
+        long requestStartTime = System.currentTimeMillis();
         try (Response response = httpClient.newCall(request).execute()) {
+            long requestDuration = System.currentTimeMillis() - requestStartTime;
             String responseBody = response.body() != null ? response.body().string() : "";
 
             if (!response.isSuccessful()) {
-                log.error("❌ DashScope Multimodal API failed: {} - URL: {}", response.code(), apiUrl);
+                log.error("❌ DashScope Multimodal API failed: {} - URL: {} (took {}ms)", 
+                        response.code(), apiUrl, requestDuration);
                 log.error("❌ Error response body: {}", responseBody);
                 throw new IOException("ASR transcription failed: " + response.code() + " - " + responseBody);
             }
 
+            log.info("⏱️ DashScope API request completed in {}ms ({}s)", 
+                    requestDuration, String.format("%.2f", requestDuration / 1000.0));
             log.debug("📝 DashScope response: {}", responseBody);
             return parseMultimodalResult(responseBody);
         }
@@ -172,11 +193,16 @@ public class DashScopeSttModel implements SttModel {
 
         log.info("🔗 Using Recognition API: {}", apiUrl);
 
+        long encodeStartTime = System.currentTimeMillis();
         byte[] audioBytes = audioFile.getBytes();
         String audioBase64 = Base64.getEncoder().encodeToString(audioBytes);
+        long encodeDuration = System.currentTimeMillis() - encodeStartTime;
         String format = getAudioFormat(audioFile.getOriginalFilename());
         
-        log.info("📁 Audio format: {}, size: {} bytes", format, audioBytes.length);
+        double audioSizeMB = audioBytes.length / 1024.0 / 1024.0;
+        log.info("📁 Audio format: {}, original size: {} MB ({} bytes), base64 size: {} MB, encode time: {}ms", 
+                format, String.format("%.2f", audioSizeMB), audioBytes.length, 
+                String.format("%.2f", audioBase64.length() * 3.0 / 4.0 / 1024.0 / 1024.0), encodeDuration);
 
         // 构建识别请求
         ObjectNode root = objectMapper.createObjectNode();
@@ -197,15 +223,20 @@ public class DashScopeSttModel implements SttModel {
                 .post(requestBody)
                 .build();
 
+        long requestStartTime = System.currentTimeMillis();
         try (Response response = httpClient.newCall(request).execute()) {
+            long requestDuration = System.currentTimeMillis() - requestStartTime;
             String responseBody = response.body() != null ? response.body().string() : "";
 
             if (!response.isSuccessful()) {
-                log.error("❌ DashScope Recognition API failed: {} - URL: {}", response.code(), apiUrl);
+                log.error("❌ DashScope Recognition API failed: {} - URL: {} (took {}ms)", 
+                        response.code(), apiUrl, requestDuration);
                 log.error("❌ Error response body: {}", responseBody);
                 throw new IOException("ASR transcription failed: " + response.code() + " - " + responseBody);
             }
 
+            log.info("⏱️ DashScope Recognition API request completed in {}ms ({}s)", 
+                    requestDuration, String.format("%.2f", requestDuration / 1000.0));
             return parseTranscriptionResult(responseBody);
         }
     }

@@ -815,23 +815,42 @@ electron_1.app.on('before-quit', (event) => {
 electron_1.app.on('will-quit', async (event) => {
     // 阻止默认退出，等待后端关闭
     event.preventDefault();
+    console.log('🛑 Application is quitting, cleaning up all resources...');
     // 取消注册所有全局快捷键
-    electron_1.globalShortcut.unregisterAll();
+    try {
+        electron_1.globalShortcut.unregisterAll();
+        console.log('✅ Global shortcuts unregistered');
+    }
+    catch (error) {
+        console.error('⚠️ Error unregistering shortcuts:', error);
+    }
     // 停止置顶定时器
     stopAlwaysOnTopEnforcer();
     // 销毁系统托盘
     if (tray) {
-        tray.destroy();
-        tray = null;
+        try {
+            tray.destroy();
+            tray = null;
+            console.log('✅ System tray destroyed');
+        }
+        catch (error) {
+            console.error('⚠️ Error destroying tray:', error);
+        }
     }
     // 确保所有窗口都已关闭
     const windows = electron_1.BrowserWindow.getAllWindows();
     windows.forEach(window => {
         if (!window.isDestroyed()) {
-            window.destroy();
+            try {
+                window.destroy();
+            }
+            catch (error) {
+                console.error('⚠️ Error destroying window:', error);
+            }
         }
     });
-    // 停止后端服务
+    console.log('✅ All windows closed');
+    // 停止后端服务（这是最关键的步骤）
     console.log('🛑 Stopping backend service...');
     try {
         await (0, backend_manager_1.stopBackend)();
@@ -839,8 +858,12 @@ electron_1.app.on('will-quit', async (event) => {
     }
     catch (error) {
         console.error('❌ Error stopping backend:', error);
+        // 即使出错也继续退出，避免应用卡住
     }
+    // 额外等待一小段时间，确保所有进程都已关闭
+    await new Promise(resolve => setTimeout(resolve, 500));
     // 现在可以退出了
+    console.log('✅ All cleanup completed, exiting application');
     electron_1.app.exit(0);
 });
 function createTray() {

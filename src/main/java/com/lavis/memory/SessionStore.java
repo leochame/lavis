@@ -4,6 +4,7 @@ import com.lavis.entity.SessionMessageEntity;
 import com.lavis.entity.UserSessionEntity;
 import com.lavis.repository.SessionMessageRepository;
 import com.lavis.repository.UserSessionRepository;
+import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
@@ -200,17 +201,33 @@ public class SessionStore {
                 return userMsg.singleText();
             } else {
                 // Extract text from contents
-                return userMsg.contents().stream()
+                String content = userMsg.contents().stream()
                         .filter(c -> !(c instanceof ImageContent))
                         .map(Content::toString)
                         .collect(Collectors.joining("\n"));
+                return content != null ? content : "";
             }
         } else if (message instanceof AiMessage aiMsg) {
-            return aiMsg.text();
+            String text = aiMsg.text();
+            if (text != null && !text.isBlank()) {
+                return text;
+            }
+            // If no text but has tool calls, return a descriptive string
+            if (aiMsg.hasToolExecutionRequests()) {
+                List<String> toolNames = aiMsg.toolExecutionRequests().stream()
+                        .map(req -> req.name())
+                        .distinct()
+                        .collect(Collectors.toList());
+                return "[Tool calls: " + String.join(", ", toolNames) + "]";
+            }
+            // Fallback to empty string
+            return "";
         } else if (message instanceof SystemMessage sysMsg) {
-            return sysMsg.text();
+            String text = sysMsg.text();
+            return text != null ? text : "";
         }
-        return message.toString();
+        String result = message.toString();
+        return result != null ? result : "";
     }
 
     private boolean hasImageContent(ChatMessage message) {

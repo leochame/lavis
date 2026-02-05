@@ -227,12 +227,23 @@ public class GeminiFlashSttModel implements SttModel {
                                 throw new IOException("Gemini STT transcription failed: " + statusCode + " - " + responseBody);
                             } else {
                                 // 5xx 服务器错误，可以重试
-                                log.warn("⚠️ Gemini STT API server error: {} - URL: {}", statusCode, apiUrl);
+                                log.warn("⚠️ Gemini STT API server error: {} (attempt {}/{}) - URL: {}", 
+                                        statusCode, attempt + 1, maxRetries + 1, apiUrl);
+                                log.warn("⚠️ Error response body: {}", responseBody);
+                                
+                                // 对于 500 错误，尝试解析错误信息
+                                String errorMessage = parseErrorMessage(responseBody, statusCode);
+                                
                                 if (attempt < maxRetries) {
-                                    lastException = new IOException("Server error: " + statusCode + " - " + responseBody);
+                                    lastException = new IOException("Server error: " + statusCode + " - " + errorMessage);
                                     continue;
                                 } else {
-                                    throw new IOException("Gemini STT transcription failed: " + statusCode + " - " + responseBody);
+                                    // 所有重试都失败，抛出友好的错误消息
+                                    String friendlyMessage = String.format(
+                                        "语音识别服务暂时不可用（服务器错误 %d）。错误信息：%s。请稍后重试。",
+                                        statusCode, errorMessage
+                                    );
+                                    throw new IOException("Gemini STT transcription failed: " + statusCode + " - " + errorMessage);
                                 }
                             }
                         }
@@ -303,8 +314,17 @@ public class GeminiFlashSttModel implements SttModel {
             throw new IOException("Failed to transcribe audio after " + (maxRetries + 1) + " attempts");
 
         } catch (IOException e) {
-            log.error("Transcription failed", e);
-            throw new RuntimeException("Failed to transcribe audio: " + e.getMessage(), e);
+            log.error("Transcription failed after attempts", e);
+            // 提取友好的错误消息
+            String errorMessage = e.getMessage();
+            if (errorMessage != null && errorMessage.contains("500")) {
+                errorMessage = "语音识别服务暂时不可用，请稍后重试";
+            } else if (errorMessage != null && errorMessage.contains("429")) {
+                errorMessage = "请求过于频繁，请稍后再试";
+            } else if (errorMessage != null && errorMessage.contains("401") || errorMessage.contains("403")) {
+                errorMessage = "API 密钥无效或权限不足";
+            }
+            throw new RuntimeException("Failed to transcribe audio: " + errorMessage, e);
         }
     }
 
@@ -362,6 +382,31 @@ public class GeminiFlashSttModel implements SttModel {
             log.error("Failed to parse Gemini response", e);
             return responseBody;
         }
+    }
+
+    /**
+     * 解析错误响应消息，提取友好的错误信息
+     */
+    private String parseErrorMessage(String responseBody, int statusCode) {
+        try {
+            if (responseBody != null && !responseBody.isBlank()) {
+                JsonNode root = objectMapper.readTree(responseBody);
+                if (root.has("error")) {
+                    JsonNode error = root.get("error");
+                    if (error.has("message")) {
+                        String message = error.get("message").asText();
+                        // 对于上游错误，提供更友好的消息
+                        if (message.contains("upstream error") || message.contains("do_request_failed")) {
+                            return "上游服务暂时不可用，请稍后重试";
+                        }
+                        return message;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Failed to parse error response: {}", e.getMessage());
+        }
+        return "服务器错误 " + statusCode;
     }
 
     /**
