@@ -90,8 +90,8 @@ agent.max.tool.iterations=30
 
 # [Critical] Wait time (in milliseconds) after tool execution for UI response
 # This time must be long enough to allow screen changes to complete before taking screenshots
-# Recommended at least 1000ms to wait for animations and network requests to complete
-agent.tool.wait.ms=1000
+# Recommended around 200ms for fast UIs; increase if your UI updates slowly (animations/network)
+agent.tool.wait.ms=200
 
 # Reflection loop configuration
 reflection.max.iterations=5
@@ -106,8 +106,8 @@ executor.max.corrections=5
 executor.action.timeout.seconds=30
 # [Critical] Wait time (in milliseconds) after tool execution for UI response
 # Reflection phase needs to capture the "post-action" screen, must wait for animations/network to complete
-# Recommended at least 1000ms, complex pages may require longer
-executor.tool.wait.ms=1000
+# Recommended around 200ms; increase for complex pages with heavy animations or slow network
+executor.tool.wait.ms=200
 
 # ====================================
 # Screenshot Configuration  

@@ -88,8 +88,9 @@ public class AgentService {
     }
 
     // 工具执行后等待 UI 响应的时间（毫秒）
-    @Value("${agent.tool.wait.ms:500}")
-    private int toolWaitMs = 500;
+    // 默认改为 200ms：给 UI 留出轻微缓冲，同时不至于太慢
+    @Value("${agent.tool.wait.ms:200}")
+    private int toolWaitMs = 200;
 
     @PostConstruct
     public void init() {
@@ -351,7 +352,6 @@ public class AgentService {
                                                     List<ToolSpecification> allTools,
                                                     StringBuilder fullResponse) {
         // 调用模型（使用合并后的工具列表），并统计响应耗时
-        log.info("📨 发送给模型的消息数量: {}", messages.size());
         long llmStartTime = System.currentTimeMillis();
         Response<AiMessage> response = chatModel.generate(messages, allTools);
         long llmEndTime = System.currentTimeMillis();
@@ -379,8 +379,9 @@ public class AgentService {
             if (textResponse != null && !textResponse.isBlank()) {
                 fullResponse.append(textResponse);
             }
-            // 统一日志：LLM 耗时 + 工具消息数量（此处为 0）
-            log.info("📊 本轮统计 | LLM 响应耗时: {} ms | 发送工具消息数量: {}", llmLatencyMs, 0);
+            // 统一日志：本轮消息数 + LLM 耗时 + 工具请求数量（此处为 0）
+            log.info("📊 本轮统计 | 消息数: {} | LLM 响应耗时: {} ms | 发送工具消息数量: {}",
+                    messages.size(), llmLatencyMs, 0);
             log.info("🤖 Agent 响应: {}", fullResponse);
             return new IterationOutcome(true, fullResponse.toString());
         }
@@ -389,8 +390,9 @@ public class AgentService {
         List<ToolExecutionRequest> toolRequests = aiMessage.toolExecutionRequests();
         ToolExecutionResult result = executeToolRequests(toolRequests, messages);
 
-        // 统一日志：LLM 耗时 + 工具消息数量（工具调用请求数）
-        log.info("📊 本轮统计 | LLM 响应耗时: {} ms | 发送工具消息数量: {}", llmLatencyMs, toolRequests.size());
+        // 统一日志：本轮消息数 + LLM 耗时 + 工具请求数量（工具调用请求数）
+        log.info("📊 本轮统计 | 消息数: {} | LLM 响应耗时: {} ms | 发送工具消息数量: {}",
+                messages.size(), llmLatencyMs, toolRequests.size());
         
         // 更新响应
         fullResponse.append(result.summary());
