@@ -3,18 +3,20 @@ package com.lavis.service.llm;
 import com.lavis.config.llm.LlmProperties;
 import com.lavis.config.llm.ModelConfig;
 
+import com.lavis.service.config.DynamicApiKeyService;
 import com.lavis.service.llm.stt.DashScopeSttModel;
 import com.lavis.service.llm.stt.GeminiFlashSttModel;
 import com.lavis.service.llm.stt.OpenAiSttModel;
 import com.lavis.service.llm.stt.SttModel;
 import com.lavis.service.llm.tts.DashScopeTtsModel;
+import com.lavis.service.llm.tts.GeminiTtsModel;
 import com.lavis.service.llm.tts.OpenAiTtsModel;
 import com.lavis.service.llm.tts.TtsModel;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -27,10 +29,15 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class LlmFactory {
 
     private final LlmProperties llmProperties;
+    private final DynamicApiKeyService dynamicApiKeyService;
+
+    public LlmFactory(LlmProperties llmProperties, @Lazy DynamicApiKeyService dynamicApiKeyService) {
+        this.llmProperties = llmProperties;
+        this.dynamicApiKeyService = dynamicApiKeyService;
+    }
 
     /**
      * 模型实例缓存
@@ -136,6 +143,7 @@ public class LlmFactory {
         return switch (config.getProvider()) {
             case DASHSCOPE -> new DashScopeTtsModel(config);
             case OPENAI -> new OpenAiTtsModel(config);
+            case GEMINI -> new GeminiTtsModel(config);
             default -> throw new IllegalArgumentException("不支持的 TTS Provider: " + config.getProvider());
         };
     }
@@ -149,8 +157,44 @@ public class LlmFactory {
                             alias, llmProperties.getModels().keySet()));
         }
 
-        validateConfig(alias, config);
-        return config;
+        // 应用动态 API Key（如果已设置）
+        ModelConfig effectiveConfig = applyDynamicApiKey(config);
+
+        validateConfig(alias, effectiveConfig);
+        return effectiveConfig;
+    }
+
+    /**
+     * 应用动态 API Key 到配置
+     * 如果用户设置了动态 API Key，则覆盖配置文件中的 Key
+     */
+    private ModelConfig applyDynamicApiKey(ModelConfig config) {
+        if (dynamicApiKeyService == null) {
+            return config;
+        }
+
+        String effectiveApiKey = dynamicApiKeyService.getEffectiveApiKey(config.getApiKey());
+
+        // 如果 API Key 没有变化，直接返回原配置
+        if (effectiveApiKey == null || effectiveApiKey.equals(config.getApiKey())) {
+            return config;
+        }
+
+        // 创建新的配置对象，避免修改原始配置
+        ModelConfig newConfig = new ModelConfig();
+        newConfig.setType(config.getType());
+        newConfig.setProvider(config.getProvider());
+        newConfig.setBaseUrl(config.getBaseUrl());
+        newConfig.setApiKey(effectiveApiKey);
+        newConfig.setModelName(config.getModelName());
+        newConfig.setTemperature(config.getTemperature());
+        newConfig.setTimeoutSeconds(config.getTimeoutSeconds());
+        newConfig.setMaxRetries(config.getMaxRetries());
+        newConfig.setVoice(config.getVoice());
+        newConfig.setFormat(config.getFormat());
+
+        log.debug("🔑 Using dynamic API Key for model");
+        return newConfig;
     }
 
     private void validateConfig(String alias, ModelConfig config) {
@@ -208,7 +252,11 @@ public class LlmFactory {
         if (config == null) {
             return false;
         }
-        return config.getApiKey() != null && !config.getApiKey().isBlank()
+        // 考虑动态 API Key
+        String effectiveApiKey = dynamicApiKeyService != null
+                ? dynamicApiKeyService.getEffectiveApiKey(config.getApiKey())
+                : config.getApiKey();
+        return effectiveApiKey != null && !effectiveApiKey.isBlank()
                 && config.getModelName() != null && !config.getModelName().isBlank();
     }
 

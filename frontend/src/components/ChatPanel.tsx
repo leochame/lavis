@@ -9,6 +9,7 @@ import { VoicePanel } from './VoicePanel';
 import { ManagementPanel } from './ManagementPanel';
 import { SchedulerPanel } from './SchedulerPanel';
 import { SkillsPanel } from './SkillsPanel';
+import { SettingsPanel } from './SettingsPanel';
 import { Sidebar, type PanelType } from './Sidebar';
 import type { WorkflowState, ConnectionStatus } from '../hooks/useWebSocket';
 import { useUIStore } from '../store/uiStore';
@@ -296,6 +297,8 @@ export function ChatPanel({
         return <SchedulerPanel onClose={() => setActivePanel('chat')} />;
       case 'skills':
         return <SkillsPanel onClose={() => setActivePanel('chat')} />;
+      case 'settings':
+        return <SettingsPanel />;
       case 'chat':
       default:
         return (

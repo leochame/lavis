@@ -58,6 +58,10 @@ export function Capsule({
   const isDraggingRef = useRef(false);
   const hasDraggedRef = useRef(false); // 用于区分点击和拖拽
 
+  // 单击 / 双击区分
+  const clickTimeoutRef = useRef<number | null>(null);
+  const lastClickTimeRef = useRef<number>(0);
+
   // Debug: log state changes
   useEffect(() => {
     console.log('Capsule state:', {
@@ -182,25 +186,44 @@ export function Capsule({
       return;
     }
 
-    console.log('Capsule core clicked, state:', capsuleState);
+    const now = Date.now();
+    const DOUBLE_CLICK_THRESHOLD = 300; // ms
 
-    // 如果在待机状态且有录音功能，开始录音
-    if (capsuleState === 'idle' && onStartRecording) {
-      onStartRecording();
-    } else {
-      onClick();
+    // 第二次点击，视为双击
+    if (now - lastClickTimeRef.current < DOUBLE_CLICK_THRESHOLD) {
+      // 取消待触发的单击定时器
+      if (clickTimeoutRef.current !== null) {
+        window.clearTimeout(clickTimeoutRef.current);
+        clickTimeoutRef.current = null;
+      }
+
+      console.log('Capsule core double-click detected, expanding to chat mode');
+      lastClickTimeRef.current = 0;
+      onDoubleClick?.();
+      return;
     }
-  }, [capsuleState, onClick, onStartRecording]);
 
-  /**
-   * 双击处理 - 根据设计规范：展开到聊天模式
-   */
-  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    console.log('Capsule double-clicked, expanding to chat mode');
-    onDoubleClick?.();
-  }, [onDoubleClick]);
+    // 第一次点击，启动单击延时，等待是否会发生第二次点击
+    lastClickTimeRef.current = now;
+
+    if (clickTimeoutRef.current !== null) {
+      window.clearTimeout(clickTimeoutRef.current);
+    }
+
+    clickTimeoutRef.current = window.setTimeout(() => {
+      console.log('Capsule core single-click, state:', capsuleState);
+
+      // 如果在待机状态且有录音功能，开始录音
+      if (capsuleState === 'idle' && onStartRecording) {
+        onStartRecording();
+      } else {
+        onClick();
+      }
+
+      clickTimeoutRef.current = null;
+      lastClickTimeRef.current = 0;
+    }, DOUBLE_CLICK_THRESHOLD);
+  }, [capsuleState, onClick, onStartRecording, onDoubleClick]);
 
   /**
    * 右键菜单处理 - 呼出系统菜单
@@ -239,7 +262,6 @@ export function Capsule({
     <div
       className={`capsule capsule--${capsuleState} ${isBreathing ? 'capsule--breathing' : ''}`}
       onMouseDown={handleMouseDown}
-      onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
       title={getTooltip()}
     >

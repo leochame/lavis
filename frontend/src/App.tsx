@@ -6,6 +6,7 @@ import { useGlobalVoice } from './hooks/useGlobalVoice';
 import { useWebSocket } from './hooks/useWebSocket';
 import type { AgentStatus } from './types/agent';
 import { useUIStore } from './store/uiStore';
+import { useSettingsStore } from './store/settingsStore';
 import { usePlatform } from './platforms/PlatformProvider';
 import './App.css';
 
@@ -16,9 +17,15 @@ export default function App() {
   const setViewMode = useUIStore((s) => s.setViewMode);
   const windowState = useUIStore((s) => s.windowState);
   const setWindowState = useUIStore((s) => s.setWindowState);
+  const loadSettingsFromStorage = useSettingsStore((s) => s.loadFromStorage);
   const [status, setStatus] = useState<AgentStatus | null>(null);
   // Electron 模式下自动启动，Web 模式需要用户点击
   const [isStarted, setIsStarted] = useState(false);
+
+  // Load settings from localStorage on mount
+  useEffect(() => {
+    loadSettingsFromStorage();
+  }, [loadSettingsFromStorage]);
 
   // Electron 模式下自动启动
   useEffect(() => {

@@ -1,11 +1,14 @@
 # ====================================
-# Lavis - macOS AI Agent Configuration
+# Lavis - Gemini Hackathon Edition
 # ====================================
-# 
+#
+# This is a simplified configuration for the Gemini Hackathon.
+# All models use Gemini API with a single API key.
+#
 # Usage Instructions:
 # 1. Copy this file to application.properties
-# 2. Fill in your API Keys and configuration information
-# 3. application.properties is in .gitignore and will not be committed to the repository
+# 2. Set your Gemini API key (or configure via frontend Settings panel)
+# 3. application.properties is in .gitignore and will not be committed
 #
 # ====================================
 
@@ -14,107 +17,78 @@ spring.application.name=lavis
 # Server
 server.port=18765
 
-app.llm.default-model=fast-model
+# ====================================
+# Model Configuration
+# ====================================
+# Default model aliases
+app.llm.default-model=gemini
 app.llm.default-stt-model=whisper
 app.llm.default-tts-model=tts
 
+# ====================================
+# Chat Model - Gemini
+# ====================================
+# Using Google Gemini API directly
+# API Key can be set via:
+# 1. Environment variable: GEMINI_API_KEY
+# 2. Frontend Settings panel (recommended for hackathon)
+# 3. Directly in this file (not recommended)
+app.llm.models.gemini.provider=GEMINI
+app.llm.models.gemini.api-key=${GEMINI_API_KEY:}
+app.llm.models.gemini.model-name=gemini-2.5-flash-preview
+app.llm.models.gemini.temperature=0.4
+app.llm.models.gemini.timeout-seconds=180
+app.llm.models.gemini.max-retries=3
 
 # ====================================
-# Chat Models - Gemini (via LangChain4j)
+# STT (Speech-to-Text) - Gemini
 # ====================================
-# Using LangChain4j GoogleAiGeminiChatModel with custom baseUrl (relay)
-# Supports: tool calling, multimodal (text + images), system instructions
-# Docs: https://docs.newapi.pro/zh/docs/api/ai-model/chat/gemini/geminirelayv1beta-391536411
-# 快模型（Fast Model）- 用于快速响应的 LLM
-app.llm.models.fast-model.provider=GEMINI
-app.llm.models.fast-model.base-url=https://api.jieai.shop/v1
-app.llm.models.fast-model.api-key=${FAST_MODEL_API_KEY:sk-N8Ra8IXzokz5qAkAy48zXQE3DSPRYKnHYVGQJXmzu2IZbq7J}
-app.llm.models.fast-model.model-name=gemini-3-flash-preview
-app.llm.models.fast-model.temperature=0.4
-app.llm.models.fast-model.timeout-seconds=180
-app.llm.models.fast-model.max-retries=3
-
-# ====================================
-# Voice: STT (Speech-to-Text)
-# ====================================
-# Option 1: Gemini-flash STT (recommended)
-# Using Gemini generateContent API with inlineData base64 audio upload
-# Supports: audio/webm, audio/wav, audio/mpeg, audio/mp4, etc.
+# Using Gemini generateContent API with audio input
 app.llm.models.whisper.type=STT
 app.llm.models.whisper.provider=GEMINI
-app.llm.models.whisper.base-url=https://api.jieai.shop/v1
-app.llm.models.whisper.api-key=${WHISPER_API_KEY:your-gemini-api-key-here}
-app.llm.models.whisper.model-name=gemini-3-flash-preview
-# 超时设置：建议设置为 120-180 秒，因为：
-# 1. Cloudflare 的默认超时通常是 100 秒
-# 2. 音频处理可能需要较长时间，特别是大文件
-# 3. 如果遇到 524 错误（Cloudflare 超时），可以尝试增加此值
+app.llm.models.whisper.api-key=${GEMINI_API_KEY:}
+app.llm.models.whisper.model-name=gemini-2.5-flash-preview
 app.llm.models.whisper.timeout-seconds=120
 
-# Option 2: Qwen ASR (DashScope)
-# Using Alibaba Cloud DashScope OpenAI-compatible API
-# app.llm.models.whisper.type=STT
-# app.llm.models.whisper.provider=OPENAI
-# app.llm.models.whisper.base-url=https://dashscope.aliyuncs.com/compatible-mode/v1
-# app.llm.models.whisper.api-key=${WHISPER_API_KEY:your-dashscope-api-key-here}
-# app.llm.models.whisper.model-name=qwen3-asr-flash
-# app.llm.models.whisper.timeout-seconds=60
-
 # ====================================
-# Voice: TTS (Text-to-Speech) - Qwen TTS
+# TTS (Text-to-Speech) - Gemini
 # ====================================
-# Using Alibaba Cloud DashScope OpenAI-compatible API
+# Using Gemini TTS API (streamGenerateContent with responseModalities: ["AUDIO"])
+# Available voices: Kore, Charon, Fenrir, Aoede, Puck, etc.
+# See: https://ai.google.dev/gemini-api/docs/text-to-speech
 app.llm.models.tts.type=TTS
-app.llm.models.tts.provider=OPENAI
-app.llm.models.tts.base-url=https://dashscope.aliyuncs.com/compatible-mode/v1
-app.llm.models.tts.api-key=${TTS_API_KEY:your-dashscope-api-key-here}
-app.llm.models.tts.model-name=qwen3-tts-flash
-app.llm.models.tts.voice=Cherry
-app.llm.models.tts.format=mp3
+app.llm.models.tts.provider=GEMINI
+app.llm.models.tts.api-key=${GEMINI_API_KEY:}
+app.llm.models.tts.model-name=gemini-2.5-flash-preview-tts
+app.llm.models.tts.voice=Kore
 app.llm.models.tts.timeout-seconds=60
-
 
 # ====================================
 # Agent Configuration
 # ====================================
-# Model alias used by the Agent (corresponds to the key in app.llm.models.*)
-agent.model.alias=fast-model
-# Retry configuration
+agent.model.alias=gemini
 agent.retry.max=3
 agent.retry.delay.ms=2000
 agent.max.tool.iterations=30
-
-# Planner and Executor can use different models (leave empty to use agent.model.alias)
-# planner.model.alias=fast-model
-# executor.model.alias=executor
-
-# [Critical] Wait time (in milliseconds) after tool execution for UI response
-# This time must be long enough to allow screen changes to complete before taking screenshots
-# Recommended around 200ms for fast UIs; increase if your UI updates slowly (animations/network)
 agent.tool.wait.ms=200
 
-# Reflection loop configuration
+# ====================================
+# Reflection Configuration
+# ====================================
 reflection.max.iterations=5
 reflection.delay.ms=1000
 
 # ====================================
-# Micro-Executor Configuration
+# Executor Configuration
 # ====================================
-# Maximum number of corrections per step
 executor.max.corrections=5
-# Single action timeout (in seconds)
 executor.action.timeout.seconds=30
-# [Critical] Wait time (in milliseconds) after tool execution for UI response
-# Reflection phase needs to capture the "post-action" screen, must wait for animations/network to complete
-# Recommended around 200ms; increase for complex pages with heavy animations or slow network
 executor.tool.wait.ms=200
 
 # ====================================
-# Screenshot Configuration  
+# Screenshot Configuration
 # ====================================
-# Screenshot compression width (reducing can decrease token consumption)
 screenshot.target.width=1280
-# Screenshot quality (0.0-1.0)
 screenshot.quality=1.0
 
 # ====================================
@@ -131,15 +105,9 @@ spring.main.allow-bean-definition-overriding=true
 
 # ====================================
 # Gemini Computer Use Configuration
-# (https://ai.google.dev/gemini-api/docs/computer-use)
 # ====================================
-# Computer Use dedicated model
 gemini.computer.use.model=gemini-2.5-computer-use-preview-10-2025
-# Maximum iteration count
 gemini.computer.use.max.iterations=30
-# Keep the last N rounds of screenshots (reduce token consumption)
 gemini.computer.use.max.screenshots=3
-# Default browser
 computer.use.default.browser=Google Chrome
-# Delay after action (in milliseconds)
 computer.use.action.delay.ms=300

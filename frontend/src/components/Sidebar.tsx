@@ -6,11 +6,12 @@ import {
   Mic,
   X,
   CalendarClock,
-  Sparkles
+  Sparkles,
+  Key
 } from 'lucide-react';
 import './Sidebar.css';
 
-export type PanelType = 'chat' | 'brain' | 'management' | 'scheduler' | 'skills';
+export type PanelType = 'chat' | 'brain' | 'management' | 'scheduler' | 'skills' | 'settings';
 
 interface SidebarProps {
   activePanel: PanelType;
@@ -36,6 +37,7 @@ const navItems: NavItem[] = [
   { id: 'brain', label: 'Brain', icon: Orbit, shortcut: '⌘2' },
   { id: 'scheduler', label: 'Schedule', icon: CalendarClock, shortcut: '⌘3' },
   { id: 'skills', label: 'Skills', icon: Sparkles, shortcut: '⌘4' },
+  { id: 'settings', label: 'Settings', icon: Key, shortcut: '⌘5' },
   { id: 'management', label: 'Studio', icon: Settings2, shortcut: '⌘,' },
 ];
 
