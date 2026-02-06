@@ -165,8 +165,8 @@ public class LlmFactory {
     }
 
     /**
-     * 应用动态 API Key 到配置
-     * 如果用户设置了动态 API Key，则覆盖配置文件中的 Key
+     * 应用动态配置（API Key 和 Base URL）到配置
+     * 如果用户设置了动态配置，则覆盖配置文件中的值
      */
     private ModelConfig applyDynamicApiKey(ModelConfig config) {
         if (dynamicApiKeyService == null) {
@@ -174,9 +174,14 @@ public class LlmFactory {
         }
 
         String effectiveApiKey = dynamicApiKeyService.getEffectiveApiKey(config.getApiKey());
+        String effectiveBaseUrl = dynamicApiKeyService.getEffectiveBaseUrl(config.getBaseUrl());
 
-        // 如果 API Key 没有变化，直接返回原配置
-        if (effectiveApiKey == null || effectiveApiKey.equals(config.getApiKey())) {
+        // 如果配置没有变化，直接返回原配置
+        boolean apiKeyChanged = effectiveApiKey != null && !effectiveApiKey.equals(config.getApiKey());
+        boolean baseUrlChanged = (effectiveBaseUrl == null && config.getBaseUrl() != null) ||
+                                (effectiveBaseUrl != null && !effectiveBaseUrl.equals(config.getBaseUrl()));
+
+        if (!apiKeyChanged && !baseUrlChanged) {
             return config;
         }
 
@@ -184,8 +189,8 @@ public class LlmFactory {
         ModelConfig newConfig = new ModelConfig();
         newConfig.setType(config.getType());
         newConfig.setProvider(config.getProvider());
-        newConfig.setBaseUrl(config.getBaseUrl());
-        newConfig.setApiKey(effectiveApiKey);
+        newConfig.setBaseUrl(effectiveBaseUrl);  // 使用动态 Base URL
+        newConfig.setApiKey(effectiveApiKey);    // 使用动态 API Key
         newConfig.setModelName(config.getModelName());
         newConfig.setTemperature(config.getTemperature());
         newConfig.setTimeoutSeconds(config.getTimeoutSeconds());
@@ -193,7 +198,12 @@ public class LlmFactory {
         newConfig.setVoice(config.getVoice());
         newConfig.setFormat(config.getFormat());
 
-        log.debug("🔑 Using dynamic API Key for model");
+        if (apiKeyChanged) {
+            log.debug("🔑 Using dynamic API Key for model");
+        }
+        if (baseUrlChanged) {
+            log.debug("🔗 Using dynamic Base URL: {}", effectiveBaseUrl != null ? effectiveBaseUrl : "Gemini Official");
+        }
         return newConfig;
     }
 

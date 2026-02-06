@@ -4,12 +4,15 @@ const API_BASE_URL = 'http://127.0.0.1:18765/api/config';
 
 interface ApiKeyStatusResponse {
   configured: boolean;
+  mode: 'official' | 'proxy';
+  baseUrl: string | null;
 }
 
 interface SetApiKeyResponse {
   success: boolean;
   message?: string;
   error?: string;
+  mode?: 'official' | 'proxy';
 }
 
 interface ClearApiKeyResponse {
@@ -19,16 +22,23 @@ interface ClearApiKeyResponse {
 }
 
 /**
- * Config API client for managing API keys
+ * Config API client for managing API keys and base URL
+ *
+ * Supports two modes:
+ * 1. Official - Use Gemini official API (no baseUrl)
+ * 2. Proxy - Use custom proxy/relay server (with baseUrl)
  */
 export const configApi = {
   /**
-   * Set the Gemini API key
+   * Set the Gemini API key and optional base URL
+   *
+   * @param apiKey - Required API key
+   * @param baseUrl - Optional base URL for proxy mode (empty = Gemini official)
    */
-  async setApiKey(apiKey: string): Promise<SetApiKeyResponse> {
+  async setApiKey(apiKey: string, baseUrl?: string): Promise<SetApiKeyResponse> {
     const response = await axios.post<SetApiKeyResponse>(
       `${API_BASE_URL}/api-key`,
-      { apiKey },
+      { apiKey, baseUrl: baseUrl || null },
       { timeout: 5000 }
     );
     return response.data;
@@ -46,7 +56,7 @@ export const configApi = {
   },
 
   /**
-   * Clear the API key
+   * Clear the API key and base URL configuration
    */
   async clearApiKey(): Promise<ClearApiKeyResponse> {
     const response = await axios.delete<ClearApiKeyResponse>(

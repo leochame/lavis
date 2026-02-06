@@ -383,41 +383,46 @@ body {
 }
 
 .app-window__control {
-  width: 12px;
-  height: 12px;
+  width: 24px;
+  height: 24px;
   border-radius: 0;
-  border: 1px solid var(--border-default);
-  background: rgba(248, 250, 252, 0.06);
-  box-shadow: none;
+  border: 1px solid rgba(0, 0, 0, 0.85); /* 黑色边框 */
+  background: var(--surface-elevated);
   cursor: pointer;
+  position: relative;
   transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
 }
 
+.app-window__control::before,
+.app-window__control::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: 11px;
+  width: 1.2px;
+  height: 14px;
+  background: rgba(148, 163, 184, 0.95); /* 略亮的灰色 “×” 线条，提升对比度 */
+}
+
+.app-window__control::before {
+  transform: rotate(45deg);
+}
+
+.app-window__control::after {
+  transform: rotate(-45deg);
+}
+
 .app-window__control:hover {
-  background: rgba(248, 250, 252, 0.12);
-  border-color: rgba(248, 250, 252, 0.28);
+  background: var(--surface-hover);
+  border-color: rgba(0, 0, 0, 0.95);
 }
 
 .app-window__control:active {
   transform: translateY(1px);
 }
 
+/* 关闭按钮保持同样的黑框风格，不再使用红色强调 */
 .app-window__control--close {
-  background: var(--primary-subtle);
-  border-color: var(--primary-muted);
-}
-
-.app-window__control--close:hover {
-  background: rgba(239, 68, 68, 0.22);
-  border-color: var(--primary);
-}
-
-.app-window__control--minimize {
-  background: rgba(248, 250, 252, 0.06);
-}
-
-.app-window__control--fullscreen {
-  background: rgba(248, 250, 252, 0.06);
 }
 
 .app-window__title {
@@ -459,15 +464,49 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 18px;
-  border: 1px solid var(--primary);
-  color: var(--primary);
+}
+
+.app-window__intent {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-overlay);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85);
+}
+
+.app-window__intent-label {
+  font-family: 'Snell Roundhand', 'Apple Chancery', 'Segoe Script', 'Brush Script MT', cursive;
   font-size: 18px;
   letter-spacing: 0.06em;
-  text-transform: none;
-  font-family: 'Snell Roundhand', 'Apple Chancery', 'Segoe Script', 'Brush Script MT', cursive;
-  line-height: 1;
-  transform: none;
+  color: var(--primary);
+}
+
+.app-window__intent-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+}
+
+.app-window__intent-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--primary);
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.8);
+}
+
+.app-window__intent-text {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
 }
 
 .app-window__body {

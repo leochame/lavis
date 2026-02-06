@@ -42,7 +42,7 @@ type FixedSizeListComponent = ForwardRefExoticComponent<
 >;
 
 interface ChatPanelProps {
-  onClose: () => void;
+  onClose: () => void; // 仍然作为上层控制窗口用，但不再在 Sidebar 里放单独的关闭按钮
   status: AgentStatus | null;
   /** 全局语音控制 (来自 App.tsx) */
   globalVoice: UseGlobalVoiceReturn;
@@ -69,7 +69,7 @@ export function ChatPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [showScreenshot, setShowScreenshot] = useState(false);
   const [screenshotData, setScreenshotData] = useState<string | null>(null);
-  const [showVoicePanel, setShowVoicePanel] = useState(false);
+  const [showVoicePanel] = useState(false); // 暂时隐藏语音面板入口
   const [activePanel, setActivePanel] = useState<PanelType>('chat');
   const [FixedSizeList, setFixedSizeList] = useState<FixedSizeListComponent | null>(null);
   const listRef = useRef<FixedSizeListHandle | null>(null);
@@ -490,11 +490,6 @@ export function ChatPanel({
       <Sidebar
         activePanel={activePanel}
         onPanelChange={setActivePanel}
-        showVoice={showVoicePanel}
-        onToggleVoice={() => setShowVoicePanel(!showVoicePanel)}
-        showScreenshot={showScreenshot}
-        onToggleScreenshot={handleScreenshotClick}
-        onClose={onClose}
         isConnected={connected}
         isWorking={isWorking}
       />

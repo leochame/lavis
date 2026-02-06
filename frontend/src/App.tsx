@@ -304,11 +304,19 @@ export default function App() {
                   className="app-window__control app-window__control--close"
                   onClick={handleChatClose}
                 />
-                <span className="app-window__control app-window__control--minimize" />
-                <span className="app-window__control app-window__control--fullscreen" />
               </div>
               <div className="app-window__title">
-                <span className="app-window__stamp" aria-hidden="true">Lavis</span>
+                <div className="app-window__intent">
+                  <span className="app-window__intent-label">Lavis</span>
+                  <span className="app-window__intent-pill">
+                    <span className="app-window__intent-dot" />
+                    <span className="app-window__intent-text">
+                      {wsConnected
+                        ? (wsWorkflow.status === 'executing' || wsWorkflow.status === 'planning' ? 'WORKING' : 'READY')
+                        : 'OFFLINE'}
+                    </span>
+                  </span>
+                </div>
               </div>
             </div>
             <div className="app-window__body">

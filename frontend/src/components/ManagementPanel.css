@@ -11,8 +11,8 @@
 .management-panel__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
+  justify-content: flex-start;
+  padding: 0 12px;
   background: var(--surface-overlay);
   border-bottom: 1px solid var(--border-subtle);
   -webkit-app-region: drag;
@@ -40,21 +40,20 @@
 }
 
 .management-panel__close {
-  background: none;
-  border: 1px solid var(--border-default);
-  color: var(--text-secondary);
-  font-size: 16px;
+  /* 扩大热区：让左上角更容易点到 */
+  width: 52px;
+  height: 40px;
+  margin-right: 8px;
+  padding: 0;
+  background: transparent;
+  border: none;
   cursor: pointer;
-  padding: 2px 10px;
-  border-radius: 0;
   transition: all 0.2s;
   -webkit-app-region: no-drag;
 }
 
 .management-panel__close:hover {
   background: var(--surface-hover);
-  border-color: var(--primary);
-  color: var(--text-primary);
 }
 
 .management-panel__content {
