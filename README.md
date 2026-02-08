@@ -43,22 +43,38 @@ Lavis is a macOS desktop AI agent that **perceives your screen**, **controls mou
 - Node.js 18+
 - At least one LLM API key
 
-### 1. Configure Backend API Keys
+### 1. Configure API Key
 
-**Option 1 (recommended): Environment variables**
+Lavis uses Google Gemini API for all AI services (chat, speech-to-text, and text-to-speech). You only need **one API key** to get started.
+
+**Option 1 (recommended): Environment variable**
 
 ```bash
-export FAST_MODEL_API_KEY=your_fast_model_api_key  # Fast LLM (e.g. Gemini Flash)
-export WHISPER_API_KEY=your_whisper_api_key        # ASR
-export TTS_API_KEY=your_tts_api_key                # TTS
+export GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
-**Option 2: Configuration file**
+**Option 2: Frontend Settings Panel (Easiest)**
+
+1. Launch the app after starting frontend
+2. Open Settings panel (via menu bar icon or `Cmd + K`)
+3. Enter your Gemini API key in the settings form
+4. Click "Save"
+
+**Option 3: Configuration file**
 
 ```bash
 cp src/main/resources/application.properties.example src/main/resources/application.properties
-# Edit and fill your API keys
+# Edit application.properties and set GEMINI_API_KEY or fill API keys directly
 ```
+
+#### Getting Your Gemini API Key
+
+1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
+2. Sign in with your Google account
+3. Click "Create API Key"
+4. Copy the generated key
+
+> **Security Note**: API keys are stored locally only and never exposed to third parties.
 
 ### 2. Start Backend
 

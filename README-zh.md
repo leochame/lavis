@@ -46,32 +46,61 @@ Lavis 已将所有组件（Java 后端、JRE、前端）打包成一个独立的
 
 #### 2. 配置 API Key
 
-应用首次启动前，需要配置 LLM 和语音服务的 API Key。有两种方式：
+Lavis 使用 Google Gemini API 提供所有 AI 服务（聊天、语音识别、语音合成）。你只需要**一个 API Key** 即可开始使用。
 
-**方式一（推荐）：环境变量**
+**方式一（推荐）：前端设置面板（最简单）**
+
+1. 启动 `Lavis AI.app`
+2. 打开设置面板（通过菜单栏图标或 `Cmd + K`）
+3. 在设置表单中输入你的 Gemini API Key
+4. 点击「保存」- Key 会立即保存并生效
+
+> **注意**: 前端设置面板是最简单的配置方式，无需编辑文件或环境变量。
+
+**方式二：环境变量**
 
 在终端中设置环境变量，然后从终端启动应用：
 
 ```bash
-export MODEL_API_KEY=your_model_api_key      # 主要 LLM (如 GPT-4, Gemini)
-export WHISPER_API_KEY=your_whisper_api_key # 语音识别（可为 Gemini Hackathon 使用 Gemini 3.0-flash）
-export TTS_API_KEY=your_tts_api_key           # 语音合成
+export GEMINI_API_KEY=your_gemini_api_key_here
 
 # 启动应用
 open /Applications/Lavis\ AI.app
 ```
 
-**方式二：配置文件**
-
-编辑应用包内的配置文件（需要右键「显示包内容」）：
+**持久化配置**：将环境变量添加到你的 shell 配置文件中（如 `~/.zshrc` 或 `~/.bash_profile`）：
 
 ```bash
-# 找到应用包内的配置文件
-open /Applications/Lavis\ AI.app/Contents/Resources/backend/application.properties
-# 或使用文本编辑器编辑
+echo 'export GEMINI_API_KEY=your_gemini_api_key_here' >> ~/.zshrc
+source ~/.zshrc
 ```
 
-> **注意**: 打包后的应用配置文件位置可能不同，建议使用环境变量方式。
+**方式三：配置文件（高级用户）**
+
+如果你手动运行后端（开发者模式）：
+
+1. 复制示例配置文件：
+   ```bash
+   cp src/main/resources/application.properties.example src/main/resources/application.properties
+   ```
+
+2. 编辑 `src/main/resources/application.properties`，设置：
+   ```properties
+   app.llm.models.gemini.api-key=your_gemini_api_key_here
+   app.llm.models.whisper.api-key=your_gemini_api_key_here
+   app.llm.models.tts.api-key=your_gemini_api_key_here
+   ```
+
+   或者直接设置环境变量 `GEMINI_API_KEY`（配置文件会自动使用它）。
+
+#### 获取 Gemini API Key
+
+1. 访问 [Google AI Studio](https://aistudio.google.com/app/apikey)
+2. 使用你的 Google 账号登录
+3. 点击「Create API Key」
+4. 复制生成的 Key
+
+> **安全提示**: API Key 仅存储在本地（环境变量或本地配置文件中），不会被上传到第三方服务或暴露给前端。
 
 #### 3. 授予 macOS 权限
 
@@ -108,20 +137,31 @@ open /Applications/Lavis\ AI.app/Contents/Resources/backend/application.properti
 
 #### 1. 配置 API Key
 
+Lavis 使用 Google Gemini API 提供所有 AI 服务。你只需要**一个 API Key**。
+
 **方式一（推荐）：环境变量**
 
 ```bash
-export MODEL_API_KEY=your_model_api_key      # 主要 LLM (如 GPT-4, Gemini)
-export WHISPER_API_KEY=your_whisper_api_key # 语音识别（可为 Gemini Hackathon 使用 Gemini 3.0-flash）
-export TTS_API_KEY=your_tts_api_key         # 语音合成
+export GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
 **方式二：配置文件**
 
 ```bash
 cp src/main/resources/application.properties.example src/main/resources/application.properties
-# 编辑 application.properties 填写 API Key
+# 编辑 application.properties，设置 GEMINI_API_KEY 或直接在文件中填写 API Key
 ```
+
+**方式三：前端设置面板**
+
+启动前端后，在设置面板中配置 API Key（最简单的方式）。
+
+#### 获取 Gemini API Key
+
+1. 访问 [Google AI Studio](https://aistudio.google.com/app/apikey)
+2. 使用你的 Google 账号登录
+3. 点击「Create API Key」
+4. 复制生成的 Key
 
 #### 2. 启动后端
 
