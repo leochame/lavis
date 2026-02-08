@@ -195,29 +195,30 @@ public class AgentController {
     // ==================== Utilities ====================
 
 
-    @PostMapping("/tts")
-    public ResponseEntity<Map<String, Object>> textToSpeech(@RequestBody Map<String, String> request) {
-        String text = request.get("text");
-        if (text == null || text.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Text cannot be empty"));
-        }
-
-        log.info("[TTS] {} chars", text.length());
-        long startTime = System.currentTimeMillis();
-
-        try {
-            String audioBase64 = llmFactory.getTtsModel().textToSpeech(text);
-            return ResponseEntity.ok(Map.of(
-                "success", true,
-                "audio", audioBase64,
-                "format", "mp3",
-                "duration_ms", System.currentTimeMillis() - startTime
-            ));
-        } catch (Exception e) {
-            log.error("TTS failed", e);
-            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage(), "success", false));
-        }
-    }
+    // TTS功能已禁用
+    // @PostMapping("/tts")
+    // public ResponseEntity<Map<String, Object>> textToSpeech(@RequestBody Map<String, String> request) {
+    //     String text = request.get("text");
+    //     if (text == null || text.isBlank()) {
+    //         return ResponseEntity.badRequest().body(Map.of("error", "Text cannot be empty"));
+    //     }
+    //
+    //     log.info("[TTS] {} chars", text.length());
+    //     long startTime = System.currentTimeMillis();
+    //
+    //     try {
+    //         String audioBase64 = llmFactory.getTtsModel().textToSpeech(text);
+    //         return ResponseEntity.ok(Map.of(
+    //             "success", true,
+    //             "audio", audioBase64,
+    //             "format", "mp3",
+    //             "duration_ms", System.currentTimeMillis() - startTime
+    //         ));
+    //     } catch (Exception e) {
+    //         log.error("TTS failed", e);
+    //         return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage(), "success", false));
+    //     }
+    // }
 
 
     // ==================== Private Helpers ====================

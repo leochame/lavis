@@ -125,7 +125,8 @@ public class DynamicApiKeyService {
     public String getEffectiveBaseUrl(String configBaseUrl) {
         String dynamicUrl = dynamicBaseUrl.get();
         // 动态设置优先（包括显式设置为空的情况）
-        if (dynamicApiKey.get() != null) {
+        // 如果用户设置了动态配置（API Key 或 Base URL），则使用用户设置的 Base URL
+        if (dynamicApiKey.get() != null || dynamicUrl != null) {
             // 如果用户设置了 API Key，则使用用户设置的 Base URL（可能为 null）
             return dynamicUrl;
         }

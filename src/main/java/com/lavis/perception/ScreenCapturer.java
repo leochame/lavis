@@ -646,23 +646,42 @@ public class ScreenCapturer {
      * @return ImageCapture 包含 imageId 和 base64
      */
     public ImageCapture captureWithDedup(boolean transparent) throws IOException {
+        return captureWithDedup(transparent, false);
+    }
+
+    /**
+     * 带感知去重的屏幕捕获
+     *
+     * @param transparent 是否在截图前隐藏窗口
+     * @param forceCapture 是否强制捕获新截图（忽略去重，用于工具执行后确保获取最新状态）
+     * @return ImageCapture 包含 imageId 和 base64
+     */
+    public ImageCapture captureWithDedup(boolean transparent, boolean forceCapture) throws IOException {
         BufferedImage original = captureScreen(transparent);
         BufferedImage compressed = compressImage(original, COMPRESS_WIDTH);
 
         // 计算感知哈希
         long currentHash = computeDHash(compressed);
 
-        // 检查是否可以复用
-        if (dedupEnabled && lastImageHash != 0 && lastImageBase64 != null) {
+        // 检查是否可以复用（如果强制捕获，跳过去重检查）
+        if (!forceCapture && dedupEnabled && lastImageHash != 0 && lastImageBase64 != null) {
             int distance = hammingDistance(currentHash, lastImageHash);
 
             if (distance <= dedupThreshold) {
-                log.debug("Screen unchanged (hamming distance: {}), reusing image: {}",
-                        distance, lastImageId);
-                return new ImageCapture(lastImageId, null, true, currentHash);
+                // 安全检查：如果缓存存在，才复用；否则强制重新生成
+                if (lastImageBase64 != null && lastImageId != null) {
+                    log.debug("Screen unchanged (hamming distance: {}), reusing image: {}",
+                            distance, lastImageId);
+                    return new ImageCapture(lastImageId, null, true, currentHash);
+                } else {
+                    log.warn("Cache missing during dedup, forcing new capture");
+                    // 缓存丢失，强制重新生成
+                }
+            } else {
+                log.debug("Screen changed (hamming distance: {}), capturing new image", distance);
             }
-
-            log.debug("Screen changed (hamming distance: {}), capturing new image", distance);
+        } else if (forceCapture) {
+            log.debug("Force capture requested, ignoring dedup");
         }
 
         // 绘制标注

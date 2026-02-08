@@ -67,7 +67,8 @@ public class AgentService {
     @Value("${agent.model.alias:fast-model}")
     private String modelAlias;
 
-    private ChatLanguageModel chatModel;
+    // 不再缓存模型实例，每次都从 LlmFactory 获取（支持动态配置更新）
+    // private ChatLanguageModel chatModel;
     private ChatMemory chatMemory;
 
         /** 当前注入的 Skill 上下文（临时） */
@@ -101,13 +102,15 @@ public class AgentService {
                 return;
             }
 
-            this.chatModel = llmFactory.getModel(modelAlias);
+            // 不再缓存模型实例，每次都从 LlmFactory 获取（支持动态配置更新）
+            // this.chatModel = llmFactory.getModel(modelAlias);
 
             // 初始化聊天记忆（使用支持 ImageContent 清理的自定义实现）
             this.chatMemory = ImageContentCleanableChatMemory.withMaxMessages(20);
 
             // 初始化调度器（传递 LLM 模型给 Planner 和 Executor）
-            taskOrchestrator.initialize(chatModel);
+            // 注意：TaskOrchestrator.initialize() 现在不存储模型，所以这里可以传 null 或移除
+            taskOrchestrator.initialize(null);
 
             // 初始化 Skill 集成（仅上下文注入，工具注册统一由 ToolExecutionService 处理）
             initializeSkillIntegration();
@@ -178,6 +181,8 @@ public class AgentService {
      * @return 执行结果
      */
     public String chatWithScreenshot(String message, int maxSteps) {
+        // 每次从 LlmFactory 获取模型（支持动态配置更新）
+        ChatLanguageModel chatModel = getChatModel();
         if (chatModel == null) {
             return "❌ Agent 未初始化，请检查 API Key 配置";
         }
@@ -351,6 +356,12 @@ public class AgentService {
     private IterationOutcome processSingleIteration(List<ChatMessage> messages,
                                                     List<ToolSpecification> allTools,
                                                     StringBuilder fullResponse) {
+        // 每次从 LlmFactory 获取模型（支持动态配置更新）
+        ChatLanguageModel chatModel = getChatModel();
+        if (chatModel == null) {
+            throw new IllegalStateException("❌ Agent 未初始化，请检查 API Key 配置");
+        }
+        
         // 调用模型（使用合并后的工具列表），并统计响应耗时
         long llmStartTime = System.currentTimeMillis();
         Response<AiMessage> response = chatModel.generate(messages, allTools);
@@ -402,7 +413,7 @@ public class AgentService {
 
         // 如果有视觉影响，重新截图并注入观察
         if (result.hasVisualImpact()) {
-            captureAndInjectObservation(messages, result.summary());
+            captureAndInjectObservation(messages, result.summary(), result.toolNames());
         }
 
         // 如果工具结果中包含"终止信号"（例如 complete_tool），结束循环
@@ -424,12 +435,14 @@ public class AgentService {
             StringBuilder toolResultsSummary = new StringBuilder();
         boolean hasVisualImpact = false;
         boolean shouldTerminate = false;
+        List<String> executedToolNames = new ArrayList<>();
 
             for (ToolExecutionRequest request : toolRequests) {
                 String toolName = request.name();
                 String toolArgs = request.arguments();
 
                 log.info("  → 调用工具: {}({})", toolName, toolArgs);
+                executedToolNames.add(toolName);
 
                 // 【关键】通过统一工具执行服务路由（基础工具 + Skill 工具）
                 String result = toolExecutionService.executeUnified(toolName, toolArgs);
@@ -460,41 +473,101 @@ public class AgentService {
                 }
             }
 
-        return new ToolExecutionResult(toolResultsSummary.toString(), hasVisualImpact, shouldTerminate);
+        return new ToolExecutionResult(toolResultsSummary.toString(), hasVisualImpact, shouldTerminate, executedToolNames);
+    }
+
+    /**
+     * 根据工具类型动态计算等待时间
+     * 
+     * @param toolNames 执行的工具名称列表
+     * @return 等待时间（毫秒）
+     */
+    private int getWaitTimeForTools(List<String> toolNames) {
+        if (toolNames == null || toolNames.isEmpty()) {
+            return toolWaitMs; // 默认等待时间
+        }
+        
+        // 取所有工具中需要最长等待时间的工具
+        int maxWaitTime = toolWaitMs;
+        for (String toolName : toolNames) {
+            int waitTime = switch (toolName) {
+                // 文本输入操作 - 需要更长时间让 UI 响应和渲染
+                case "type_text_at" -> 1500;
+                // 打开应用/网页 - 需要较长时间加载
+                case "openApplication", "openURL", "open_browser" -> 2000;
+                // 执行脚本 - 可能需要时间执行
+                case "executeAppleScript", "executeShell" -> 1200;
+                // 点击操作 - 中等等待时间
+                case "click", "doubleClick", "rightClick" -> 800;
+                // 拖拽操作 - 需要时间完成动画
+                case "drag" -> 1000;
+                // 滚动操作 - 需要时间完成滚动动画
+                case "scroll" -> 600;
+                // 打开文件 - 可能需要时间加载
+                case "openFile" -> 1500;
+                // 等待操作 - 本身就有等待，截图前不需要额外等待太久
+                case "wait" -> 300;
+                // 其他操作使用默认值
+                default -> toolWaitMs;
+            };
+            maxWaitTime = Math.max(maxWaitTime, waitTime);
+        }
+        
+        return maxWaitTime;
     }
 
     /**
      * 重新截图并注入观察消息
+     * 
+     * @param messages 消息列表
+     * @param toolResultsSummary 工具执行结果摘要
+     * @param toolNames 执行的工具名称列表（用于动态调整等待时间）
      */
-    private void captureAndInjectObservation(List<ChatMessage> messages, String toolResultsSummary) {
+    private void captureAndInjectObservation(List<ChatMessage> messages, String toolResultsSummary, List<String> toolNames) {
                 try {
-                    // 等待 UI 响应
-                    log.info("⏳ 等待 UI 响应 {}ms...", toolWaitMs);
-                    Thread.sleep(toolWaitMs);
+                    // 根据工具类型动态计算等待时间
+                    int waitTime = getWaitTimeForTools(toolNames);
+                    log.info("⏳ 等待 UI 响应 {}ms (工具: {})...", waitTime, toolNames);
+                    Thread.sleep(waitTime);
 
-                    // Context Engineering: 使用感知去重重新截图
-                    ScreenCapturer.ImageCapture newCapture = screenCapturer.captureWithDedup();
+                    // 【关键修复】工具执行后强制获取新截图，不使用去重
+                    // 因为工具执行后屏幕状态可能已改变，即使变化很小也需要获取最新状态
+                    ScreenCapturer.ImageCapture newCapture = screenCapturer.captureWithDedup(true, true);
                     String newImageId = newCapture.imageId();
                     String newScreenshot = newCapture.base64();
                     
-                    // 如果图片被复用，base64 可能为 null，需要从缓存获取
-                    if (newScreenshot == null && newCapture.isReused()) {
-                        newScreenshot = screenCapturer.getLastImageBase64();
-                        if (newScreenshot == null) {
-                            log.warn("重新截图时图片复用但缓存数据丢失，强制重新截图");
-                            // 强制重新截图（清除缓存）
-                            screenCapturer.clearDedupCache();
-                            newCapture = screenCapturer.captureWithDedup();
-                            newImageId = newCapture.imageId();
-                            newScreenshot = newCapture.base64();
-                        } else {
-                            log.debug("重新截图时图片复用，使用缓存的 base64 数据: {}", newImageId);
-                        }
-                    }
-                    
+                    // 如果仍然为 null（理论上不应该发生，但做安全检查）
                     if (newScreenshot == null) {
-                        log.warn("重新截图失败，无法获取图片数据");
-                return; // 跳过本次观察
+                        log.error("❌ 重新截图失败：强制捕获后仍无法获取图片数据，尝试备用方案");
+                        // 备用方案：清除缓存后重试
+                        screenCapturer.clearDedupCache();
+                        newCapture = screenCapturer.captureWithDedup(true, true);
+                        newImageId = newCapture.imageId();
+                        newScreenshot = newCapture.base64();
+                        
+                        if (newScreenshot == null) {
+                            log.error("❌ 重新截图彻底失败，注入错误消息通知模型");
+                            // 通知模型截图失败，而不是静默跳过
+                            String errorMessage = String.format("""
+                                    ## ⚠️ Screenshot Capture Failed
+                                    
+                                    Last Step Execution Result:
+                                    %s
+                                    
+                                    **Critical Issue**: Unable to capture screenshot after operation.
+                                    This may indicate:
+                                    1. Screen capture service error
+                                    2. System resource issue
+                                    3. Permission problem
+                                    
+                                    Please proceed with caution and verify the operation result based on tool execution feedback.
+                                    """, toolResultsSummary);
+                            
+                            UserMessage errorObservation = UserMessage.from(TextContent.from(errorMessage));
+                            messages.add(errorObservation);
+                            chatMemory.add(errorObservation);
+                            return;
+                        }
                     }
                     
                     log.info("📸 重新截图完成: imageId={}, 复用={}, 注入新的视觉观察",
@@ -559,11 +632,14 @@ public class AgentService {
         private final boolean hasVisualImpact;
         /** 是否收到显式终止信号（例如 complete_tool） */
         private final boolean shouldTerminate;
+        /** 执行的工具名称列表（用于动态调整等待时间） */
+        private final List<String> toolNames;
 
-        ToolExecutionResult(String summary, boolean hasVisualImpact, boolean shouldTerminate) {
+        ToolExecutionResult(String summary, boolean hasVisualImpact, boolean shouldTerminate, List<String> toolNames) {
             this.summary = summary;
             this.hasVisualImpact = hasVisualImpact;
             this.shouldTerminate = shouldTerminate;
+            this.toolNames = toolNames;
         }
 
         String summary() {
@@ -576,6 +652,10 @@ public class AgentService {
 
         boolean shouldTerminate() {
             return shouldTerminate;
+        }
+
+        List<String> toolNames() {
+            return toolNames;
         }
     }
 
@@ -630,9 +710,28 @@ public class AgentService {
     }
 
     /**
+     * 获取 Chat 模型实例（每次从 LlmFactory 获取，支持动态配置更新）
+     * 当配置更新时，LlmFactory 会清除缓存，下次获取时会使用新配置
+     */
+    private ChatLanguageModel getChatModel() {
+        try {
+            if (!llmFactory.isModelAvailable(modelAlias)) {
+                log.warn("⚠️ 模型 '{}' 未配置或 API Key 缺失", modelAlias);
+                return null;
+            }
+            return llmFactory.getModel(modelAlias);
+        } catch (Exception e) {
+            log.error("❌ 获取模型失败: {}", e.getMessage(), e);
+            return null;
+        }
+    }
+
+    /**
      * 检查 Agent 是否可用
      */
     public boolean isAvailable() {
+        // 每次从 LlmFactory 获取模型（支持动态配置更新）
+        ChatLanguageModel chatModel = getChatModel();
         return chatModel != null && toolExecutionService.getToolCount() > 0;
     }
 

@@ -60,10 +60,10 @@ public class UnifiedChatService {
                 response = processWithFastPath(request, requestId, startTime);
             }
 
-            // 处理 TTS（如果需要）
-            if (request.needsTts() && response.success()) {
-                handleTts(response, request);
-            }
+            // 处理 TTS（如果需要）- 已禁用TTS功能
+            // if (request.needsTts() && response.success()) {
+            //     handleTts(response, request);
+            // }
 
             return response;
         } catch (Exception e) {
@@ -97,13 +97,13 @@ public class UnifiedChatService {
     private ChatResponse processWithOrchestrator(ChatRequest request, String requestId, long startTime) throws Exception {
         log.info("[UnifiedChat] Using orchestrator path (TaskOrchestrator-compatible, via AgentService)");
         
-        // 并行检查是否需要语音反馈（如果启用 TTS）
+        // 并行检查是否需要语音反馈（如果启用 TTS）- 已禁用TTS功能
         CompletableFuture<Boolean> voiceFeedbackFuture = null;
-        if (request.needsTts()) {
-            voiceFeedbackFuture = asyncTtsService.checkNeedsVoiceFeedbackAsync(
-                request.text(), ttsDecisionService
-            );
-        }
+        // if (request.needsTts()) {
+        //     voiceFeedbackFuture = asyncTtsService.checkNeedsVoiceFeedbackAsync(
+        //         request.text(), ttsDecisionService
+        //     );
+        // }
 
         // 执行任务
         // 注意：这里为了与现有架构最小耦合、避免循环依赖，
@@ -129,22 +129,22 @@ public class UnifiedChatService {
             TaskOrchestrator.OrchestratorState.COMPLETED.name()
         );
 
-        // 如果启用了 TTS，标记音频待推送（实际推送在 handleTts 中处理）
-        if (request.needsTts() && voiceFeedbackFuture != null) {
-            boolean needsVoiceFeedback = voiceFeedbackFuture.join();
-            if (needsVoiceFeedback) {
-                // 标记为待推送，实际推送由 handleTts 处理
-                response = new ChatResponse(
-                    response.success(),
-                    response.userText(),
-                    response.agentText(),
-                    response.requestId(),
-                    response.durationMs(),
-                    true, // audioPending
-                    response.orchestratorState()
-                );
-            }
-        }
+        // 如果启用了 TTS，标记音频待推送（实际推送在 handleTts 中处理）- 已禁用TTS功能
+        // if (request.needsTts() && voiceFeedbackFuture != null) {
+        //     boolean needsVoiceFeedback = voiceFeedbackFuture.join();
+        //     if (needsVoiceFeedback) {
+        //         // 标记为待推送，实际推送由 handleTts 处理
+        //         response = new ChatResponse(
+        //             response.success(),
+        //             response.userText(),
+        //             response.agentText(),
+        //             response.requestId(),
+        //             response.durationMs(),
+        //             true, // audioPending
+        //             response.orchestratorState()
+        //         );
+        //     }
+        // }
 
         return response;
     }
