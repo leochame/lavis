@@ -64,48 +64,44 @@ public class RobotDriver {
     }
 
     /**
-     * 将坐标转换为安全的逻辑屏幕坐标（带边界检查）
+     * 将坐标转换为逻辑屏幕坐标（仅边界检查，无安全区域限制）
      * 
      * 【坐标系统说明】
      * - 逻辑坐标：macOS 屏幕逻辑坐标（如 1440x900），AI 直接使用这个坐标
      * - 物理坐标：Retina 屏幕实际像素（如 2880x1800），仅截图内部使用
      * 
-     * 安全特性：
-     * - 越界保护：确保坐标在屏幕范围内
-     * - 安全边距：避免触发 Hot Corners、菜单栏等
+     * 【等比例缩放】实现无疑问的等比例缩放：
+     * - Gemini 坐标 (0-999) 等比例映射到整个屏幕 (0 到 width-1, 0 到 height-1)
+     * - 仅做边界检查，确保坐标在屏幕范围内，不应用任何安全区域限制
      * 
      * @param x 逻辑屏幕坐标 X
      * @param y 逻辑屏幕坐标 Y
-     * @return 安全的逻辑屏幕坐标
+     * @return 逻辑屏幕坐标（仅在屏幕范围内）
      */
     public Point convertToRobotCoordinates(int x, int y) {
-        return convertToRobotCoordinates(x, y, ScreenCapturer.SafeZone.DEFAULT);
-    }
-    
-    /**
-     * 使用自定义安全配置转换坐标
-     */
-    public Point convertToRobotCoordinates(int x, int y, 
-                                           ScreenCapturer.SafeZone safeZone) {
         Dimension screenSize = screenCapturer.getScreenSize();
         
-        // 安全边界
-        int minX = safeZone.left;
-        int maxX = screenSize.width - safeZone.right;
-        int minY = safeZone.top;
-        int maxY = screenSize.height - safeZone.bottom;
+        // 仅做边界检查，确保坐标在屏幕范围内 [0, width-1] 和 [0, height-1]
+        // 不应用任何安全区域限制，实现等比例缩放
+        int safeX = Math.max(0, Math.min(x, screenSize.width - 1));
+        int safeY = Math.max(0, Math.min(y, screenSize.height - 1));
         
-        // 钳位
-        int safeX = Math.max(minX, Math.min(x, maxX));
-        int safeY = Math.max(minY, Math.min(y, maxY));
-        
-        // 如果发生修正，记录日志
+        // 如果发生修正（超出屏幕边界），记录日志
         if (safeX != x || safeY != y) {
-            log.warn("🛡️ 坐标安全修正: ({},{}) -> ({},{}) [边界: {}-{}, {}-{}]",
-                    x, y, safeX, safeY, minX, maxX, minY, maxY);
+            log.warn("🛡️ 坐标边界修正: ({},{}) -> ({},{}) [屏幕范围: 0-{}, 0-{}]",
+                    x, y, safeX, safeY, screenSize.width - 1, screenSize.height - 1);
         }
         
         return new Point(safeX, safeY);
+    }
+    
+    /**
+     * 使用自定义安全配置转换坐标（保留此方法以兼容旧代码，但建议使用无参数版本）
+     */
+    public Point convertToRobotCoordinates(int x, int y, 
+                                           ScreenCapturer.SafeZone safeZone) {
+        // 为了保持等比例缩放，忽略安全区域配置，仅做边界检查
+        return convertToRobotCoordinates(x, y);
     }
     
     /**

@@ -185,7 +185,11 @@ public class ImageContentCleanableChatMemory implements ChatMemory {
         for (int i = messages.size() - 1; i >= 0; i--) {
             if (messages.get(i) instanceof UserMessage) {
                 // 只处理没有 Turn 信息的消息
-                if (!messageTurnMap.containsKey(i)) {
+                if (!messageTurnMap.containsKey
+
+
+
+                        (i)) {
                     userMessageIndices.add(i);
                 }
             }

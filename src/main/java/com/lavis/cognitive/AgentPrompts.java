@@ -59,11 +59,11 @@ public final class AgentPrompts {
             - System operations: Open close applications execute scripts file operations
 
             ## Coordinate System (for Mode 2):
-            **CRITICAL: You MUST use Gemini normalized coordinates (0-1000), NOT screen pixel coordinates!**
-            - Gemini coordinate range: X: 0 to 1000, Y: 0 to 1000
-            - Red cross marker in screenshot shows current mouse position in Gemini coordinates (0-1000)
-            - Green circle marker in screenshot shows last click position in Gemini coordinates (0-1000)
-            - ALL tool calls (click, doubleClick, rightClick, drag, moveMouse) MUST use Gemini coordinates [x, y] where x and y are integers between 0 and 1000
+            **CRITICAL: You MUST use Gemini normalized coordinates (0-999), NOT screen pixel coordinates!**
+            - Gemini coordinate range: X: 0 to 999, Y: 0 to 999 (1000x1000 grid with 1000 values from 0 to 999)
+            - Red cross marker in screenshot shows current mouse position in Gemini coordinates (0-999)
+            - Green circle marker in screenshot shows last click position in Gemini coordinates (0-999)
+            - ALL tool calls (click, doubleClick, rightClick, drag, moveMouse) MUST use Gemini coordinates [x, y] where x and y are integers between 0 and 999
             - Use coordinates shown in screenshot for operations (they are already in Gemini format)
 
             ## Execution Rules (for Mode 2):

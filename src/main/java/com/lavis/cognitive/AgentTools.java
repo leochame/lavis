@@ -117,8 +117,8 @@ public class AgentTools {
                     geminiCoords[0], geminiCoords[1], geminiX, geminiY, ScreenCapturer.COORD_MAX);
         }
         
-        // 使用 ScreenCapturer 内置转换（含边界/安全区处理）
-        Point logical = screenCapturer.toLogicalSafe(geminiX, geminiY);
+        // 使用 ScreenCapturer 内置转换（直接映射，无安全区限制）
+        Point logical = screenCapturer.toLogical(geminiX, geminiY);
         log.info("🎯 坐标校准: Gemini[{}, {}] -> 逻辑坐标[{}, {}]",
                 geminiX, geminiY, logical.x, logical.y);
         return logical;
@@ -245,7 +245,7 @@ public class AgentTools {
      * 在指定坐标输入文本（1000x1000 Gemini 坐标系）
      *
      * 说明：
-     * - x、y 使用与点击工具相同的 Gemini 坐标（0-1000），内部会自动转换为逻辑坐标。
+     * - x、y 使用与点击工具相同的 Gemini 坐标（0-999），内部会自动转换为逻辑坐标。
      * - 默认会先点击该坐标位置以聚焦输入框。
      * - 默认会先全选并清空原有内容（clear_before_typing = true）。
      *
@@ -331,8 +331,11 @@ public class AgentTools {
      * 将字符串按键标识映射为 KeyEvent keyCode
      * 支持：
      * - 修饰键：cmd/command/meta, ctrl/control, alt/option, shift
-     * - 功能键：enter/return, esc/escape, tab, backspace/delete/del
-     * - 字母：a-z
+     * - 功能键：enter/return, esc/escape, tab, backspace/delete/del, space
+     * - F键：f1-f12
+     * - 方向键：up, down, left, right
+     * - 编辑键：home, end, pageup/pgup, pagedown/pgdn, insert
+     * - 字母：a-z (大小写不敏感)
      * - 数字：0-9
      */
     private Integer mapKeyToken(String token) {
@@ -340,8 +343,10 @@ public class AgentTools {
             return null;
         }
 
+        String lowerToken = token.toLowerCase();
+
         // 修饰键
-        switch (token) {
+        switch (lowerToken) {
             case "cmd", "command", "meta", "⌘":
                 return KeyEvent.VK_META;
             case "ctrl", "control":
@@ -350,24 +355,83 @@ public class AgentTools {
                 return KeyEvent.VK_ALT;
             case "shift":
                 return KeyEvent.VK_SHIFT;
+            case "win", "windows":
+                return KeyEvent.VK_WINDOWS;
+        }
+
+        // 功能键
+        switch (lowerToken) {
             case "enter", "return":
                 return KeyEvent.VK_ENTER;
             case "esc", "escape":
                 return KeyEvent.VK_ESCAPE;
             case "tab":
                 return KeyEvent.VK_TAB;
-            case "backspace", "delete", "del":
+            case "backspace", "del":
                 return KeyEvent.VK_BACK_SPACE;
+            case "delete":
+                return KeyEvent.VK_DELETE;
+            case "space", "sp", "空格":
+                return KeyEvent.VK_SPACE;
         }
 
-        // 单个字母 a-z
+        // F键 (F1-F12)
+        if (lowerToken.startsWith("f") && lowerToken.length() <= 3) {
+            try {
+                int fNum = Integer.parseInt(lowerToken.substring(1));
+                if (fNum >= 1 && fNum <= 12) {
+                    return KeyEvent.VK_F1 + (fNum - 1);
+                }
+            } catch (NumberFormatException ignored) {
+                // 不是有效的F键
+            }
+        }
+
+        // 方向键
+        switch (lowerToken) {
+            case "up":
+                return KeyEvent.VK_UP;
+            case "down":
+                return KeyEvent.VK_DOWN;
+            case "left":
+                return KeyEvent.VK_LEFT;
+            case "right":
+                return KeyEvent.VK_RIGHT;
+        }
+
+        // 编辑键
+        switch (lowerToken) {
+            case "home":
+                return KeyEvent.VK_HOME;
+            case "end":
+                return KeyEvent.VK_END;
+            case "pageup", "pgup":
+                return KeyEvent.VK_PAGE_UP;
+            case "pagedown", "pgdn", "pgdown":
+                return KeyEvent.VK_PAGE_DOWN;
+            case "insert":
+                return KeyEvent.VK_INSERT;
+        }
+
+        // 单个字符处理：字母、数字、特殊字符（大小写不敏感）
         if (token.length() == 1) {
             char c = token.charAt(0);
-            if (c >= 'a' && c <= 'z') {
-                return KeyEvent.VK_A + (c - 'a');
+            
+            // 字母 a-z 或 A-Z（大小写不敏感）
+            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+                char lowerC = Character.toLowerCase(c);
+                return KeyEvent.VK_A + (lowerC - 'a');
             }
+            
+            // 数字 0-9
             if (c >= '0' && c <= '9') {
                 return KeyEvent.VK_0 + (c - '0');
+            }
+            
+            // 特殊字符：尝试通过字符码获取
+            int keyCode = KeyEvent.getExtendedKeyCodeForChar(c);
+            if (keyCode != KeyEvent.VK_UNDEFINED) {
+                return keyCode;
             }
         }
 

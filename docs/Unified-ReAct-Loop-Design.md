@@ -52,7 +52,7 @@
 
 ### 🔧 Known Issues
 
-1. **坐标系统**：需确保 LLM 输出 Gemini 坐标 (0-1000) 而非像素坐标
+1. **坐标系统**：需确保 LLM 输出 Gemini 坐标 (0-999) 而非像素坐标
 2. **动作验证**：部分动作参数验证不够严格（如 drag 的 toCoords）
 
 ---
@@ -230,7 +230,7 @@ Global Goal: {globalGoal}
 3. **Execute**: Output 1-5 logically connected actions for this round
 
 ## Coordinate System
-- Use Gemini normalized coordinates (0-1000), NOT pixel coordinates
+- Use Gemini normalized coordinates (0-999), NOT pixel coordinates
 - Red cross marker: Current mouse position
 - Green circle marker: Last click position
 
@@ -241,7 +241,7 @@ Global Goal: {globalGoal}
 - Actions should be logically connected (e.g., click input → type text)
 
 ## Coordinate System
-- Screen coordinates: X: 0-1000, Y: 0-1000 (Gemini normalized)
+- Screen coordinates: X: 0-999, Y: 0-999 (Gemini normalized, 1000x1000 grid with 1000 values from 0 to 999)
 - Red cross marker: Current mouse position
 - Green circle marker: Last click position
 ```

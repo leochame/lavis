@@ -19,7 +19,7 @@ import java.util.UUID;
  * 感知模块 - 屏幕截图器
  * * 【坐标系统】
  * 使用 Gemini 标准坐标系统：
- * - 范围: 0-1000 归一化坐标
+ * - 范围: 0-999 归一化坐标（1000x1000 网格，共 1000 个值）
  * - 格式: [y_min, x_min, y_max, x_max] (注意 Y 在 X 前面)
  * - 转换: geminiToLogical() / logicalToGemini()
  * * 负责高频截取屏幕，支持 Retina 缩放压缩
@@ -62,9 +62,10 @@ public class ScreenCapturer {
     // ========================================
 
     /**
-     * Gemini 坐标归一化范围 (0-1000)
+     * Gemini 坐标归一化范围 (0-999)
+     * 根据 Gemini API 文档，坐标范围是 0-999（1000x1000 网格，共 1000 个值）
      */
-    public static final int COORD_MAX = 1000;
+    public static final int COORD_MAX = 999;
 
     // 鼠标标记样式
     private static final Color CURSOR_COLOR = new Color(255, 0, 0, 200);
@@ -161,19 +162,29 @@ public class ScreenCapturer {
     }
 
     // ========================================
-    // 坐标转换 (Gemini 0-1000 <-> 逻辑屏幕)
+    // 坐标转换 (Gemini 0-999 <-> 逻辑屏幕)
     // ========================================
 
     /**
-     * Gemini 坐标 (0-1000) → 逻辑屏幕坐标
+     * Gemini 坐标 (0-999) → 逻辑屏幕坐标
+     * * 【精度说明】
+     *   - Gemini API 提供 1000 个坐标值 (0-999)，无法精确表示所有像素位置
+     *   - 精度损失：每个 Gemini 坐标单位 ≈ (screen.width-1)/999 像素
+     *   - 示例：1920px 屏幕 → 每单位 ≈ 1.922px，最大误差约 ±0.96px
+     *   - 示例：2560px 屏幕 → 每单位 ≈ 2.56px，最大误差约 ±1.28px
+     *   - 这是 API 限制，无法避免。使用 Math.round() 四舍五入最小化误差
      * * 【精度改进】使用 Math.round() 进行四舍五入，而不是直接截断，提高坐标转换精度
      * * 【修复】增加边界钳位，确保坐标不超出 [0, width-1]
+     * * 【修正】根据 Gemini API 文档，坐标范围是 0-999，映射到屏幕坐标 [0, width-1]
      */
     public Point toLogical(int geminiX, int geminiY) {
         Dimension screen = getScreenSize();
-        // 使用四舍五入提高精度，而不是直接截断
-        double xDouble = (double) geminiX / COORD_MAX * screen.width;
-        double yDouble = (double) geminiY / COORD_MAX * screen.height;
+        // 将 0-999 映射到 0 到 screen.width-1
+        // 使用 (screen.width - 1) 确保 999 映射到屏幕右边缘
+        // 处理边界情况：如果屏幕宽度为 1，直接返回 0
+        // 精度：每个 Gemini 单位 = (screen.width-1)/999 像素，使用四舍五入最小化误差
+        double xDouble = screen.width > 1 ? (double) geminiX / COORD_MAX * (screen.width - 1) : 0;
+        double yDouble = screen.height > 1 ? (double) geminiY / COORD_MAX * (screen.height - 1) : 0;
         // 四舍五入后钳位到 [0, width-1] 防止溢出
         int x = (int) Math.min(screen.width - 1, Math.max(0, Math.round(xDouble)));
         int y = (int) Math.min(screen.height - 1, Math.max(0, Math.round(yDouble)));
@@ -205,22 +216,51 @@ public class ScreenCapturer {
     }
 
     /**
-     * 逻辑屏幕坐标 → Gemini 坐标 (0-1000)
+     * 逻辑屏幕坐标 → Gemini 坐标 (0-999)
+     * * 【精度说明】同 toLogical()，精度损失是 API 限制，使用四舍五入最小化误差
      * * 【精度改进】使用 Math.round() 进行四舍五入，提高坐标转换精度
+     * * 【修正】根据 Gemini API 文档，坐标范围是 0-999
      */
     public Point toGemini(int logicalX, int logicalY) {
         Dimension screen = getScreenSize();
-        // 使用四舍五入提高精度
-        double xDouble = (double) logicalX / screen.width * COORD_MAX;
-        double yDouble = (double) logicalY / screen.height * COORD_MAX;
+        // 将逻辑坐标映射到 0-999 范围
+        // 使用 (screen.width - 1) 确保屏幕右边缘映射到 999
+        // 处理边界情况：如果屏幕宽度为 1，直接返回 0
+        // 精度：使用四舍五入最小化误差
+        double xDouble = screen.width > 1 ? (double) logicalX / (screen.width - 1) * COORD_MAX : 0;
+        double yDouble = screen.height > 1 ? (double) logicalY / (screen.height - 1) * COORD_MAX : 0;
         int x = (int) Math.round(xDouble);
         int y = (int) Math.round(yDouble);
 
-        // 钳位
+        // 钳位到 0-999
         x = Math.max(0, Math.min(COORD_MAX, x));
         y = Math.max(0, Math.min(COORD_MAX, y));
 
         return new Point(x, y);
+    }
+
+    /**
+     * 精度分析：计算坐标转换的精度损失
+     * @return 精度分析信息字符串
+     */
+    public String getPrecisionAnalysis() {
+        Dimension screen = getScreenSize();
+        double pixelsPerUnitX = screen.width > 1 ? (double) (screen.width - 1) / COORD_MAX : 0;
+        double pixelsPerUnitY = screen.height > 1 ? (double) (screen.height - 1) / COORD_MAX : 0;
+        double maxErrorX = pixelsPerUnitX / 2.0;  // 最大误差约为半个单位
+        double maxErrorY = pixelsPerUnitY / 2.0;
+        
+        return String.format(
+            "坐标精度分析 [屏幕 %dx%d]:\n" +
+            "  - Gemini 坐标范围: 0-%d (共 %d 个值)\n" +
+            "  - X 轴: 每单位 ≈ %.3f 像素，最大误差约 ±%.3f 像素\n" +
+            "  - Y 轴: 每单位 ≈ %.3f 像素，最大误差约 ±%.3f 像素\n" +
+            "  - 说明: 精度损失是 Gemini API 限制（仅提供 1000 个坐标值），使用四舍五入最小化误差",
+            screen.width, screen.height,
+            COORD_MAX, COORD_MAX + 1,
+            pixelsPerUnitX, maxErrorX,
+            pixelsPerUnitY, maxErrorY
+        );
     }
 
     /**
@@ -346,7 +386,7 @@ public class ScreenCapturer {
 
     /**
      * 截取屏幕并返回带标注的 Base64
-     * 网格标签显示 Gemini 坐标 (0-1000)
+     * 网格标签显示 Gemini 坐标 (0-999)
      */
     public String captureScreenWithCursorAsBase64() throws IOException {
         return captureScreenWithCursorAsBase64(true);
@@ -356,7 +396,7 @@ public class ScreenCapturer {
         BufferedImage original = captureScreen(transparent);
         BufferedImage compressed = compressImage(original, COMPRESS_WIDTH);
 
-        // 绘制网格（标签显示 Gemini 坐标 0-1000）
+        // 绘制网格（标签显示 Gemini 坐标 0-999）
         drawGeminiGrid(compressed);
 
         // 绘制鼠标位置（将物理坐标转为逻辑坐标，避免 Retina 2x 偏差）
@@ -417,7 +457,7 @@ public class ScreenCapturer {
     }
 
     /**
-     * 绘制 Gemini 坐标网格 (标签显示 0-1000)
+     * 绘制 Gemini 坐标网格 (标签显示 0-999)
      */
     private void drawGeminiGrid(BufferedImage image) {
         Graphics2D g2d = image.createGraphics();
@@ -441,7 +481,7 @@ public class ScreenCapturer {
             g2d.drawLine(0, y, width, y);
         }
 
-        // 绘制坐标标签 (Gemini 坐标 0-1000)
+        // 绘制坐标标签 (Gemini 坐标 0-999)
         g2d.setFont(new Font("Arial", Font.BOLD, 9));
         FontMetrics fm = g2d.getFontMetrics();
 
@@ -670,15 +710,15 @@ public class ScreenCapturer {
             if (distance <= dedupThreshold) {
                 // 安全检查：如果缓存存在，才复用；否则强制重新生成
                 if (lastImageBase64 != null && lastImageId != null) {
-                    log.debug("Screen unchanged (hamming distance: {}), reusing image: {}",
-                            distance, lastImageId);
-                    return new ImageCapture(lastImageId, null, true, currentHash);
+                log.debug("Screen unchanged (hamming distance: {}), reusing image: {}",
+                        distance, lastImageId);
+                return new ImageCapture(lastImageId, null, true, currentHash);
                 } else {
                     log.warn("Cache missing during dedup, forcing new capture");
                     // 缓存丢失，强制重新生成
-                }
+            }
             } else {
-                log.debug("Screen changed (hamming distance: {}), capturing new image", distance);
+            log.debug("Screen changed (hamming distance: {}), capturing new image", distance);
             }
         } else if (forceCapture) {
             log.debug("Force capture requested, ignoring dedup");
