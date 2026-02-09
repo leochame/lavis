@@ -34,11 +34,26 @@ export const configApi = {
    *
    * @param apiKey - Required API key
    * @param baseUrl - Optional base URL for proxy mode (empty = Gemini official)
+   * @param chatModelName - Optional chat model-name override (e.g. gemini-2.0-flash)
+   * @param sttModelName - Optional STT model-name override (e.g. gemini-1.5-flash)
+   * @param ttsModelName - Optional TTS model-name override (e.g. gemini-2.0-flash)
    */
-  async setApiKey(apiKey: string, baseUrl?: string): Promise<SetApiKeyResponse> {
+  async setApiKey(
+    apiKey: string,
+    baseUrl?: string,
+    chatModelName?: string,
+    sttModelName?: string,
+    ttsModelName?: string,
+  ): Promise<SetApiKeyResponse> {
     const response = await axios.post<SetApiKeyResponse>(
       `${API_BASE_URL}/api-key`,
-      { apiKey, baseUrl: baseUrl || null },
+      {
+        apiKey,
+        baseUrl: baseUrl || null,
+        chatModel: chatModelName || null,
+        sttModel: sttModelName || null,
+        ttsModel: ttsModelName || null,
+      },
       { timeout: 0 }
     );
     return response.data;

@@ -60,9 +60,6 @@ public class AgentService {
     @Value("${agent.retry.delay.ms:2000}")
     private long retryDelayMs;
 
-    @Value("${agent.max.tool.iterations:10}")
-    private int maxToolIterations;
-
     /** 使用的模型别名（可通过配置切换） */
     @Value("${agent.model.alias:fast-model}")
     private String modelAlias;
@@ -169,15 +166,18 @@ public class AgentService {
      * 截图会显示鼠标位置（红色十字）和上次点击位置（绿色圆环），便于 AI 反思
      */
     public String chatWithScreenshot(String message) {
-        return chatWithScreenshot(message, 0); // 默认使用全局配置（0 表示无限制）
+        // 传入 0：表示“使用全局配置 maxToolIterations”。
+        // 如果全局配置 <= 0，则表示本轮工具循环不设置次数上限。
+        return chatWithScreenshot(message, 0);
     }
 
     /**
      * 发送带截图的消息 (多模态 + 工具调用)，支持步进模式
      *
      * @param message  用户消息
-     * @param maxSteps 最大执行步数限制。如果 > 0，则限制单次调用的最大工具调用次数；如果 <= 0，则使用全局配置
-     *                 maxToolIterations
+     * @param maxSteps 保留参数，用于未来可能的“步进模式”控制。
+     *                 当前实现中**不会对工具循环施加硬性步数上限**，
+     *                 仅由模型在没有工具调用或显式终止信号时自行结束。
      * @return 执行结果
      */
     public String chatWithScreenshot(String message, int maxSteps) {
@@ -270,7 +270,7 @@ public class AgentService {
         saveUserMessageToMemory(userMessage, imageId);
         
         // 执行工具调用循环
-        return executeToolCallLoop(messages, maxSteps);
+        return executeToolCallLoop(messages);
     }
 
     /**
@@ -321,32 +321,33 @@ public class AgentService {
         }
 
     /**
-     * 执行工具调用循环
+     * 执行工具调用循环。
+     *
+     * <p>本方法**不设置固定的最大迭代次数**，只要模型持续发起工具调用且未发出终止信号，
+     * 就会继续循环，直到：</p>
+     * <ul>
+     *     <li>模型不再请求工具调用，仅返回文本回复，或</li>
+     *     <li>工具结果中包含显式终止信号（如 {@code complete_tool}）</li>
+     * </ul>
      */
-    private String executeToolCallLoop(List<ChatMessage> messages, int maxSteps) {
+    private String executeToolCallLoop(List<ChatMessage> messages) {
         StringBuilder fullResponse = new StringBuilder();
 
         // 【关键】合并工具列表：基础工具 + Skill 工具（由 ToolExecutionService 统一管理）
         List<ToolSpecification> allTools = toolExecutionService.getCombinedToolSpecifications();
         log.debug("可用工具总数: {}", allTools.size());
 
-        // 工具调用循环 - 使用传入的 maxSteps，如果 <= 0 则使用全局配置（兼容旧代码）
-        int limit = (maxSteps > 0) ? maxSteps : this.maxToolIterations;
-        log.debug("工具调用循环限制: {} 步", limit);
+        int iteration = 0;
+        while (true) {
+            iteration++;
+            log.info("🔄 工具调用迭代 {}", iteration);
 
-        for (int iteration = 0; iteration < limit; iteration++) {
-            log.info("🔄 工具调用迭代 {}/{}", iteration + 1, limit);
-
-            // 处理单次迭代
             IterationOutcome outcome = processSingleIteration(messages, allTools, fullResponse);
             if (outcome.finished()) {
                 // 没有工具调用，或收到明确的终止信号（例如 complete_tool）
                 return outcome.response();
             }
         }
-
-        log.warn("⚠️ 达到最大工具调用次数 {}", maxToolIterations);
-        return fullResponse + "\n(达到最大迭代次数)";
     }
 
     /**

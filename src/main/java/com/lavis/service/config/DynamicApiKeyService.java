@@ -1,5 +1,6 @@
 package com.lavis.service.config;
 
+import com.lavis.config.llm.ModelConfig;
 import com.lavis.service.llm.LlmFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
@@ -25,6 +26,18 @@ public class DynamicApiKeyService {
 
     private final AtomicReference<String> dynamicApiKey = new AtomicReference<>(null);
     private final AtomicReference<String> dynamicBaseUrl = new AtomicReference<>(null);
+    /**
+     * 运行时模型名称配置
+     * 目前按模型类型区分：
+     * - CHAT:   主对话模型（对应 fast-model 等 alias）
+     * - STT:    语音转文字模型（对应 whisper alias）
+     * - TTS:    文字转语音模型（对应 tts alias）
+     *
+     * 注意：这里只存“模型名称”，具体 alias 仍由配置文件中的 app.llm.models.* 控制
+     */
+    private final AtomicReference<String> dynamicChatModelName = new AtomicReference<>(null);
+    private final AtomicReference<String> dynamicSttModelName = new AtomicReference<>(null);
+    private final AtomicReference<String> dynamicTtsModelName = new AtomicReference<>(null);
     private final LlmFactory llmFactory;
 
     public DynamicApiKeyService(@Lazy LlmFactory llmFactory) {
@@ -52,6 +65,48 @@ public class DynamicApiKeyService {
 
         log.info("✅ Dynamic API Key set successfully (prefix: {}...)",
                 apiKey.length() > 10 ? apiKey.substring(0, 10) : apiKey);
+    }
+
+    /**
+     * 设置运行时 Chat 模型名称（如 gemini-2.0-flash、qwen-max 等）
+     */
+    public void setChatModelName(String modelName) {
+        String trimmed = modelName != null ? modelName.trim() : null;
+        String old = dynamicChatModelName.get();
+        dynamicChatModelName.set(trimmed);
+
+        if ((old == null && trimmed != null) || (old != null && !old.equals(trimmed))) {
+            log.info("🧠 Chat model-name updated to: {}", trimmed);
+            llmFactory.clearCache();
+        }
+    }
+
+    /**
+     * 设置运行时 STT 模型名称（对应 whisper 等语音识别模型）
+     */
+    public void setSttModelName(String modelName) {
+        String trimmed = modelName != null ? modelName.trim() : null;
+        String old = dynamicSttModelName.get();
+        dynamicSttModelName.set(trimmed);
+
+        if ((old == null && trimmed != null) || (old != null && !old.equals(trimmed))) {
+            log.info("🗣 STT model-name updated to: {}", trimmed);
+            llmFactory.clearCache();
+        }
+    }
+
+    /**
+     * 设置运行时 TTS 模型名称（对应 tts 等语音合成模型）
+     */
+    public void setTtsModelName(String modelName) {
+        String trimmed = modelName != null ? modelName.trim() : null;
+        String old = dynamicTtsModelName.get();
+        dynamicTtsModelName.set(trimmed);
+
+        if ((old == null && trimmed != null) || (old != null && !old.equals(trimmed))) {
+            log.info("🔊 TTS model-name updated to: {}", trimmed);
+            llmFactory.clearCache();
+        }
     }
 
     /**
@@ -99,6 +154,35 @@ public class DynamicApiKeyService {
         return dynamicBaseUrl.get();
     }
 
+    public String getChatModelName() {
+        return dynamicChatModelName.get();
+    }
+
+    public String getSttModelName() {
+        return dynamicSttModelName.get();
+    }
+
+    public String getTtsModelName() {
+        return dynamicTtsModelName.get();
+    }
+
+    /**
+     * 获取有效的模型名称
+     * - 如果用户通过设置面板配置了对应类型的模型名称，则优先使用运行时配置
+     * - 否则回退到配置文件中的 model-name
+     */
+    public String getEffectiveModelName(String configModelName, ModelConfig.ModelType type) {
+        String override = switch (type) {
+            case CHAT -> dynamicChatModelName.get();
+            case STT -> dynamicSttModelName.get();
+            case TTS -> dynamicTtsModelName.get();
+        };
+        if (override != null && !override.isBlank()) {
+            return override;
+        }
+        return configModelName;
+    }
+
     /**
      * 获取有效的 API Key
      * 优先返回动态设置的 Key，如果没有则返回配置文件中的 Key
@@ -140,12 +224,18 @@ public class DynamicApiKeyService {
     public void clearConfig() {
         String oldKey = dynamicApiKey.get();
         String oldUrl = dynamicBaseUrl.get();
+        String oldChatModel = dynamicChatModelName.get();
+        String oldSttModel = dynamicSttModelName.get();
+        String oldTtsModel = dynamicTtsModelName.get();
 
         dynamicApiKey.set(null);
         dynamicBaseUrl.set(null);
+        dynamicChatModelName.set(null);
+        dynamicSttModelName.set(null);
+        dynamicTtsModelName.set(null);
 
-        if (oldKey != null || oldUrl != null) {
-            log.info("🔑 Dynamic config cleared, clearing model cache");
+        if (oldKey != null || oldUrl != null || oldChatModel != null || oldSttModel != null || oldTtsModel != null) {
+            log.info("🔑 Dynamic config cleared (apiKey/baseUrl/model-name), clearing model cache");
             llmFactory.clearCache();
         }
 

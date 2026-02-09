@@ -35,13 +35,19 @@ public class ApiKeyController {
      * 请求体：
      * {
      *   "apiKey": "your-api-key",      // 必填
-     *   "baseUrl": "https://..."       // 可选，不填则使用 Gemini 官方
+     *   "baseUrl": "https://...",      // 可选，不填则使用 Gemini 官方
+     *   "chatModel": "gemini-2.0-flash", // 可选，覆盖对话模型 model-name (如 app.llm.models.fast-model.model-name)
+     *   "sttModel": "gemini-1.5-flash",  // 可选，覆盖 STT 模型 model-name (如 app.llm.models.whisper.model-name)
+     *   "ttsModel": "qwen3-tts-flash"    // 可选，覆盖 TTS 模型 model-name (如 app.llm.models.tts.model-name)
      * }
      */
     @PostMapping("/api-key")
     public ResponseEntity<Map<String, Object>> setApiConfig(@RequestBody Map<String, String> request) {
         String apiKey = request.get("apiKey");
         String baseUrl = request.get("baseUrl");
+        String chatModel = request.get("chatModel");
+        String sttModel = request.get("sttModel");
+        String ttsModel = request.get("ttsModel");
 
         if (apiKey == null || apiKey.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of(
@@ -56,6 +62,17 @@ public class ApiKeyController {
 
             // 设置 Base URL（可以为空，表示使用 Gemini 官方）
             dynamicApiKeyService.setBaseUrl(baseUrl);
+
+            // 可选：运行时覆盖模型名称
+            if (chatModel != null && !chatModel.isBlank()) {
+                dynamicApiKeyService.setChatModelName(chatModel);
+            }
+            if (sttModel != null && !sttModel.isBlank()) {
+                dynamicApiKeyService.setSttModelName(sttModel);
+            }
+            if (ttsModel != null && !ttsModel.isBlank()) {
+                dynamicApiKeyService.setTtsModelName(ttsModel);
+            }
 
             String mode = (baseUrl != null && !baseUrl.isBlank()) ? "proxy" : "official";
             log.info("✅ API config set via REST endpoint (mode: {})", mode);

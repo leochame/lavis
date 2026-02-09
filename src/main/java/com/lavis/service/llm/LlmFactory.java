@@ -175,13 +175,17 @@ public class LlmFactory {
 
         String effectiveApiKey = dynamicApiKeyService.getEffectiveApiKey(config.getApiKey());
         String effectiveBaseUrl = dynamicApiKeyService.getEffectiveBaseUrl(config.getBaseUrl());
+        String effectiveModelName = dynamicApiKeyService.getEffectiveModelName(
+                config.getModelName(), config.getType());
 
         // 如果配置没有变化，直接返回原配置
         boolean apiKeyChanged = effectiveApiKey != null && !effectiveApiKey.equals(config.getApiKey());
         boolean baseUrlChanged = (effectiveBaseUrl == null && config.getBaseUrl() != null) ||
                                 (effectiveBaseUrl != null && !effectiveBaseUrl.equals(config.getBaseUrl()));
+        boolean modelChanged = (effectiveModelName == null && config.getModelName() != null) ||
+                               (effectiveModelName != null && !effectiveModelName.equals(config.getModelName()));
 
-        if (!apiKeyChanged && !baseUrlChanged) {
+        if (!apiKeyChanged && !baseUrlChanged && !modelChanged) {
             return config;
         }
 
@@ -191,7 +195,7 @@ public class LlmFactory {
         newConfig.setProvider(config.getProvider());
         newConfig.setBaseUrl(effectiveBaseUrl);  // 使用动态 Base URL
         newConfig.setApiKey(effectiveApiKey);    // 使用动态 API Key
-        newConfig.setModelName(config.getModelName());
+        newConfig.setModelName(effectiveModelName); // 使用动态模型名称（如有）
         newConfig.setTemperature(config.getTemperature());
         newConfig.setTimeoutSeconds(config.getTimeoutSeconds());
         newConfig.setMaxRetries(config.getMaxRetries());
@@ -203,6 +207,9 @@ public class LlmFactory {
         }
         if (baseUrlChanged) {
             log.debug("🔗 Using dynamic Base URL: {}", effectiveBaseUrl != null ? effectiveBaseUrl : "Gemini Official");
+        }
+        if (modelChanged) {
+            log.debug("🧠 Using dynamic model-name: {}", effectiveModelName);
         }
         return newConfig;
     }

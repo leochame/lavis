@@ -7,6 +7,9 @@ export function SettingsPanel() {
   const {
     apiKey,
     baseUrl,
+    chatModelName,
+    sttModelName,
+    ttsModelName,
     mode,
     isConfigured,
     isLoading,
@@ -19,6 +22,9 @@ export function SettingsPanel() {
 
   const [inputKey, setInputKey] = useState('');
   const [inputUrl, setInputUrl] = useState('');
+  const [inputChatModel, setInputChatModel] = useState('');
+  const [inputSttModel, setInputSttModel] = useState('');
+  const [inputTtsModel, setInputTtsModel] = useState('');
   const [showKey, setShowKey] = useState(false);
 
   // Check status on mount
@@ -34,7 +40,16 @@ export function SettingsPanel() {
     if (baseUrl) {
       setInputUrl(baseUrl);
     }
-  }, [apiKey, baseUrl]);
+    if (chatModelName) {
+      setInputChatModel(chatModelName);
+    }
+    if (sttModelName) {
+      setInputSttModel(sttModelName);
+    }
+    if (ttsModelName) {
+      setInputTtsModel(ttsModelName);
+    }
+  }, [apiKey, baseUrl, chatModelName, sttModelName, ttsModelName]);
 
   const handleSave = async () => {
     if (!inputKey.trim()) {
@@ -43,7 +58,13 @@ export function SettingsPanel() {
     }
 
     try {
-      await setConfig(inputKey.trim(), inputUrl.trim() || undefined);
+      await setConfig(
+        inputKey.trim(),
+        inputUrl.trim() || undefined,
+        inputChatModel.trim() || undefined,
+        inputSttModel.trim() || undefined,
+        inputTtsModel.trim() || undefined,
+      );
     } catch {
       // Error is already set in the store
     }
@@ -54,6 +75,9 @@ export function SettingsPanel() {
       await clearConfig();
       setInputKey('');
       setInputUrl('');
+      setInputChatModel('');
+      setInputSttModel('');
+      setInputTtsModel('');
     } catch {
       // Error is already set in the store
     }
@@ -148,6 +172,51 @@ export function SettingsPanel() {
             <p className="settings-panel__hint">
               Leave empty to use Gemini official API. Fill in a custom URL to use a proxy/relay server.
             </p>
+          </div>
+
+          {/* Chat Model Name Input */}
+          <div className="settings-panel__field">
+            <label className="settings-panel__label">
+              Chat MODEL NAME <span className="settings-panel__optional">(optional)</span>
+            </label>
+            <input
+              type="text"
+              className="settings-panel__input settings-panel__input--full-width"
+              placeholder="e.g. gemini-2.0-flash, gemini-2.0-pro (leave empty to use backend config)"
+              value={inputChatModel}
+              onChange={(e) => setInputChatModel(e.target.value)}
+              disabled={isLoading}
+            />
+          </div>
+
+          {/* STT Model Name Input */}
+          <div className="settings-panel__field">
+            <label className="settings-panel__label">
+              STT MODEL NAME <span className="settings-panel__optional">(optional)</span>
+            </label>
+            <input
+              type="text"
+              className="settings-panel__input settings-panel__input--full-width"
+              placeholder="e.g. gemini-2.0-flash-audio (leave empty to use backend config)"
+              value={inputSttModel}
+              onChange={(e) => setInputSttModel(e.target.value)}
+              disabled={isLoading}
+            />
+          </div>
+
+          {/* TTS Model Name Input */}
+          <div className="settings-panel__field">
+            <label className="settings-panel__label">
+              TTS MODEL NAME <span className="settings-panel__optional">(optional)</span>
+            </label>
+            <input
+              type="text"
+              className="settings-panel__input settings-panel__input--full-width"
+              placeholder="e.g. gemini-2.0-flash (leave empty to use backend config)"
+              value={inputTtsModel}
+              onChange={(e) => setInputTtsModel(e.target.value)}
+              disabled={isLoading}
+            />
           </div>
 
           {error && (
