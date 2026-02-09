@@ -39,7 +39,7 @@ export const configApi = {
     const response = await axios.post<SetApiKeyResponse>(
       `${API_BASE_URL}/api-key`,
       { apiKey, baseUrl: baseUrl || null },
-      { timeout: 5000 }
+      { timeout: 0 }
     );
     return response.data;
   },
@@ -50,7 +50,7 @@ export const configApi = {
   async getApiKeyStatus(): Promise<ApiKeyStatusResponse> {
     const response = await axios.get<ApiKeyStatusResponse>(
       `${API_BASE_URL}/api-key/status`,
-      { timeout: 5000 }
+      { timeout: 0 }
     );
     return response.data;
   },
@@ -61,7 +61,7 @@ export const configApi = {
   async clearApiKey(): Promise<ClearApiKeyResponse> {
     const response = await axios.delete<ClearApiKeyResponse>(
       `${API_BASE_URL}/api-key`,
-      { timeout: 5000 }
+      { timeout: 0 }
     );
     return response.data;
   },

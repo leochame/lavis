@@ -100,7 +100,7 @@ class ManagementApi {
     this.backendPort = port ?? 18765;
     this.client = axios.create({
       baseURL: `http://127.0.0.1:${this.backendPort}/api`,
-      timeout: 30000,
+      timeout: 0, // 无限超时，保持连接不断开
       headers: {
         'Content-Type': 'application/json',
       },

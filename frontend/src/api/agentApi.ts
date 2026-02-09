@@ -79,9 +79,9 @@ class AgentApi {
 
   private async checkStatus(): Promise<void> {
     try {
-      // 关键修改 2: 心跳检测需要快速失败，不能受全局 timeout: 0 的影响
-      // 如果 5秒 内没有返回状态，认为此时服务不可用
-      const response = await this.client.get<AgentStatus>('/status', { timeout: 5000 });
+      // 关键修改 2: 心跳检测也使用无限超时，保持连接不断开
+      // 注意：如果服务不可用，连接会一直等待，但这样可以保持连接不断开
+      const response = await this.client.get<AgentStatus>('/status', { timeout: 0 });
       const newStatus = response.data;
 
       // Only callback if status actually changed (deep comparison)
@@ -123,14 +123,14 @@ class AgentApi {
   }
 
   async getStatus(): Promise<{ data: AgentStatus }> {
-    return this.client.get<AgentStatus>('/status', { timeout: 5000 });
+    return this.client.get<AgentStatus>('/status', { timeout: 0 });
   }
 
   // Utilities
   async getScreenshot(thumbnail: boolean = true): Promise<ScreenshotResponse> {
     const response = await this.client.get<ScreenshotResponse>('/screenshot', {
       params: thumbnail ? { thumbnail: 'true' } : undefined,
-      timeout: 10000, // 截图给予 10s 超时
+      timeout: 0, // 截图使用无限超时，保持连接不断开
     });
     return response.data;
   }
@@ -151,7 +151,7 @@ class AgentApi {
       try {
         const testClient = axios.create({
           baseURL: `http://127.0.0.1:${port}/api/agent`,
-          timeout: 2000, // 检测端口时需要快速超时
+          timeout: 0, // 端口检测也使用无限超时，保持连接不断开
         });
         await testClient.get('/status');
         this.backendPort = port;
@@ -221,9 +221,8 @@ class AgentApi {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
-        // 语音处理需要合理超时，避免状态卡在 processing
-        // 5 分钟超时：足够处理大部分语音请求，但不会无限等待
-        timeout: 300000,
+        // 语音处理使用无限超时，保持连接不断开
+        timeout: 0,
       });
 
       return response.data;
@@ -251,7 +250,7 @@ class AgentApi {
         format: string;
         duration_ms: number;
       }>('/tts', { text }, {
-        timeout: 30000, // TTS 可能需要较长时间，设置 30s 超时
+        timeout: 0, // TTS 使用无限超时，保持连接不断开
       });
 
       return response.data;

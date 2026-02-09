@@ -674,7 +674,7 @@ electron_1.ipcMain.handle('backend:request', async (_event, { method, endpoint, 
             headers: {
                 'Content-Type': 'application/json',
             },
-            timeout: 30000, // 30秒超时，防止请求挂起
+            timeout: 0, // 无限超时，保持连接不断开
         };
         const req = http.request(options, (res) => {
             let responseData = '';
@@ -696,7 +696,7 @@ electron_1.ipcMain.handle('backend:request', async (_event, { method, endpoint, 
                 }
             });
         });
-        // 添加超时处理
+        // 超时处理：timeout 设置为 0 时不会触发此事件，保留用于兼容性
         req.on('timeout', () => {
             req.destroy();
             reject(new Error('Request timeout'));
