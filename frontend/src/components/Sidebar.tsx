@@ -1,7 +1,6 @@
 import {
   MessagesSquare,
   Orbit,
-  Settings2,
   CalendarClock,
   Sparkles,
   Key

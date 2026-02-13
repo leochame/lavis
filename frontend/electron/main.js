@@ -405,12 +405,22 @@ function resizeWindowByMode(mode) {
     }
     else {
         // 切换到胶囊/监听模式
+        // 关键修复：在改变大小之前，先保存当前位置，以保持窗口位置不变
+        const [currentX, currentY] = mainWindow.getPosition();
+        const [currentWidth, currentHeight] = mainWindow.getSize();
+        // 计算窗口中心点，用于保持位置
+        const centerX = currentX + currentWidth / 2;
+        const centerY = currentY + currentHeight / 2;
+        // 设置新大小
         mainWindow.setSize(bounds.width, bounds.height);
         mainWindow.setResizable(false);
-        // 如果有记录的位置，恢复到那里
-        if (lastCapsulePosition) {
-            mainWindow.setPosition(lastCapsulePosition.x, lastCapsulePosition.y, true);
-        }
+        // 计算新窗口的左上角位置，使中心点保持不变
+        const newX = Math.round(centerX - bounds.width / 2);
+        const newY = Math.round(centerY - bounds.height / 2);
+        // 保持中心点位置不变（不使用动画，避免闪烁）
+        mainWindow.setPosition(newX, newY, false);
+        // 更新 lastCapsulePosition 为新的位置，以便后续恢复
+        lastCapsulePosition = { x: newX, y: newY };
     }
     // 胶囊/监听模式：始终置顶
     // 聊天/展开模式：取消置顶
@@ -461,14 +471,14 @@ electron_1.ipcMain.on('show-context-menu', () => {
         return;
     const contextMenu = electron_1.Menu.buildFromTemplate([
         {
-            label: '展开面板',
+            label: 'Expand Panel',
             click: () => {
                 resizeWindowByMode('chat');
                 mainWindow?.webContents.send('switch-to-chat');
             },
         },
         {
-            label: '固定位置',
+            label: 'Pin Position',
             type: 'checkbox',
             checked: false,
             click: (menuItem) => {
@@ -478,7 +488,7 @@ electron_1.ipcMain.on('show-context-menu', () => {
         },
         { type: 'separator' },
         {
-            label: '开发者工具',
+            label: 'Developer Tools',
             click: () => {
                 if (mainWindow) {
                     mainWindow.webContents.openDevTools();
@@ -487,7 +497,7 @@ electron_1.ipcMain.on('show-context-menu', () => {
         },
         { type: 'separator' },
         {
-            label: '设置',
+            label: 'Settings',
             click: () => {
                 resizeWindowByMode('chat');
                 mainWindow?.webContents.send('open-settings');
@@ -495,7 +505,7 @@ electron_1.ipcMain.on('show-context-menu', () => {
         },
         { type: 'separator' },
         {
-            label: '退出 Lavis',
+            label: 'Quit Lavis',
             click: () => {
                 // 统一走 app.quit，触发 will-quit 做异步清理
                 electron_1.app.quit();

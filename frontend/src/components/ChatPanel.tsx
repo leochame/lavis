@@ -55,7 +55,7 @@ interface ChatPanelProps {
 }
 
 export function ChatPanel({
-  onClose,
+  onClose: _onClose,
   status,
   globalVoice,
   wsConnected: connected,
@@ -68,7 +68,7 @@ export function ChatPanel({
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showScreenshot, setShowScreenshot] = useState(false);
-  const [screenshotData, setScreenshotData] = useState<string | null>(null);
+  const [screenshotData, _setScreenshotData] = useState<string | null>(null);
   const [showVoicePanel] = useState(false); // 暂时隐藏语音面板入口
   const [activePanel, setActivePanel] = useState<PanelType>('chat');
   const [FixedSizeList, setFixedSizeList] = useState<FixedSizeListComponent | null>(null);
@@ -157,48 +157,6 @@ export function ChatPanel({
 
   // 估算每条消息平均高度（包含 padding 和 gap）
   const estimatedItemHeight = 150;
-
-  const handleScreenshotClick = async () => {
-    if (showScreenshot) {
-      setShowScreenshot(false);
-      setScreenshotData(null);
-    } else {
-      try {
-        const mediaStream = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            displaySurface: 'browser',
-            frameRate: 30,
-          } as MediaTrackConstraints,
-          audio: false,
-        });
-
-        const videoTrack = mediaStream.getVideoTracks()[0];
-        const imageCapture = new ImageCapture(videoTrack);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const bitmap = await (imageCapture as any).grabFrame() as ImageBitmap;
-
-        const canvas = document.createElement('canvas');
-        canvas.width = bitmap.width;
-        canvas.height = bitmap.height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(bitmap, 0, 0);
-
-        const dataUrl = canvas.toDataURL('image/png');
-        const base64Data = dataUrl.split(',')[1];
-
-        mediaStream.getTracks().forEach(track => track.stop());
-
-        setScreenshotData(base64Data);
-        setShowScreenshot(true);
-      } catch (error) {
-        if (error instanceof Error && error.name === 'NotAllowedError') {
-          console.log('User cancelled screen capture');
-        } else {
-          console.error('Failed to capture screen:', error);
-        }
-      }
-    }
-  };
 
   const handleEmergencyStop = async () => {
     try {
