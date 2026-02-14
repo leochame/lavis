@@ -308,6 +308,23 @@ function findPackagedAppDir(outputDir) {
   return '';
 }
 
+function removeQuarantineAttribute(appPath) {
+  if (process.platform !== 'darwin') {
+    return;
+  }
+
+  try {
+    const { execSync } = require('child_process');
+    console.log('🔓 移除 quarantine 属性...');
+    // 只移除 .app 包本身的 quarantine 属性，不递归处理内部文件
+    // 使用 -d 而不是 -dr，避免权限问题
+    execSync(`xattr -d com.apple.quarantine "${appPath}" 2>/dev/null || true`, { stdio: 'inherit' });
+    console.log('✅ Quarantine 属性已移除');
+  } catch (error) {
+    console.warn('⚠️ 移除 quarantine 属性失败（可能已经不存在）:', error.message);
+  }
+}
+
 function verifyPackagedResources() {
   if (process.platform !== 'darwin') {
     return;
@@ -322,7 +339,8 @@ function verifyPackagedResources() {
     return;
   }
 
-  const resourcesDir = path.join(outputDir, appDirName, 'Contents', 'Resources');
+  const appPath = path.join(outputDir, appDirName);
+  const resourcesDir = path.join(appPath, 'Contents', 'Resources');
   const jarFile = path.join(resourcesDir, 'backend', 'lavis.jar');
   const javaBin = path.join(resourcesDir, 'jre', `mac-${arch}`, 'Contents', 'Home', 'bin', 'java');
 
@@ -344,6 +362,9 @@ function verifyPackagedResources() {
   }
 
   console.log('✅ 打包资源校验通过');
+  
+  // 移除 quarantine 属性，解决 macOS Gatekeeper 阻止问题
+  removeQuarantineAttribute(appPath);
 }
 
 async function main() {

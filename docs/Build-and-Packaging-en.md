@@ -123,6 +123,24 @@ dist-electron/
                         └── Contents/Home/bin/java
 ```
 
+### 3.3 macOS Gatekeeper Handling (Automatic)
+
+The packaging script automatically handles macOS Gatekeeper issues, no manual action required:
+
+- ✅ **Auto-remove Quarantine Attribute**: After packaging, the script automatically removes the `com.apple.quarantine` extended attribute
+- ✅ **No Developer Certificate Required**: App uses adhoc signing (temporary signature), suitable for free distribution
+- ✅ **Ready to Run**: Packaged app can run directly without additional configuration
+
+**If you encounter "app is damaged" error**:
+
+1. **First Run**: Right-click the app, select "Open", then click "Open" in the dialog
+2. **Manual Removal** (if auto-handling fails):
+   ```bash
+   xattr -d com.apple.quarantine /path/to/Lavis.app
+   ```
+
+> **Note**: For formal distribution (e.g., via App Store), consider obtaining an Apple Developer certificate and configuring code signing and notarization. See [8.2 Code Signing](#82-code-signing) and [8.3 Notarization](#83-notarization).
+
 ---
 
 ## 4. Advanced Option: GraalVM Native Image
@@ -380,6 +398,41 @@ Java executable not found at: ...
   - Check wake word configuration (default is "hi lavis")
   - View recognized text, may need to adjust phonetic mapping
   - Try speaking more clearly
+
+#### 7. macOS Gatekeeper Blocking App
+
+**Error Message**:
+```
+"Lavis" is damaged and can't be opened. You should move it to the Trash.
+```
+
+**Cause**:
+- Files downloaded from the internet are automatically marked with `com.apple.quarantine` attribute by macOS
+- Gatekeeper blocks unsigned or unnotarized apps from running
+
+**Solution**:
+
+1. **Automatic Handling** (Recommended): The packaging script automatically removes quarantine attribute, just rebuild:
+   ```bash
+   cd frontend
+   npm run package
+   ```
+
+2. **Manual Removal**: If you've already downloaded the app, manually remove quarantine attribute:
+   ```bash
+   # For .app file
+   xattr -d com.apple.quarantine /path/to/Lavis.app
+   
+   # For .dmg file
+   xattr -d com.apple.quarantine /path/to/Lavis-1.0.0-arm64.dmg
+   ```
+
+3. **Allow via System Settings**:
+   - Right-click the app, select "Open"
+   - Click "Open" in the dialog
+   - System will remember your choice, you can run it directly next time
+
+> **Note**: The app uses adhoc signing (temporary signature), which is the free solution. For formal distribution, consider obtaining an Apple Developer certificate and configuring code signing and notarization.
 
 ---
 

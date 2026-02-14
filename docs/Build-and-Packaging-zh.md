@@ -125,6 +125,24 @@ dist-electron/
                         └── Contents/Home/bin/java
 ```
 
+### 3.3 macOS Gatekeeper 处理（自动）
+
+打包脚本已自动处理 macOS Gatekeeper 问题，无需手动操作：
+
+- ✅ **自动移除 Quarantine 属性**：打包完成后，脚本会自动移除 `com.apple.quarantine` 扩展属性
+- ✅ **无需开发者证书**：应用使用 adhoc 签名（临时签名），适合免费分发
+- ✅ **可直接运行**：打包后的应用可以直接运行，无需额外配置
+
+**如果遇到 "应用已损坏" 错误**：
+
+1. **首次运行**：右键点击应用，选择"打开"，然后在弹出对话框中点击"打开"
+2. **手动移除**（如果自动处理失败）：
+   ```bash
+   xattr -d com.apple.quarantine /path/to/Lavis.app
+   ```
+
+> **注意**：如果需要正式分发（如通过 App Store），建议获取 Apple Developer 证书并配置代码签名和公证。详见 [8.2 代码签名](#82-代码签名) 和 [8.3 公证](#83-公证)。
+
 ---
 
 ## 4. 高级选项：GraalVM Native Image
@@ -382,6 +400,41 @@ Java executable not found at: ...
   - 检查唤醒词配置（默认是 "hi lavis"）
   - 查看识别到的文本，可能需要调整音近词映射
   - 尝试更清晰地发音
+
+#### 7. macOS Gatekeeper 阻止运行
+
+**错误信息**：
+```
+"Lavis" is damaged and can't be opened. You should move it to the Trash.
+```
+
+**原因**：
+- 从网络下载的文件会被 macOS 自动标记 `com.apple.quarantine` 属性
+- Gatekeeper 会阻止未签名或未公证的应用运行
+
+**解决方法**：
+
+1. **自动处理**（推荐）：打包脚本已自动移除 quarantine 属性，重新打包即可
+   ```bash
+   cd frontend
+   npm run package
+   ```
+
+2. **手动移除**：如果已经下载了应用，手动移除 quarantine 属性
+   ```bash
+   # 对于 .app 文件
+   xattr -d com.apple.quarantine /path/to/Lavis.app
+   
+   # 对于 .dmg 文件
+   xattr -d com.apple.quarantine /path/to/Lavis-1.0.0-arm64.dmg
+   ```
+
+3. **通过系统设置允许**：
+   - 右键点击应用，选择"打开"
+   - 在弹出对话框中点击"打开"
+   - 系统会记住你的选择，以后可以直接运行
+
+> **注意**：应用使用 adhoc 签名（临时签名），这是免费方案。如需正式分发，建议获取 Apple Developer 证书并配置代码签名和公证。
 
 ---
 

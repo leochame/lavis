@@ -132,6 +132,28 @@ module.exports = {
     setExecutable(jrePath);
   },
 
+  // 打包完成后执行的钩子 - 移除 quarantine 属性
+  afterSign: async (context) => {
+    if (process.platform !== 'darwin') {
+      return;
+    }
+
+    const { execSync } = require('child_process');
+    const path = require('path');
+    const appPath = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`);
+    
+    try {
+      console.log('🔓 移除 quarantine 属性...');
+      // 只移除 .app 包本身的 quarantine 属性，不递归处理内部文件
+      // 使用 -d 而不是 -dr，避免权限问题
+      execSync(`xattr -d com.apple.quarantine "${appPath}" 2>/dev/null || true`, { stdio: 'inherit' });
+      console.log('✅ Quarantine 属性已移除');
+    } catch (error) {
+      // 如果属性不存在，忽略错误
+      console.log('ℹ️ Quarantine 属性不存在或已移除');
+    }
+  },
+
   // 压缩选项
   compression: 'normal', // 使用 normal 而不是 maximum，加快打包速度
 };
