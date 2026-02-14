@@ -155,6 +155,19 @@ export function ChatPanel({
     }
   }, [workflow.status, workflow.steps.length]);
 
+  // 监听打开设置面板的事件（从右键菜单或系统托盘触发）
+  useEffect(() => {
+    const handleOpenSettings = () => {
+      console.log('⚙️ ChatPanel: Received open-settings event, switching to settings panel');
+      setActivePanel('settings');
+    };
+
+    window.addEventListener('lavis-open-settings', handleOpenSettings);
+    return () => {
+      window.removeEventListener('lavis-open-settings', handleOpenSettings);
+    };
+  }, []);
+
   // 估算每条消息平均高度（包含 padding 和 gap）
   const estimatedItemHeight = 150;
 

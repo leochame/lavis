@@ -6,6 +6,7 @@ const STORAGE_KEY_URL = 'lavis_base_url';
 const STORAGE_KEY_CHAT_MODEL = 'lavis_chat_model_name';
 const STORAGE_KEY_STT_MODEL = 'lavis_stt_model_name';
 const STORAGE_KEY_TTS_MODEL = 'lavis_tts_model_name';
+const FIRST_LAUNCH_COMPLETED_KEY = 'lavis_first_launch_completed';
 
 type ApiMode = 'official' | 'proxy';
 
@@ -105,6 +106,9 @@ export const useSettingsStore = create<SettingsState & SettingsActions>((set, ge
         isConfigured: true,
         isLoading: false,
       });
+      
+      // 标记首次启动已完成（用户已成功配置 API Key）
+      localStorage.setItem(FIRST_LAUNCH_COMPLETED_KEY, 'true');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to set API config';
       set({ isLoading: false, error: message });

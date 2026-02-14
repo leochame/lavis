@@ -394,12 +394,23 @@ function resizeWindowByMode(mode: 'capsule' | 'chat' | 'idle' | 'listening' | 'e
     lastCapsulePosition = { x, y };
   }
 
+  // 切换模式时，立即重置拖拽状态，避免窗口跟随鼠标
+  if (isDragging) {
+    isDragging = false;
+    console.log('🛑 Drag cancelled due to mode change');
+  }
+
   currentMode = mode; // 跟踪当前模式
   const bounds = WINDOW_BOUNDS[mode] || WINDOW_BOUNDS.capsule;
 
   if (mode === 'chat' || mode === 'expanded') {
     // 从胶囊位置展开到聊天/展开模式
-    // 先设置大小，再移动到中心（带动画效果）
+    // 先取消置顶，避免位置变化
+    mainWindow.setAlwaysOnTop(false);
+    if (isMac) {
+      mainWindow.setVisibleOnAllWorkspaces(false);
+    }
+
     const display = screen.getPrimaryDisplay();
     const { workArea } = display;
 
@@ -407,58 +418,54 @@ function resizeWindowByMode(mode: 'capsule' | 'chat' | 'idle' | 'listening' | 'e
     const centerX = Math.round(workArea.x + (workArea.width - bounds.width) / 2);
     const centerY = Math.round(workArea.y + (workArea.height - bounds.height) / 2);
 
-    // 如果有记录的胶囊位置，从那里开始动画
-    if (lastCapsulePosition) {
-      // 先保持在胶囊位置
-      mainWindow.setPosition(lastCapsulePosition.x, lastCapsulePosition.y);
-    }
-
-    // 设置新大小
+    // 设置新大小（先设置大小，再移动位置，避免闪烁）
     mainWindow.setSize(bounds.width, bounds.height);
     mainWindow.setResizable(mode === 'expanded' || mode === 'chat');
 
-    // 移动到中心（带动画）
-    mainWindow.setPosition(centerX, centerY, true);
+    // 直接移动到中心（不使用动画，避免闪烁）
+    mainWindow.setPosition(centerX, centerY, false);
 
     isSnappedToEdge = false;
     snapPosition = null;
     isHalfHidden = false;
   } else {
     // 切换到胶囊/监听模式
-    // 关键修复：在改变大小之前，先保存当前位置，以保持窗口位置不变
-    const [currentX, currentY] = mainWindow.getPosition();
-    const [currentWidth, currentHeight] = mainWindow.getSize();
-    
-    // 计算窗口中心点，用于保持位置
-    const centerX = currentX + currentWidth / 2;
-    const centerY = currentY + currentHeight / 2;
-    
-    // 设置新大小
-    mainWindow.setSize(bounds.width, bounds.height);
-    mainWindow.setResizable(false);
-
-    // 计算新窗口的左上角位置，使中心点保持不变
-    const newX = Math.round(centerX - bounds.width / 2);
-    const newY = Math.round(centerY - bounds.height / 2);
-    
-    // 保持中心点位置不变（不使用动画，避免闪烁）
-    mainWindow.setPosition(newX, newY, false);
-    
-    // 更新 lastCapsulePosition 为新的位置，以便后续恢复
-    lastCapsulePosition = { x: newX, y: newY };
-  }
-
-  // 胶囊/监听模式：始终置顶
-  // 聊天/展开模式：取消置顶
-  const shouldBeOnTop = mode === 'capsule' || mode === 'idle' || mode === 'listening';
-  if (shouldBeOnTop) {
-    enforceAlwaysOnTop();
-  } else {
+    // 先取消置顶，避免位置变化
     mainWindow.setAlwaysOnTop(false);
-    // macOS: 取消在所有桌面可见
     if (isMac) {
       mainWindow.setVisibleOnAllWorkspaces(false);
     }
+    
+    // 设置新大小（先设置大小，避免位置计算错误）
+    mainWindow.setSize(bounds.width, bounds.height);
+    mainWindow.setResizable(false);
+
+    // 如果有记录的胶囊位置，恢复到那个位置（不使用动画，避免闪烁）
+    if (lastCapsulePosition) {
+      mainWindow.setPosition(lastCapsulePosition.x, lastCapsulePosition.y, false);
+    } else {
+      // 如果没有记录的位置，保持中心点不变
+      const [currentX, currentY] = mainWindow.getPosition();
+      const [currentWidth, currentHeight] = mainWindow.getSize();
+      const centerX = currentX + currentWidth / 2;
+      const centerY = currentY + currentHeight / 2;
+      const newX = Math.round(centerX - bounds.width / 2);
+      const newY = Math.round(centerY - bounds.height / 2);
+      mainWindow.setPosition(newX, newY, false);
+      lastCapsulePosition = { x: newX, y: newY };
+    }
+  }
+
+  // 胶囊/监听模式：始终置顶（在位置设置完成后）
+  // 聊天/展开模式：已经在上面的 else 分支中取消了置顶
+  const shouldBeOnTop = mode === 'capsule' || mode === 'idle' || mode === 'listening';
+  if (shouldBeOnTop) {
+    // 延迟一点设置置顶，确保位置已经稳定
+    setTimeout(() => {
+      if (mainWindow && (currentMode === 'capsule' || currentMode === 'idle' || currentMode === 'listening')) {
+        enforceAlwaysOnTop();
+      }
+    }, 50);
   }
   console.log(`📌 Window alwaysOnTop: ${shouldBeOnTop} (mode: ${mode})`);
 }
@@ -519,18 +526,9 @@ ipcMain.on('show-context-menu', () => {
     },
     { type: 'separator' },
     {
-      label: 'Developer Tools',
-      click: () => {
-        if (mainWindow) {
-          mainWindow.webContents.openDevTools();
-        }
-      },
-    },
-    { type: 'separator' },
-    {
       label: 'Settings',
       click: () => {
-        resizeWindowByMode('chat');
+        resizeWindowByMode('expanded');
         mainWindow?.webContents.send('open-settings');
       },
     },
@@ -611,6 +609,12 @@ ipcMain.handle('platform:restart-backend', async () => {
 ipcMain.handle('platform:drag-start', (_event, { mouseX, mouseY }: { mouseX: number; mouseY: number }) => {
   if (!mainWindow) return;
 
+  // 只在胶囊模式下允许拖拽
+  if (currentMode !== 'capsule' && currentMode !== 'idle' && currentMode !== 'listening') {
+    console.log('⚠️ Drag not allowed in current mode:', currentMode);
+    return;
+  }
+
   isDragging = true;
   dragStartPos = { x: mouseX, y: mouseY };
   const [winX, winY] = mainWindow.getPosition();
@@ -627,6 +631,13 @@ ipcMain.handle('platform:drag-start', (_event, { mouseX, mouseY }: { mouseX: num
 // 拖拽移动
 ipcMain.handle('platform:drag-move', (_event, { mouseX, mouseY }: { mouseX: number; mouseY: number }) => {
   if (!mainWindow || !isDragging) return;
+
+  // 只在胶囊模式下允许拖拽
+  if (currentMode !== 'capsule' && currentMode !== 'idle' && currentMode !== 'listening') {
+    // 如果不在胶囊模式，重置拖拽状态
+    isDragging = false;
+    return;
+  }
 
   const deltaX = mouseX - dragStartPos.x;
   const deltaY = mouseY - dragStartPos.y;
@@ -976,6 +987,8 @@ function createTray() {
           if (!mainWindow.isVisible()) {
             mainWindow.show();
           }
+          // 确保窗口处于 expanded 模式
+          resizeWindowByMode('expanded');
           mainWindow.focus();
           mainWindow.webContents.send('open-settings');
         }

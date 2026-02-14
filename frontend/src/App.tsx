@@ -18,14 +18,20 @@ export default function App() {
   const windowState = useUIStore((s) => s.windowState);
   const setWindowState = useUIStore((s) => s.setWindowState);
   const loadSettingsFromStorage = useSettingsStore((s) => s.loadFromStorage);
+  const isConfigured = useSettingsStore((s) => s.isConfigured);
+  const checkStatus = useSettingsStore((s) => s.checkStatus);
   const [status, setStatus] = useState<AgentStatus | null>(null);
   // Electron 模式下自动启动，Web 模式需要用户点击
   const [isStarted, setIsStarted] = useState(false);
+  // 标记是否已经检查过首次启动
+  const [hasCheckedFirstLaunch, setHasCheckedFirstLaunch] = useState(false);
 
   // Load settings from localStorage on mount
   useEffect(() => {
     loadSettingsFromStorage();
-  }, [loadSettingsFromStorage]);
+    // 检查后端配置状态
+    checkStatus();
+  }, [loadSettingsFromStorage, checkStatus]);
 
   // Electron 模式下自动启动
   useEffect(() => {
@@ -33,6 +39,47 @@ export default function App() {
       setIsStarted(true);
     }
   }, [isElectron, isStarted]);
+
+  // 首次启动检查：如果未配置 API Key，自动打开设置面板
+  useEffect(() => {
+    // 只在 Electron 模式下且未检查过首次启动时执行
+    if (!isElectron || hasCheckedFirstLaunch) return;
+    
+    // 检查是否已经完成过首次配置（通过 localStorage 标记）
+    const FIRST_LAUNCH_COMPLETED_KEY = 'lavis_first_launch_completed';
+    const hasCompletedFirstLaunch = localStorage.getItem(FIRST_LAUNCH_COMPLETED_KEY) === 'true';
+    
+    // 等待设置加载完成后再检查
+    const checkFirstLaunch = async () => {
+      // 延迟一点时间，确保设置已从存储加载和后端状态检查完成
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      // 再次检查后端状态，确保获取最新的配置状态
+      await checkStatus();
+      
+      // 再等待一点时间，确保状态已更新
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // 从 store 获取最新的配置状态
+      const currentIsConfigured = useSettingsStore.getState().isConfigured;
+      
+      // 如果是真正的首次启动（未完成过首次配置）且未配置，自动打开设置面板
+      if (!hasCompletedFirstLaunch && !currentIsConfigured) {
+        console.log('🎯 First launch detected - API not configured, opening settings panel');
+        // 切换到聊天模式并展开窗口
+        setViewMode('chat');
+        setWindowState('expanded');
+        // 延迟一点时间，确保窗口已展开，然后触发打开设置面板事件
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('lavis-open-settings'));
+        }, 500);
+      }
+      
+      setHasCheckedFirstLaunch(true);
+    };
+    
+    checkFirstLaunch();
+  }, [isElectron, hasCheckedFirstLaunch, checkStatus, setViewMode, setWindowState]);
 
   // ====================================
   // 全局语音大脑 (Global Voice Brain)
@@ -147,6 +194,44 @@ export default function App() {
       };
     }
   }, [isElectron, handleChatClose]);
+
+  // 监听主进程发送的切换到聊天模式消息（从右键菜单的 Expand Panel）
+  useEffect(() => {
+    if (isElectron && window.electron?.ipcRenderer) {
+      const handleSwitchToChat = () => {
+        console.log('💬 Received switch-to-chat message from main process');
+        // 切换到聊天模式并展开窗口
+        setViewMode('chat');
+        setWindowState('expanded');
+      };
+
+      window.electron.ipcRenderer.on('switch-to-chat', handleSwitchToChat);
+
+      return () => {
+        window.electron?.ipcRenderer?.removeAllListeners('switch-to-chat');
+      };
+    }
+  }, [isElectron, setViewMode, setWindowState]);
+
+  // 监听主进程发送的打开设置消息（从右键菜单或系统托盘）
+  useEffect(() => {
+    if (isElectron && window.electron?.ipcRenderer) {
+      const handleOpenSettings = () => {
+        console.log('⚙️ Received open-settings message from main process');
+        // 切换到聊天模式并展开窗口
+        setViewMode('chat');
+        setWindowState('expanded');
+        // 通知 ChatPanel 切换到设置面板（通过自定义事件）
+        window.dispatchEvent(new CustomEvent('lavis-open-settings'));
+      };
+
+      window.electron.ipcRenderer.on('open-settings', handleOpenSettings);
+
+      return () => {
+        window.electron?.ipcRenderer?.removeAllListeners('open-settings');
+      };
+    }
+  }, [isElectron, setViewMode, setWindowState]);
 
   // Listen for auto-record event (triggered by mic button on start overlay)
   useEffect(() => {
