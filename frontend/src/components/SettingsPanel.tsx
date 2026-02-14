@@ -182,7 +182,7 @@ export function SettingsPanel() {
             <input
               type="text"
               className="settings-panel__input settings-panel__input--full-width"
-              placeholder="e.g. gemini-2.0-flash, gemini-2.0-pro (leave empty to use backend config)"
+              placeholder="e.g. gemini-2.0-flash, gemini-2.0-pro (default: gemini-3-flash-preview)"
               value={inputChatModel}
               onChange={(e) => setInputChatModel(e.target.value)}
               disabled={isLoading}
@@ -197,7 +197,7 @@ export function SettingsPanel() {
             <input
               type="text"
               className="settings-panel__input settings-panel__input--full-width"
-              placeholder="e.g. gemini-2.0-flash-audio (leave empty to use backend config)"
+              placeholder="e.g. gemini-2.0-flash-audio (default: gemini-3-flash-preview)"
               value={inputSttModel}
               onChange={(e) => setInputSttModel(e.target.value)}
               disabled={isLoading}
@@ -212,7 +212,7 @@ export function SettingsPanel() {
             <input
               type="text"
               className="settings-panel__input settings-panel__input--full-width"
-              placeholder="e.g. gemini-2.0-flash (leave empty to use backend config)"
+              placeholder="e.g. gemini-2.0-flash (default: qwen3-tts-flash)"
               value={inputTtsModel}
               onChange={(e) => setInputTtsModel(e.target.value)}
               disabled={isLoading}

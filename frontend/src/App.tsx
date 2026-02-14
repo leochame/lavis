@@ -18,7 +18,6 @@ export default function App() {
   const windowState = useUIStore((s) => s.windowState);
   const setWindowState = useUIStore((s) => s.setWindowState);
   const loadSettingsFromStorage = useSettingsStore((s) => s.loadFromStorage);
-  const isConfigured = useSettingsStore((s) => s.isConfigured);
   const checkStatus = useSettingsStore((s) => s.checkStatus);
   const [status, setStatus] = useState<AgentStatus | null>(null);
   // Electron 模式下自动启动，Web 模式需要用户点击
