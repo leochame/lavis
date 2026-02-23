@@ -31,7 +31,11 @@ interface SettingsActions {
     baseUrl?: string,
     chatModelName?: string,
     sttModelName?: string,
-    ttsModelName?: string,
+    /**
+     * When undefined, keep existing TTS model config unchanged.
+     * When null/empty string, clear TTS model config.
+     */
+    ttsModelName?: string | null,
   ) => Promise<void>;
   clearConfig: () => Promise<void>;
   loadFromStorage: () => void;
@@ -59,10 +63,12 @@ export const useSettingsStore = create<SettingsState & SettingsActions>((set, ge
     baseUrl?: string,
     chatModelName?: string,
     sttModelName?: string,
-    ttsModelName?: string,
+    ttsModelName?: string | null,
   ) => {
     set({ isLoading: true, error: null });
     try {
+      const previousTtsModelName = get().ttsModelName;
+
       // Save to backend
       const response = await configApi.setApiKey(apiKey, baseUrl, chatModelName, sttModelName, ttsModelName);
       if (!response.success) {
@@ -89,10 +95,13 @@ export const useSettingsStore = create<SettingsState & SettingsActions>((set, ge
         localStorage.removeItem(STORAGE_KEY_STT_MODEL);
       }
 
-      if (ttsModelName) {
-        localStorage.setItem(STORAGE_KEY_TTS_MODEL, ttsModelName);
-      } else {
-        localStorage.removeItem(STORAGE_KEY_TTS_MODEL);
+      // Only update TTS model persistence when explicitly provided.
+      if (ttsModelName !== undefined) {
+        if (ttsModelName) {
+          localStorage.setItem(STORAGE_KEY_TTS_MODEL, ttsModelName);
+        } else {
+          localStorage.removeItem(STORAGE_KEY_TTS_MODEL);
+        }
       }
 
       const mode: ApiMode = baseUrl ? 'proxy' : 'official';
@@ -101,7 +110,7 @@ export const useSettingsStore = create<SettingsState & SettingsActions>((set, ge
         baseUrl: baseUrl || null,
         chatModelName: chatModelName || null,
         sttModelName: sttModelName || null,
-        ttsModelName: ttsModelName || null,
+        ttsModelName: ttsModelName !== undefined ? (ttsModelName || null) : previousTtsModelName,
         mode,
         isConfigured: true,
         isLoading: false,

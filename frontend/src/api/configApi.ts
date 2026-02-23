@@ -43,17 +43,28 @@ export const configApi = {
     baseUrl?: string,
     chatModelName?: string,
     sttModelName?: string,
-    ttsModelName?: string,
+    /**
+     * When undefined, backend TTS config should be left unchanged.
+     * When null/empty string, backend TTS config should be cleared.
+     */
+    ttsModelName?: string | null,
   ): Promise<SetApiKeyResponse> {
+    const payload: Record<string, unknown> = {
+      apiKey,
+      baseUrl: baseUrl || null,
+      chatModel: chatModelName || null,
+      sttModel: sttModelName || null,
+    };
+
+    // IMPORTANT: only send ttsModel when explicitly provided.
+    // Otherwise we would overwrite any existing backend TTS config with null.
+    if (ttsModelName !== undefined) {
+      payload.ttsModel = ttsModelName || null;
+    }
+
     const response = await axios.post<SetApiKeyResponse>(
       `${API_BASE_URL}/api-key`,
-      {
-        apiKey,
-        baseUrl: baseUrl || null,
-        chatModel: chatModelName || null,
-        sttModel: sttModelName || null,
-        ttsModel: ttsModelName || null,
-      },
+      payload,
       { timeout: 0 }
     );
     return response.data;

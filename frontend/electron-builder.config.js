@@ -93,16 +93,6 @@ module.exports = {
         type: 'link',
         path: '/Applications',
       },
-      // 安装说明文件（会在 afterAllArtifactBuild 中自动添加）
-      {
-        x: 130,
-        y: 320,
-      },
-      // 自动安装脚本（会在 afterAllArtifactBuild 中自动添加）
-      {
-        x: 410,
-        y: 320,
-      },
     ],
     window: {
       width: 540,
@@ -225,9 +215,30 @@ module.exports = {
         }
 
         if (!mountPoint) {
-          console.warn('⚠️ 无法从 hdiutil 输出中解析挂载点，尝试跳过该 DMG');
-          // 理论上 attach 成功时一定能解析出挂载点；如果解析失败，避免继续操作
-          // 由 hdiutil 自行管理当前挂载状态，后续构建者可手动清理
+          console.warn('⚠️ 无法从 hdiutil 输出中解析挂载点，尝试跳过该 DMG，但会首先尝试卸载卷');
+
+          // 尝试从输出中提取设备 ID（例如 /dev/disk4），以便主动卸载，避免挂载泄漏
+          try {
+            const firstLine = lines[0] || '';
+            const firstParts = firstLine.split(/\s+/);
+            const device = firstParts[0];
+
+            if (device && device.startsWith('/dev/')) {
+              try {
+                execSync(`hdiutil detach "${device}" -force -quiet 2>/dev/null || true`, { stdio: 'ignore' });
+                console.log(`ℹ️ 已尝试通过设备 ${device} 卸载 DMG，避免资源泄漏`);
+              } catch (e) {
+                // 卸载失败时仅记录日志，不中断后续处理
+                console.warn(`⚠️ 通过设备卸载 DMG 失败: ${e.message}`);
+              }
+            } else {
+              console.warn('⚠️ 无法从 hdiutil 输出中解析设备 ID，可能需要手动卸载挂载卷');
+            }
+          } catch (parseError) {
+            console.warn(`⚠️ 解析 hdiutil 输出以卸载 DMG 时出错: ${parseError.message}`);
+          }
+
+          // 无法安全继续对 DMG 内容进行修改，跳过该 DMG
           continue;
         }
 

@@ -9,7 +9,6 @@ export function SettingsPanel() {
     baseUrl,
     chatModelName,
     sttModelName,
-    ttsModelName,
     mode,
     isConfigured,
     isLoading,
@@ -24,7 +23,6 @@ export function SettingsPanel() {
   const [inputUrl, setInputUrl] = useState('');
   const [inputChatModel, setInputChatModel] = useState('');
   const [inputSttModel, setInputSttModel] = useState('');
-  const [inputTtsModel, setInputTtsModel] = useState('');
   const [showKey, setShowKey] = useState(false);
 
   // Check status on mount
@@ -46,10 +44,7 @@ export function SettingsPanel() {
     if (sttModelName) {
       setInputSttModel(sttModelName);
     }
-    if (ttsModelName) {
-      setInputTtsModel(ttsModelName);
-    }
-  }, [apiKey, baseUrl, chatModelName, sttModelName, ttsModelName]);
+  }, [apiKey, baseUrl, chatModelName, sttModelName]);
 
   const handleSave = async () => {
     if (!inputKey.trim()) {
@@ -62,8 +57,7 @@ export function SettingsPanel() {
         inputKey.trim(),
         inputUrl.trim() || undefined,
         inputChatModel.trim() || undefined,
-        inputSttModel.trim() || undefined,
-        inputTtsModel.trim() || undefined,
+        inputSttModel.trim() || undefined
       );
     } catch {
       // Error is already set in the store
@@ -77,7 +71,6 @@ export function SettingsPanel() {
       setInputUrl('');
       setInputChatModel('');
       setInputSttModel('');
-      setInputTtsModel('');
     } catch {
       // Error is already set in the store
     }
@@ -200,21 +193,6 @@ export function SettingsPanel() {
               placeholder="e.g. gemini-2.0-flash-audio (default: gemini-3-flash-preview)"
               value={inputSttModel}
               onChange={(e) => setInputSttModel(e.target.value)}
-              disabled={isLoading}
-            />
-          </div>
-
-          {/* TTS Model Name Input */}
-          <div className="settings-panel__field">
-            <label className="settings-panel__label">
-              TTS MODEL NAME <span className="settings-panel__optional">(optional)</span>
-            </label>
-            <input
-              type="text"
-              className="settings-panel__input settings-panel__input--full-width"
-              placeholder="e.g. gemini-2.0-flash (default: qwen3-tts-flash)"
-              value={inputTtsModel}
-              onChange={(e) => setInputTtsModel(e.target.value)}
               disabled={isLoading}
             />
           </div>
