@@ -207,13 +207,27 @@ module.exports = {
       const dmgPath = path.join(outputDir, dmgFile);
       console.log(`\n📦 处理 DMG: ${dmgFile}`);
 
+      // 在整个循环体内共享挂载点变量，便于在 catch 中使用
+      let mountPoint = '';
+
       try {
-        // 挂载 DMG
-        const mountOutput = execSync(`hdiutil attach "${dmgPath}" -nobrowse -quiet`, { encoding: 'utf8' });
-        const mountPoint = mountOutput.split('\t').pop().trim();
+        // 挂载 DMG（不使用 -quiet，确保可以解析输出获取挂载点）
+        const mountOutput = execSync(`hdiutil attach "${dmgPath}" -nobrowse`, { encoding: 'utf8' });
+
+        // hdiutil attach 输出通常类似：
+        // /dev/disk4  Apple_HFS  /Volumes/Lavis
+        // 取最后一列作为挂载点，兼容空白字符分隔
+        const lines = mountOutput.split('\n').map(l => l.trim()).filter(Boolean);
+        if (lines.length > 0) {
+          const lastLine = lines[lines.length - 1];
+          const parts = lastLine.split(/\s+/);
+          mountPoint = parts[parts.length - 1] || '';
+        }
 
         if (!mountPoint) {
-          console.warn('⚠️ 无法获取挂载点');
+          console.warn('⚠️ 无法从 hdiutil 输出中解析挂载点，尝试跳过该 DMG');
+          // 理论上 attach 成功时一定能解析出挂载点；如果解析失败，避免继续操作
+          // 由 hdiutil 自行管理当前挂载状态，后续构建者可手动清理
           continue;
         }
 
@@ -237,11 +251,13 @@ module.exports = {
 
       } catch (error) {
         console.error(`❌ 处理 DMG 时出错: ${error.message}`);
-        // 尝试卸载（如果已挂载）
-        try {
-          execSync(`hdiutil detach "${mountPoint}" -force -quiet 2>/dev/null || true`, { stdio: 'ignore' });
-        } catch (e) {
-          // 忽略卸载错误
+        // 尝试卸载（如果已成功获取挂载点）
+        if (mountPoint) {
+          try {
+            execSync(`hdiutil detach "${mountPoint}" -force -quiet 2>/dev/null || true`, { stdio: 'ignore' });
+          } catch (e) {
+            // 忽略卸载错误
+          }
         }
       }
     }
