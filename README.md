@@ -103,9 +103,16 @@ npm run electron:dev
 
 ### One-Click Build
 
-Lavis supports **fully automated one-click packaging**, including embedded Java runtime.
+Lavis supports **fully automated one-click packaging**, including embedded Java runtime. Anyone can easily package the app without complex configuration.
 
-**Quick Build:**
+#### Prerequisites
+
+- macOS (Intel / Apple Silicon)
+- JDK 21+ (for compiling backend)
+- Node.js 18+ (for building frontend)
+- Maven (project includes `mvnw`, no separate installation needed)
+
+#### Quick Build
 
 ```bash
 cd frontend
@@ -114,22 +121,63 @@ npm run package
 ```
 
 This command will automatically:
-1. Check prerequisites (Java, Maven, Node.js)
-2. Build Java backend JAR
-3. Build frontend code
-4. Compile Electron main process
-5. Package app with electron-builder
+1. ✅ Check prerequisites (Java, Maven, Node.js)
+2. ✅ Build Java backend JAR
+3. ✅ Auto-download JRE for current architecture (arm64 or x64)
+4. ✅ Build frontend code
+5. ✅ Compile Electron main process
+6. ✅ Package app with electron-builder
+7. ✅ Generate DMG installer
 
-**Features:**
-- ✅ **Embedded Java** - JRE 21 embedded, no Java installation required
+#### Features
+
+- ✅ **Embedded Java** - JRE 21 embedded, no Java installation required for end users
 - ✅ **Auto-start** - Backend service starts automatically on launch
-- ✅ **Cross-platform Ready** - Clean architecture, easy to extend to other platforms
+- ✅ **Cross-architecture** - Automatically detects and packages current architecture (arm64/x64)
+- ✅ **User-friendly** - DMG includes auto-install script and instructions
 
-**Output:**
-- macOS: `frontend/dist-electron/Lavis-1.0.0-arm64.dmg` (~250MB)
+#### Output
 
-**Detailed Docs:**
-- [Complete Build & Packaging Guide](docs/Build-and-Packaging-en.md) - Includes building, packaging, debugging, troubleshooting, and GraalVM Native Image
+After packaging, you'll find in `frontend/dist-electron/`:
+- `Lavis-1.0.0-arm64.dmg` (Apple Silicon) or `Lavis-1.0.0-x64.dmg` (Intel)
+- `Lavis-1.0.0-arm64.zip` (alternative format)
+
+#### Installation Instructions
+
+The DMG package includes:
+1. **Lavis.app** - Main application
+2. **自动安装.command** - One-click install script (recommended)
+3. **安装说明.rtf** - Detailed installation instructions
+
+**First-time Installation:**
+
+1. Double-click the DMG file to open
+2. Double-click `自动安装.command` script (recommended)
+   - If security prompt appears, click "Open"
+   - Script will automatically handle permissions and install the app
+3. Or manually drag `Lavis.app` to Applications folder
+4. On first launch, if you see "app is damaged" message:
+   - **Method 1**: Right-click app → Select "Open" → Click "Open" in dialog
+   - **Method 2**: Run in terminal: `xattr -dr com.apple.quarantine /Applications/Lavis.app`
+   - This is macOS security mechanism, only needed once
+
+#### Common Issues
+
+**Q: Build fails, can't find Java?**  
+A: Make sure JDK 21+ is installed, verify with `java -version` in terminal.
+
+**Q: Build fails, can't find Maven?**  
+A: Project includes `mvnw` (Maven Wrapper), no separate Maven installation needed.
+
+**Q: Build takes a long time?**  
+A: First build downloads JRE (~150MB), subsequent builds are faster.
+
+**Q: How to package for other architectures?**  
+A: Run the build command on a machine with that architecture, electron-builder auto-detects it.
+
+**Detailed Documentation:**
+- Complete build guide, debugging, troubleshooting: `docs/Build-and-Packaging-en.md`
+- GraalVM Native Image advanced option: `docs/Build-and-Packaging-en.md`
 
 ---
 

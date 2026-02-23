@@ -41,8 +41,16 @@ Lavis 已将所有组件（Java 后端、JRE、前端）打包成一个独立的
 #### 1. 安装应用
 
 1. 下载 `Lavis AI-1.0.0-arm64.dmg`（或对应架构版本）
-2. 双击 DMG 文件，将 `Lavis AI.app` 拖入「应用程序」文件夹
-3. 首次运行时，如出现安全提示，请前往「系统设置 → 隐私与安全性」允许运行
+2. 双击 DMG 文件打开
+3. **推荐方式**：双击 `自动安装.command` 脚本
+   - 如果出现安全提示，点击"打开"
+   - 脚本会自动处理权限问题并安装应用
+4. **手动方式**：将 `Lavis AI.app` 拖入「应用程序」文件夹
+5. 首次运行时，如出现"应用已损坏"提示：
+   - **方法一**：右键点击应用 → 选择"打开" → 在对话框中点击"打开"
+   - **方法二**：在终端运行：`xattr -dr com.apple.quarantine /Applications/Lavis\ AI.app`
+   - 这是 macOS 的安全机制（Gatekeeper），只需操作一次
+6. 如出现权限提示，请前往「系统设置 → 隐私与安全性」允许运行
 
 #### 2. 配置 API Key
 
@@ -119,7 +127,7 @@ source ~/.zshrc
 
 > **后端自动启动**: Java 后端已内嵌在应用中，会在应用启动时自动运行。如果后端启动失败，请检查日志或重新安装应用。
 
-> **获取打包版本**: 如果你需要打包应用，请参考 `docs/Build-and-Packaging-zh.md` 中的打包指南。打包脚本会自动下载 JRE、编译后端、构建前端并生成 DMG 安装包。
+> **获取打包版本**: 如果你需要打包应用，请参考下面的「打包与分发」部分或 `docs/Build-and-Packaging-zh.md` 中的详细打包指南。
 
 ---
 
@@ -186,6 +194,88 @@ npm run electron:dev
 #### 4. 授予 macOS 权限
 
 同「方式一」中的步骤 3。
+
+---
+
+## 打包与分发
+
+### 一键打包（推荐）
+
+Lavis 支持**完全自动化的一键打包**，包括内嵌 Java 运行时。任何人都可以轻松打包应用，无需复杂配置。
+
+#### 前置要求
+
+- macOS (Intel / Apple Silicon)
+- JDK 21+（用于编译后端）
+- Node.js 18+（用于构建前端）
+- Maven（项目自带 `mvnw`，无需单独安装）
+
+#### 快速打包
+
+```bash
+cd frontend
+npm install  # 首次运行需要安装依赖
+npm run package
+```
+
+这个命令会自动完成以下步骤：
+1. ✅ 检查前置条件（Java、Maven、Node.js）
+2. ✅ 编译 Java 后端 JAR
+3. ✅ 自动下载对应架构的 JRE（arm64 或 x64）
+4. ✅ 构建前端代码
+5. ✅ 编译 Electron 主进程
+6. ✅ 使用 electron-builder 打包应用
+7. ✅ 生成 DMG 安装包
+
+#### 打包特性
+
+- ✅ **内嵌 Java** - JRE 21 已内嵌，用户无需安装 Java
+- ✅ **自动启动** - 后端服务在应用启动时自动运行
+- ✅ **跨架构支持** - 自动检测并打包当前架构（arm64/x64）
+- ✅ **安装友好** - DMG 包含自动安装脚本和说明文档
+
+#### 输出文件
+
+打包完成后，在 `frontend/dist-electron/` 目录下会生成：
+- `Lavis-1.0.0-arm64.dmg`（Apple Silicon）或 `Lavis-1.0.0-x64.dmg`（Intel）
+- `Lavis-1.0.0-arm64.zip`（备用格式）
+
+#### 安装说明
+
+DMG 安装包中包含：
+1. **Lavis.app** - 主应用文件
+2. **自动安装.command** - 一键安装脚本（推荐使用）
+3. **安装说明.rtf** - 详细的安装说明文档
+
+**首次安装步骤：**
+
+1. 双击 DMG 文件打开
+2. 双击 `自动安装.command` 脚本（推荐）
+   - 如果出现安全提示，点击"打开"
+   - 脚本会自动处理权限问题并安装应用
+3. 或者手动将 `Lavis.app` 拖入「应用程序」文件夹
+4. 首次运行时，如出现"应用已损坏"提示：
+   - **方法一**：右键点击应用 → 选择"打开" → 在对话框中点击"打开"
+   - **方法二**：在终端运行：`xattr -dr com.apple.quarantine /Applications/Lavis.app`
+   - 这是 macOS 的安全机制，只需操作一次
+
+#### 常见问题
+
+**Q: 打包失败，提示找不到 Java？**  
+A: 确保已安装 JDK 21+，并在终端中运行 `java -version` 验证。
+
+**Q: 打包失败，提示找不到 Maven？**  
+A: 项目自带 `mvnw`（Maven Wrapper），无需单独安装 Maven。
+
+**Q: 打包时间很长？**  
+A: 首次打包需要下载 JRE（约 150MB），后续打包会更快。
+
+**Q: 如何打包其他架构？**  
+A: 在对应架构的机器上运行打包命令，electron-builder 会自动检测架构。
+
+**详细文档：**
+- 完整的打包指南、调试方法、故障排除：`docs/Build-and-Packaging-zh.md`
+- GraalVM Native Image 高级选项：`docs/Build-and-Packaging-zh.md`
 
 ---
 

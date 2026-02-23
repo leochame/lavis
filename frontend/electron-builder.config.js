@@ -93,14 +93,24 @@ module.exports = {
         type: 'link',
         path: '/Applications',
       },
+      // 安装说明文件（会在 afterAllArtifactBuild 中自动添加）
+      {
+        x: 130,
+        y: 320,
+      },
+      // 自动安装脚本（会在 afterAllArtifactBuild 中自动添加）
+      {
+        x: 410,
+        y: 320,
+      },
     ],
     window: {
       width: 540,
-      height: 400,
+      height: 500, // 增加高度以容纳新文件
     },
   },
 
-  // 打包后执行的钩子 - 确保 JRE 有执行权限
+  // 打包后执行的钩子 - 确保 JRE 有执行权限，并设置安装脚本权限
   afterPack: async (context) => {
     const fs = require('fs');
     const path = require('path');
@@ -130,6 +140,17 @@ module.exports = {
 
     console.log('Setting JRE executable permissions...');
     setExecutable(jrePath);
+
+    // 确保自动安装脚本有执行权限（如果存在）
+    const installScriptPath = path.join(__dirname, 'build', '自动安装.command');
+    if (fs.existsSync(installScriptPath)) {
+      try {
+        fs.chmodSync(installScriptPath, 0o755);
+        console.log('✅ 自动安装脚本权限已设置');
+      } catch (e) {
+        console.warn(`⚠️ 设置安装脚本权限失败: ${e.message}`);
+      }
+    }
   },
 
   // 打包完成后执行的钩子 - 移除 quarantine 属性
@@ -151,6 +172,78 @@ module.exports = {
     } catch (error) {
       // 如果属性不存在，忽略错误
       console.log('ℹ️ Quarantine 属性不存在或已移除');
+    }
+  },
+
+  // 所有构建产物完成后执行的钩子 - 在 DMG 中添加安装文件
+  afterAllArtifactBuild: async (context) => {
+    if (process.platform !== 'darwin') {
+      return;
+    }
+
+    const fs = require('fs');
+    const path = require('path');
+    const { execSync } = require('child_process');
+
+    // 查找 DMG 文件
+    const outputDir = context.outDir || path.join(__dirname, 'dist-electron');
+    const dmgFiles = fs.readdirSync(outputDir).filter(f => f.endsWith('.dmg'));
+
+    if (dmgFiles.length === 0) {
+      return;
+    }
+
+    const buildDir = path.join(__dirname, 'build');
+    const installScript = path.join(buildDir, '自动安装.command');
+    const installGuide = path.join(buildDir, '安装说明.rtf');
+
+    // 检查安装文件是否存在
+    if (!fs.existsSync(installScript) || !fs.existsSync(installGuide)) {
+      console.warn('⚠️ 安装文件不存在，跳过 DMG 文件添加');
+      return;
+    }
+
+    for (const dmgFile of dmgFiles) {
+      const dmgPath = path.join(outputDir, dmgFile);
+      console.log(`\n📦 处理 DMG: ${dmgFile}`);
+
+      try {
+        // 挂载 DMG
+        const mountOutput = execSync(`hdiutil attach "${dmgPath}" -nobrowse -quiet`, { encoding: 'utf8' });
+        const mountPoint = mountOutput.split('\t').pop().trim();
+
+        if (!mountPoint) {
+          console.warn('⚠️ 无法获取挂载点');
+          continue;
+        }
+
+        console.log(`✅ DMG 已挂载到: ${mountPoint}`);
+
+        // 复制安装文件到 DMG
+        const targetScript = path.join(mountPoint, '自动安装.command');
+        const targetGuide = path.join(mountPoint, '安装说明.rtf');
+
+        fs.copyFileSync(installScript, targetScript);
+        fs.copyFileSync(installGuide, targetGuide);
+
+        // 确保脚本有执行权限
+        fs.chmodSync(targetScript, 0o755);
+
+        console.log('✅ 安装文件已添加到 DMG');
+
+        // 卸载 DMG
+        execSync(`hdiutil detach "${mountPoint}" -quiet`, { stdio: 'ignore' });
+        console.log('✅ DMG 处理完成');
+
+      } catch (error) {
+        console.error(`❌ 处理 DMG 时出错: ${error.message}`);
+        // 尝试卸载（如果已挂载）
+        try {
+          execSync(`hdiutil detach "${mountPoint}" -force -quiet 2>/dev/null || true`, { stdio: 'ignore' });
+        } catch (e) {
+          // 忽略卸载错误
+        }
+      }
     }
   },
 
