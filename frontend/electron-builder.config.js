@@ -206,12 +206,26 @@ module.exports = {
 
         // hdiutil attach 输出通常类似：
         // /dev/disk4  Apple_HFS  /Volumes/Lavis
-        // 取最后一列作为挂载点，兼容空白字符分隔
+        // 我们需要从中解析出挂载点（/Volumes/...），注意卷名可能包含空格
         const lines = mountOutput.split('\n').map(l => l.trim()).filter(Boolean);
         if (lines.length > 0) {
           const lastLine = lines[lines.length - 1];
           const parts = lastLine.split(/\s+/);
-          mountPoint = parts[parts.length - 1] || '';
+
+          // 优先查找挂载点起始列（通常为 /Volumes/...，可能包含空格）
+          let mountIndex = parts.findIndex(p => p.startsWith('/Volumes/'));
+
+          // 如果未找到 /Volumes/，退而求其次，查找第一个以 / 开头但不是设备路径 (/dev/...) 的字段
+          if (mountIndex === -1) {
+            mountIndex = parts.findIndex(p => p.startsWith('/') && !p.startsWith('/dev/'));
+          }
+
+          if (mountIndex !== -1) {
+            // 使用从挂载点开始的所有列拼接，保留路径中的空格
+            mountPoint = parts.slice(mountIndex).join(' ');
+          } else {
+            mountPoint = '';
+          }
         }
 
         if (!mountPoint) {
