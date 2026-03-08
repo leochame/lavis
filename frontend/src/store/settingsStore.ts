@@ -163,11 +163,14 @@ export const useSettingsStore = create<SettingsState & SettingsActions>((set, ge
     const storedTtsModel = localStorage.getItem(STORAGE_KEY_TTS_MODEL) || undefined;
 
     if (storedKey) {
-      // Sync to backend
+      // Sync to backend - wait for completion to avoid race conditions
       get()
         .setConfig(storedKey, storedUrl || undefined, storedChatModel, storedSttModel, storedTtsModel)
+        .then(() => {
+          console.log('Settings synced to backend successfully');
+        })
         .catch((error) => {
-        console.error('Failed to sync API config to backend:', error);
+          console.error('Failed to sync API config to backend:', error);
         });
     }
   },

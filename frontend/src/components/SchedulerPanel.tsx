@@ -4,11 +4,15 @@ import './SchedulerPanel.css';
 
 interface SchedulerPanelProps {
   onClose?: () => void;
+  /** 允许外部传入附加样式（例如嵌入 AgentDashboard 卡片时去掉外部边框） */
+  className?: string;
+  /** 是否显示顶部 Header（嵌入模式下可关闭） */
+  showHeader?: boolean;
 }
 
 type ViewMode = 'list' | 'create' | 'edit' | 'logs';
 
-export function SchedulerPanel({ onClose }: SchedulerPanelProps) {
+export function SchedulerPanel({ onClose, className, showHeader = true }: SchedulerPanelProps) {
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
   const [logs, setLogs] = useState<TaskRunLog[]>([]);
   const [loading, setLoading] = useState(false);
@@ -386,9 +390,11 @@ export function SchedulerPanel({ onClose }: SchedulerPanelProps) {
     }
   };
 
+  const rootClassName = ['scheduler-panel', className].filter(Boolean).join(' ');
+
   return (
-    <div className="scheduler-panel">
-      {onClose && (
+    <div className={rootClassName}>
+      {onClose && showHeader && (
         <div className="scheduler-panel__header">
           <h2>{getTitle()}</h2>
           <button className="scheduler-panel__close" onClick={onClose} aria-label="Close">×</button>

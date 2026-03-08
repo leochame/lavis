@@ -24,9 +24,8 @@ class AgentApi {
     // 这在 Electron 环境中可以防止 DNS 相关的崩溃
     this.client = axios.create({
       baseURL: `http://127.0.0.1:${this.backendPort}/api/agent`,
-      // 关键修改 1: 将默认超时时间设置为 0 (无限制)
-      // 这解决了 "前端超时不再存在" 的需求，允许长时间运行的 Agent 任务
-      timeout: 0,
+      // 设置合理的默认超时时间：30秒
+      timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -45,14 +44,17 @@ class AgentApi {
         if (axios.isCancel(error)) {
           return Promise.reject(error);
         }
-        
+
         console.error('[API] Error:', error.message);
         this.consecutiveErrors++;
         if (this.consecutiveErrors >= 5) {
           // 连续失败5次后，降低心跳频率，减轻浏览器和服务器负担
           this.stopHeartbeat();
           if (this.heartbeatCallback) {
-            this.startHeartbeat(this.heartbeatCallback, 5000); 
+            // 延迟重启心跳，避免多实例运行
+            setTimeout(() => {
+              this.startHeartbeat(this.heartbeatCallback!, 5000);
+            }, 1000);
           }
         }
         return Promise.reject(error);

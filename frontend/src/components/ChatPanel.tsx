@@ -52,6 +52,21 @@ interface ChatPanelProps {
   workflow: WorkflowState;
   resetWorkflow: () => void;
   sendMessage: (type: string, data?: Record<string, unknown>) => void;
+  /** 渲染模式：完整面板（带内部 Sidebar）或仅聊天内容（嵌入到 AgentDashboard） */
+  mode?: 'full' | 'chat-only';
+  /**
+   * 当需要用外部输入条（如 FloatingInputBar）驱动内部发送逻辑时，
+   * 通过该回调向父组件暴露输入桥接对象
+   */
+  onBindInput?: (bridge: {
+    value: string;
+    onChange: (value: string) => void;
+    onSubmit: () => void;
+    disabled: boolean;
+    placeholder: string;
+  }) => void;
+  /** 隐藏内部底部输入区域（由外部输入条接管） */
+  hideInput?: boolean;
 }
 
 export function ChatPanel({
@@ -63,6 +78,9 @@ export function ChatPanel({
   workflow,
   resetWorkflow,
   sendMessage,
+  mode = 'full',
+  onBindInput,
+  hideInput = false,
 }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -77,7 +95,9 @@ export function ChatPanel({
   
   // 【内存安全】获取窗口状态，在 Listening/Idle 模式下停止渲染复杂组件
   const windowState = useUIStore((s) => s.windowState);
-  const shouldRenderComplexComponents = windowState === 'expanded';
+  const isEmbeddedMode = mode === 'chat-only';
+  // 嵌入到 AgentDashboard 时（chat-only），始终渲染完整内容；独立窗口模式下才根据 windowState 做性能优化
+  const shouldRenderComplexComponents = isEmbeddedMode || windowState === 'expanded';
   
   // 动态加载 react-window
   useEffect(() => {
@@ -94,9 +114,12 @@ export function ChatPanel({
           : typedModule.default);
       if (ListComponent) {
         setFixedSizeList(() => ListComponent);
+      } else {
+        console.warn('Failed to load FixedSizeList component from react-window');
       }
     }).catch((err) => {
       console.error('Failed to load react-window:', err);
+      // 降级方案：不设置FixedSizeList，使用fallback渲染
     });
   }, []);
   
@@ -131,17 +154,18 @@ export function ChatPanel({
     if (globalVoice.transcribedText && globalVoice.agentResponse && globalVoice.voiceState === 'idle') {
       const lastMessage = messages[messages.length - 1];
       if (lastMessage?.content !== globalVoice.agentResponse) {
+        const timestamp = Date.now();
         const userMessage: Message = {
-          id: Date.now().toString(),
+          id: `user-${timestamp}-${Math.random().toString(36).substr(2, 9)}`,
           role: 'user',
           content: `[Voice] ${globalVoice.transcribedText}`,
-          timestamp: Date.now(),
+          timestamp,
         };
         const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
+          id: `assistant-${timestamp + 1}-${Math.random().toString(36).substr(2, 9)}`,
           role: 'assistant',
           content: globalVoice.agentResponse,
-          timestamp: Date.now(),
+          timestamp: timestamp + 1,
         };
         setMessages(prev => [...prev, userMessage, assistantMessage]);
       }
@@ -179,16 +203,19 @@ export function ChatPanel({
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) {
+      e.preventDefault();
+    }
     const messageText = input.trim();
     if (!messageText || isLoading) return;
 
+    const timestamp = Date.now();
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: `user-${timestamp}-${Math.random().toString(36).substr(2, 9)}`,
       role: 'user',
       content: messageText,
-      timestamp: Date.now(),
+      timestamp,
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -210,15 +237,15 @@ export function ChatPanel({
       // 支持统一格式：优先使用 agent_text，否则使用向后兼容的 response 字段
       const responseText = response.agent_text || response.response;
       const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: `assistant-${timestamp + 1}-${Math.random().toString(36).substr(2, 9)}`,
         role: 'assistant',
         content: responseText,
-        timestamp: Date.now(),
+        timestamp: timestamp + 1,
       };
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
       const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: `error-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         role: 'assistant',
         content: `Error: ${(error as Error).message}`,
         timestamp: Date.now(),
@@ -251,8 +278,216 @@ export function ChatPanel({
     }
   }, [connected, isWorking, workflow.status, isExecuting, isPlanning, isLoading, shouldShowWorkingIndicator]);
 
+  // 将内部输入状态与提交逻辑暴露给外部（用于 FloatingInputBar）
+  useEffect(() => {
+    if (!onBindInput) return;
+
+    const disabled = isLoading || isExecuting || wsStatus !== 'connected';
+    const placeholder =
+      wsStatus === 'connected'
+        ? 'Type a message...'
+        : 'Connecting...';
+
+    onBindInput({
+      value: input,
+      onChange: (value: string) => setInput(value),
+      onSubmit: () => {
+        void handleSubmit();
+      },
+      disabled,
+      placeholder,
+    });
+  }, [onBindInput, input, isLoading, isExecuting, wsStatus]);
+
+  const renderChatContent = () => (
+    <>
+      <div
+        ref={messagesContainerRef}
+        className="chat-panel__messages"
+        style={{ position: 'relative' }}
+      >
+        {shouldRenderComplexComponents ? (
+          messages.length > 0 ? (
+            FixedSizeList ? (
+              <FixedSizeList
+                ref={listRef}
+                height={containerHeight}
+                itemCount={messages.length + (isLoading ? 1 : 0)}
+                itemSize={estimatedItemHeight}
+                width="100%"
+                style={{ padding: '20px' }}
+              >
+                {({ index, style }: { index: number; style: CSSProperties }) => {
+                  if (index === messages.length) {
+                    return (
+                      <div style={style}>
+                        <div className="message message--assistant">
+                          <div className="message__content message__loading">
+                            <span>.</span><span>.</span><span>.</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  const message = messages[index];
+                  return (
+                    <div style={{ ...style, paddingBottom: '16px' }}>
+                      <div
+                        key={message.id}
+                        className={`message message--${message.role}`}
+                      >
+                        <div className="message__content">
+                          {message.role === 'assistant' ? (
+                            <ReactMarkdown
+                              components={{
+                                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                code({ className, children, ...props }: any) {
+                                  const match = /language-(\w+)/.exec(className || '');
+                                  const isInline = !match;
+                                  return !isInline && match ? (
+                                    <SyntaxHighlighter
+                                      style={oneDark}
+                                      language={match[1]}
+                                      PreTag="div"
+                                      {...props}
+                                    >
+                                      {String(children).replace(/\n$/, '')}
+                                    </SyntaxHighlighter>
+                                  ) : (
+                                    <code className={className} {...props}>
+                                      {children}
+                                    </code>
+                                  );
+                                },
+                              }}
+                            >
+                              {message.content}
+                            </ReactMarkdown>
+                          ) : (
+                            message.content
+                          )}
+                        </div>
+                        <div className="message__timestamp">
+                          {new Date(message.timestamp).toLocaleTimeString()}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }}
+              </FixedSizeList>
+            ) : (
+              // Fallback: react-window 还未加载完成时，先用普通列表渲染，避免“有消息但不显示”
+              <div style={{ padding: '20px' }}>
+                {messages.map((message) => (
+                  <div key={message.id} style={{ paddingBottom: '16px' }}>
+                    <div className={`message message--${message.role}`}>
+                      <div className="message__content">
+                        {message.role === 'assistant' ? (
+                          <ReactMarkdown
+                            components={{
+                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                              code({ className, children, ...props }: any) {
+                                const match = /language-(\w+)/.exec(className || '');
+                                const isInline = !match;
+                                return !isInline && match ? (
+                                  <SyntaxHighlighter
+                                    style={oneDark}
+                                    language={match[1]}
+                                    PreTag="div"
+                                    {...props}
+                                  >
+                                    {String(children).replace(/\n$/, '')}
+                                  </SyntaxHighlighter>
+                                ) : (
+                                  <code className={className} {...props}>
+                                    {children}
+                                  </code>
+                                );
+                              },
+                            }}
+                          >
+                            {message.content}
+                          </ReactMarkdown>
+                        ) : (
+                          message.content
+                        )}
+                      </div>
+                      <div className="message__timestamp">
+                        {new Date(message.timestamp).toLocaleTimeString()}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {isLoading && (
+                  <div className="message message--assistant">
+                    <div className="message__content message__loading">
+                      <span>.</span><span>.</span><span>.</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          ) : isLoading ? (
+            <div className="message message--assistant">
+              <div className="message__content message__loading">
+                <span>.</span><span>.</span><span>.</span>
+              </div>
+            </div>
+          ) : (
+            <div className="chat-panel__messages-empty">
+              <p>Start conversation...</p>
+            </div>
+          )
+        ) : (
+          <div className="chat-panel__messages-placeholder">
+            <p>Window is in {windowState} mode</p>
+            <p>Double-click capsule to expand</p>
+          </div>
+        )}
+      </div>
+
+      {!hideInput && (
+        <div className="chat-panel__input-container">
+          {showVoicePanel && (
+            <div className="chat-panel__voice-container">
+              <VoicePanel
+                status={status}
+                voiceState={globalVoice.voiceState}
+                isRecording={globalVoice.isRecording}
+                isWakeWordListening={globalVoice.isWakeWordListening}
+                transcribedText={globalVoice.transcribedText}
+                agentResponse={globalVoice.agentResponse}
+                error={globalVoice.error}
+                onStartRecording={globalVoice.startRecording}
+                onStopRecording={globalVoice.stopRecording}
+              />
+            </div>
+          )}
+          <form className="chat-panel__input" onSubmit={handleSubmit}>
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={wsStatus === 'connected' ? 'Type a message...' : 'Connecting...'}
+              disabled={isLoading || isExecuting || wsStatus !== 'connected'}
+              autoFocus
+            />
+            <button type="submit" disabled={!input.trim() || isLoading || isExecuting || wsStatus !== 'connected'}>
+              Send
+            </button>
+          </form>
+        </div>
+      )}
+    </>
+  );
+
   // Render the active panel content
   const renderPanelContent = () => {
+    if (mode === 'chat-only') {
+      return renderChatContent();
+    }
+
     switch (activePanel) {
       case 'brain':
         return (
@@ -272,198 +507,24 @@ export function ChatPanel({
         return <SettingsPanel />;
       case 'chat':
       default:
-        return (
-          <>
-            <div
-              ref={messagesContainerRef}
-              className="chat-panel__messages"
-              style={{ position: 'relative' }}
-            >
-              {shouldRenderComplexComponents ? (
-                messages.length > 0 ? (
-                  FixedSizeList ? (
-                    <FixedSizeList
-                      ref={listRef}
-                      height={containerHeight}
-                      itemCount={messages.length + (isLoading ? 1 : 0)}
-                      itemSize={estimatedItemHeight}
-                      width="100%"
-                      style={{ padding: '20px' }}
-                    >
-                      {({ index, style }: { index: number; style: CSSProperties }) => {
-                        if (index === messages.length) {
-                          return (
-                            <div style={style}>
-                              <div className="message message--assistant">
-                                <div className="message__content message__loading">
-                                  <span>.</span><span>.</span><span>.</span>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        }
-
-                        const message = messages[index];
-                        return (
-                          <div style={{ ...style, paddingBottom: '16px' }}>
-                            <div
-                              key={message.id}
-                              className={`message message--${message.role}`}
-                            >
-                              <div className="message__content">
-                                {message.role === 'assistant' ? (
-                                  <ReactMarkdown
-                                    components={{
-                                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                      code({ className, children, ...props }: any) {
-                                        const match = /language-(\w+)/.exec(className || '');
-                                        const isInline = !match;
-                                        return !isInline && match ? (
-                                          <SyntaxHighlighter
-                                            style={oneDark}
-                                            language={match[1]}
-                                            PreTag="div"
-                                            {...props}
-                                          >
-                                            {String(children).replace(/\n$/, '')}
-                                          </SyntaxHighlighter>
-                                        ) : (
-                                          <code className={className} {...props}>
-                                            {children}
-                                          </code>
-                                        );
-                                      },
-                                    }}
-                                  >
-                                    {message.content}
-                                  </ReactMarkdown>
-                                ) : (
-                                  message.content
-                                )}
-                              </div>
-                              <div className="message__timestamp">
-                                {new Date(message.timestamp).toLocaleTimeString()}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      }}
-                    </FixedSizeList>
-                  ) : (
-                    // Fallback: react-window 还未加载完成时，先用普通列表渲染，避免“有消息但不显示”
-                    <div style={{ padding: '20px' }}>
-                      {messages.map((message) => (
-                        <div key={message.id} style={{ paddingBottom: '16px' }}>
-                          <div className={`message message--${message.role}`}>
-                            <div className="message__content">
-                              {message.role === 'assistant' ? (
-                                <ReactMarkdown
-                                  components={{
-                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                    code({ className, children, ...props }: any) {
-                                      const match = /language-(\w+)/.exec(className || '');
-                                      const isInline = !match;
-                                      return !isInline && match ? (
-                                        <SyntaxHighlighter
-                                          style={oneDark}
-                                          language={match[1]}
-                                          PreTag="div"
-                                          {...props}
-                                        >
-                                          {String(children).replace(/\n$/, '')}
-                                        </SyntaxHighlighter>
-                                      ) : (
-                                        <code className={className} {...props}>
-                                          {children}
-                                        </code>
-                                      );
-                                    },
-                                  }}
-                                >
-                                  {message.content}
-                                </ReactMarkdown>
-                              ) : (
-                                message.content
-                              )}
-                            </div>
-                            <div className="message__timestamp">
-                              {new Date(message.timestamp).toLocaleTimeString()}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      {isLoading && (
-                        <div className="message message--assistant">
-                          <div className="message__content message__loading">
-                            <span>.</span><span>.</span><span>.</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                ) : isLoading ? (
-                  <div className="message message--assistant">
-                    <div className="message__content message__loading">
-                      <span>.</span><span>.</span><span>.</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="chat-panel__messages-empty">
-                    <p>Start conversation...</p>
-                  </div>
-                )
-              ) : (
-                <div className="chat-panel__messages-placeholder">
-                  <p>Window is in {windowState} mode</p>
-                  <p>Double-click capsule to expand</p>
-                </div>
-              )}
-            </div>
-
-            <div className="chat-panel__input-container">
-              {showVoicePanel && (
-                <div className="chat-panel__voice-container">
-                  <VoicePanel
-                    status={status}
-                    voiceState={globalVoice.voiceState}
-                    isRecording={globalVoice.isRecording}
-                    isWakeWordListening={globalVoice.isWakeWordListening}
-                    transcribedText={globalVoice.transcribedText}
-                    agentResponse={globalVoice.agentResponse}
-                    error={globalVoice.error}
-                    onStartRecording={globalVoice.startRecording}
-                    onStopRecording={globalVoice.stopRecording}
-                  />
-                </div>
-              )}
-              <form className="chat-panel__input" onSubmit={handleSubmit}>
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder={wsStatus === 'connected' ? "Type a message..." : "Connecting..."}
-                  disabled={isLoading || isExecuting || wsStatus !== 'connected'}
-                  autoFocus
-                />
-                <button type="submit" disabled={!input.trim() || isLoading || isExecuting || wsStatus !== 'connected'}>
-                  Send
-                </button>
-              </form>
-            </div>
-          </>
-        );
+        return renderChatContent();
     }
   };
 
+  const rootClassName =
+    mode === 'full' ? 'chat-panel' : 'chat-panel chat-panel--embedded';
+
   return (
-    <div className="chat-panel">
+    <div className={rootClassName}>
       {/* Sidebar Navigation */}
-      <Sidebar
-        activePanel={activePanel}
-        onPanelChange={setActivePanel}
-        isConnected={connected}
-        isWorking={isWorking}
-      />
+      {mode === 'full' && (
+        <Sidebar
+          activePanel={activePanel}
+          onPanelChange={setActivePanel}
+          isConnected={connected}
+          isWorking={isWorking}
+        />
+      )}
 
       {/* Main Content */}
       <div className="chat-panel__content">
@@ -483,7 +544,9 @@ export function ChatPanel({
         {/* Panel Content */}
         <div className="chat-panel__body">
           <div className="chat-panel__main">
-            {shouldRenderComplexComponents ? renderPanelContent() : (
+            {shouldRenderComplexComponents ? (
+              renderPanelContent()
+            ) : (
               <div className="chat-panel__messages-placeholder">
                 <p>Window minimized</p>
               </div>

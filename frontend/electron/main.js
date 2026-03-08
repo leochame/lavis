@@ -110,6 +110,9 @@ function createWindow() {
     const windowOptions = {
         width: capsuleBounds.width,
         height: capsuleBounds.height,
+        // 胶囊模式下的最小尺寸（不可再缩小）
+        minWidth: capsuleBounds.width,
+        minHeight: capsuleBounds.height,
         x: initialX,
         y: initialY,
         // Transparent glass on macOS by default; fallback to opaque via ELECTRON_OPAQUE=1
@@ -386,6 +389,13 @@ function resizeWindowByMode(mode) {
     }
     currentMode = mode; // 跟踪当前模式
     const bounds = WINDOW_BOUNDS[mode] || WINDOW_BOUNDS.capsule;
+    // 根据模式设置对应的最小窗口尺寸
+    // 需求：主界面（聊天 / 设置）可以自由调整窗口大小，但不能小于当前默认尺寸
+    const minBounds = mode === 'chat'
+        ? WINDOW_BOUNDS.chat
+        : mode === 'expanded'
+            ? WINDOW_BOUNDS.expanded
+            : WINDOW_BOUNDS.capsule;
     if (mode === 'chat' || mode === 'expanded') {
         // 从胶囊位置展开到聊天/展开模式
         // 先取消置顶，避免位置变化
@@ -400,7 +410,9 @@ function resizeWindowByMode(mode) {
         const centerY = Math.round(workArea.y + (workArea.height - bounds.height) / 2);
         // 设置新大小（先设置大小，再移动位置，避免闪烁）
         mainWindow.setSize(bounds.width, bounds.height);
-        mainWindow.setResizable(mode === 'expanded' || mode === 'chat');
+        mainWindow.setResizable(true);
+        // 设置主界面的最小尺寸：不能比当前模式的默认尺寸更小
+        mainWindow.setMinimumSize(minBounds.width, minBounds.height);
         // 直接移动到中心（不使用动画，避免闪烁）
         mainWindow.setPosition(centerX, centerY, false);
         isSnappedToEdge = false;
@@ -417,6 +429,8 @@ function resizeWindowByMode(mode) {
         // 设置新大小（先设置大小，避免位置计算错误）
         mainWindow.setSize(bounds.width, bounds.height);
         mainWindow.setResizable(false);
+        // 胶囊/监听模式下，也同步使用对应模式的最小尺寸（主要是为了防止系统 Drag/Resize 出现意外）
+        mainWindow.setMinimumSize(minBounds.width, minBounds.height);
         // 如果有记录的胶囊位置，恢复到那个位置（不使用动画，避免闪烁）
         if (lastCapsulePosition) {
             mainWindow.setPosition(lastCapsulePosition.x, lastCapsulePosition.y, false);
@@ -431,6 +445,10 @@ function resizeWindowByMode(mode) {
             const newY = Math.round(centerY - bounds.height / 2);
             mainWindow.setPosition(newX, newY, false);
             lastCapsulePosition = { x: newX, y: newY };
+        }
+        // 确保窗口可见（切换到胶囊模式时必须显示窗口）
+        if (!mainWindow.isVisible()) {
+            mainWindow.show();
         }
     }
     // 胶囊/监听模式：始终置顶（在位置设置完成后）

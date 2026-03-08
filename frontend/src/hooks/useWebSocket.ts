@@ -472,19 +472,26 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
 
       ws.onclose = (event) => {
         if (isUnmountedRef.current) return;
-        
+
         console.log('🔌 [WS] WebSocket 连接关闭:', {
           code: event.code,
           reason: event.reason,
           wasClean: event.wasClean
         });
         setStatus('disconnected');
-        
+
+        // 限制最大重试次数为20次，避免无限重连
+        const MAX_RETRY_COUNT = 20;
+        if (retryCountRef.current >= MAX_RETRY_COUNT) {
+          console.log(`🛑 [WS] 达到最大重试次数 (${MAX_RETRY_COUNT})，停止重连`);
+          return;
+        }
+
         // 增强交互：指数退避重连算法
         // 延时: 1s, 2s, 4s, 8s, 16s, max 30s
         const backoffDelay = Math.min(1000 * Math.pow(2, retryCountRef.current), 30000);
         retryCountRef.current++;
-        console.log(`🔄 [WS] ${backoffDelay}ms 后尝试重连 (重试次数: ${retryCountRef.current})`);
+        console.log(`🔄 [WS] ${backoffDelay}ms 后尝试重连 (重试次数: ${retryCountRef.current}/${MAX_RETRY_COUNT})`);
 
         reconnectTimeoutRef.current = window.setTimeout(() => {
           connectFn();

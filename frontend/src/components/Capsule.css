@@ -13,30 +13,27 @@
   height: 56px;
   border-radius: 50%;
 
-  /* 调试：使用不透明背景 */
-  background: rgba(30, 30, 50, 0.95);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+  /* 极简背景：深色表面 + 轻微玻璃模糊 */
+  background: var(--surface-elevated, rgba(12, 14, 18, 0.96));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 
-  /* 更明显的边框 */
-  border: 2px solid rgba(0, 212, 255, 0.3);
+  /* 克制的边框 */
+  border: 1px solid var(--border-default, rgba(248, 250, 252, 0.16));
 
   cursor: grab;
   display: flex;
   align-items: center;
   justify-content: center;
 
-  /* 平滑过渡 */
+  /* 平滑过渡：避免过度位移 */
   transition:
     transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1),
-    box-shadow 0.3s ease,
-    border-color 0.3s ease;
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
 
-  /* 更明显的阴影 */
-  box-shadow:
-    0 4px 20px rgba(0, 0, 0, 0.5),
-    0 0 30px rgba(0, 212, 255, 0.2),
-    0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+  /* 单层柔和阴影 */
+  box-shadow: var(--shadow-md, 0 8px 24px rgba(0, 0, 0, 0.55));
 
   z-index: 9999;
 
@@ -50,11 +47,12 @@
 
 /* 悬停效果 - 轻微放大 + 边框高亮 */
 .capsule:hover {
-  transform: scale(1.08);
-  border-color: rgba(255, 255, 255, 0.15);
-  box-shadow:
-    0 4px 24px rgba(0, 0, 0, 0.35),
-    0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+  transform: scale(1.02);
+  border-color: var(--border-hover, rgba(248, 250, 252, 0.28));
+  box-shadow: var(
+    --shadow-lg,
+    0 16px 40px rgba(0, 0, 0, 0.6)
+  );
 }
 
 /* 拖拽中 */
@@ -72,14 +70,16 @@
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #00d4ff 0%, #00a8cc 100%);
+  background:
+    radial-gradient(circle at 30% 20%, rgba(248, 250, 252, 0.16), transparent 55%),
+    linear-gradient(135deg, var(--primary, #d92d20) 0%, var(--primary-hover, #f04438) 100%);
   position: relative;
   z-index: 2;
 
   /* 柔和发光 */
   box-shadow:
-    0 0 20px rgba(0, 212, 255, 0.5),
-    0 0 40px rgba(0, 212, 255, 0.2);
+    0 0 18px rgba(15, 23, 42, 0.9),
+    0 0 28px rgba(217, 45, 32, 0.35);
 
   /* 核心区域用于响应点击 */
   -webkit-app-region: no-drag;
@@ -111,11 +111,7 @@
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    rgba(0, 212, 255, 0.15) 0%,
-    transparent 70%
-  );
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.18) 0%, transparent 70%);
   opacity: 0;
   transition: opacity 0.3s ease;
   pointer-events: none;
@@ -130,20 +126,20 @@
    状态样式 - 通过颜色传达状态
    ========================================== */
 
-/* 待机状态 - 静谧蓝 */
+/* 待机状态 - 柔和琥珀 */
 .capsule--idle .capsule__core {
-  background: linear-gradient(135deg, #00d4ff 0%, #00a8cc 100%);
+  background: linear-gradient(135deg, #fbbf24 0%, #f97316 100%);
   box-shadow:
-    0 0 20px rgba(0, 212, 255, 0.5),
-    0 0 40px rgba(0, 212, 255, 0.2);
+    0 0 20px rgba(251, 191, 36, 0.55),
+    0 0 40px rgba(248, 250, 252, 0.2);
 }
 
-/* 思考状态 - 紫色脉冲 */
+/* 思考状态 - 玫瑰橙脉冲 */
 .capsule--thinking .capsule__core {
-  background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%);
+  background: linear-gradient(135deg, #fb7185 0%, #f97316 100%);
   box-shadow:
-    0 0 24px rgba(168, 85, 247, 0.6),
-    0 0 48px rgba(168, 85, 247, 0.3);
+    0 0 24px rgba(251, 113, 133, 0.6),
+    0 0 48px rgba(248, 250, 252, 0.28);
   animation: pulse-soft 1.5s ease-in-out infinite;
 }
 
@@ -265,14 +261,14 @@
   0%, 100% {
     transform: scale(1);
     box-shadow:
-      0 0 20px rgba(0, 212, 255, 0.5),
-      0 0 40px rgba(0, 212, 255, 0.2);
+      0 0 14px rgba(15, 23, 42, 0.85),
+      0 0 22px rgba(217, 45, 32, 0.3);
   }
   50% {
-    transform: scale(1.08);
+    transform: scale(1.02);
     box-shadow:
-      0 0 28px rgba(0, 212, 255, 0.6),
-      0 0 56px rgba(0, 212, 255, 0.3);
+      0 0 18px rgba(15, 23, 42, 0.9),
+      0 0 30px rgba(217, 45, 32, 0.35);
   }
 }
 
@@ -290,10 +286,10 @@
 /* 聆听呼吸 - 活跃、有节奏 */
 @keyframes breathing {
   0%, 100% {
-    transform: scale(0.95);
+    transform: scale(0.98);
   }
   50% {
-    transform: scale(1.12);
+    transform: scale(1.05);
   }
 }
 
@@ -358,107 +354,37 @@
 }
 
 /* ==========================================
-   工作状态指示器 - 青烟和波纹效果
+   工作状态指示器 - 极简脉冲点
    当 WebSocket 连接正常且后端正在工作时显示
    ========================================== */
 
 .capsule__working-indicator {
   position: absolute;
-  top: 50%;
+  bottom: -6px;
   left: 50%;
-  transform: translate(-50%, -50%);
-  width: 200px; /* 扩大容器以容纳烟雾和波纹 */
-  height: 200px;
-  pointer-events: none;
-  z-index: 1; /* 在 glow 之上，但在 core 之下 */
-  overflow: visible; /* 确保烟雾和波纹可以超出容器 */
-}
-
-/* 青烟效果 - 从中心向上飘散 */
-.capsule__smoke-ring {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 6px;
-  height: 6px;
+  transform: translateX(-50%);
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(0, 212, 255, 0.9) 0%, rgba(0, 212, 255, 0.4) 50%, rgba(0, 212, 255, 0) 100%);
-  opacity: 0;
-  animation: capsule-smoke-rise 2.5s ease-out infinite;
+  background: var(--primary, #d92d20);
+  box-shadow: 0 0 0 0 rgba(217, 45, 32, 0.5);
+  opacity: 0.95;
   pointer-events: none;
+  z-index: 3;
+  animation: capsule-working-pulse 1.4s ease-out infinite;
 }
 
-.capsule__smoke-ring--1 {
-  animation-delay: 0s;
-  width: 5px;
-  height: 5px;
-}
-
-.capsule__smoke-ring--2 {
-  animation-delay: 0.5s;
-  width: 7px;
-  height: 7px;
-}
-
-.capsule__smoke-ring--3 {
-  animation-delay: 1s;
-  width: 9px;
-  height: 9px;
-}
-
-@keyframes capsule-smoke-rise {
+@keyframes capsule-working-pulse {
   0% {
-    opacity: 0.9;
-    transform: translate(-50%, -50%) scale(0.5);
+    box-shadow: 0 0 0 0 rgba(217, 45, 32, 0.5);
+    transform: translateX(-50%) scale(1);
   }
-  30% {
-    opacity: 0.7;
-    transform: translate(-50%, -80%) scale(1);
-  }
-  60% {
-    opacity: 0.4;
-    transform: translate(-50%, -150%) scale(1.5);
+  70% {
+    box-shadow: 0 0 0 8px rgba(217, 45, 32, 0);
+    transform: translateX(-50%) scale(1.05);
   }
   100% {
-    opacity: 0;
-    transform: translate(-50%, -250%) scale(2.2);
-  }
-}
-
-/* 波纹效果 - 从中心向外扩散 */
-.capsule__ripple {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  border: 2px solid rgba(0, 212, 255, 0.5);
-  opacity: 0;
-  animation: capsule-ripple-expand 2s ease-out infinite;
-}
-
-.capsule__ripple--1 {
-  animation-delay: 0s;
-}
-
-.capsule__ripple--2 {
-  animation-delay: 1s;
-}
-
-@keyframes capsule-ripple-expand {
-  0% {
-    width: 56px;
-    height: 56px;
-    opacity: 0.8;
-    transform: translate(-50%, -50%) scale(1);
-  }
-  100% {
-    width: 120px;
-    height: 120px;
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(1);
+    box-shadow: 0 0 0 0 rgba(217, 45, 32, 0);
+    transform: translateX(-50%) scale(1);
   }
 }

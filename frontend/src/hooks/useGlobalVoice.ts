@@ -80,6 +80,16 @@ const getAudioContext = (): AudioContext | null => {
 };
 
 /**
+ * 清理全局 AudioContext
+ */
+const cleanupGlobalAudioContext = (): void => {
+  if (globalAudioContext) {
+    globalAudioContext.close().catch(console.warn);
+    globalAudioContext = null;
+  }
+};
+
+/**
  * 确保 AudioContext 处于活跃状态
  * 在 Electron 环境下，即使设置了 backgroundThrottling: false，
  * AudioContext 仍可能因长时间无音频输入/输出而变为 suspended
@@ -393,25 +403,19 @@ export function useGlobalVoice(isAppStarted: boolean): UseGlobalVoiceReturn {
   // 处理语音对话（异步 TTS 版本）
   // 文字先行，音频通过 WebSocket 异步推送
   const handleVoiceChat = useCallback(async (blob: Blob) => {
-    // 生成 blob 的唯一标识（size + type，同一个录音应该具有相同的 size）
-    const blobId = `${blob.size}-${blob.type}`;
-    
+    // 生成更可靠的 blob 唯一标识（包含时间戳和随机数）
+    const blobId = `${blob.size}-${blob.type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
     // 防止重复处理同一个 blob
     if (isProcessingRef.current) {
       console.log('[VoiceChat] Already processing a blob, skipping duplicate call');
       return;
     }
-    
-    // 检查是否是同一个 blob（通过 size 和 type 判断）
-    if (lastProcessedBlobRef.current === blobId) {
-      console.log('[VoiceChat] This blob was already processed, skipping duplicate call');
-      return;
-    }
-    
+
     // 标记为正在处理
     isProcessingRef.current = true;
     lastProcessedBlobRef.current = blobId;
-    
+
     updateState('processing');
     setError(null);
 
@@ -602,6 +606,8 @@ export function useGlobalVoice(isAppStarted: boolean): UseGlobalVoiceReturn {
         audioRef.current.pause();
         audioRef.current.src = '';
       }
+      // 清理全局AudioContext
+      cleanupGlobalAudioContext();
     };
   }, []);
 

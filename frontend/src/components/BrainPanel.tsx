@@ -7,13 +7,23 @@ interface BrainPanelProps {
   workflow: WorkflowState;
   connectionStatus: ConnectionStatus;
   onStop?: () => void;
+  /** 允许外部追加自定义样式（如嵌入式模式） */
+  className?: string;
+  /** 是否渲染顶部 Header（在外层已有标题条时可关闭） */
+  showHeader?: boolean;
 }
 
 /**
  * Brain Panel - Cursor/Claude Code style task flow visualization
  * Shows real-time AI thinking process and task execution
  */
-export function BrainPanel({ workflow, connectionStatus, onStop }: BrainPanelProps) {
+export function BrainPanel({
+  workflow,
+  connectionStatus,
+  onStop,
+  className,
+  showHeader = true,
+}: BrainPanelProps) {
   const stepsRef = useRef<HTMLDivElement>(null);
   const logsRef = useRef<HTMLDivElement>(null);
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
@@ -108,23 +118,27 @@ export function BrainPanel({ workflow, connectionStatus, onStop }: BrainPanelPro
   const completedSteps = workflow.steps.filter(s => s.status === 'SUCCESS').length;
   const totalSteps = workflow.steps.length;
 
+  const rootClassName = ['brain-panel', className].filter(Boolean).join(' ');
+
   return (
-    <div className="brain-panel">
-      {/* Header */}
-      <div className="brain-header">
-        <div className="brain-header__left">
-          <div className={`brain-status-indicator brain-status-indicator--${connectionStatus}`} />
-          <span className="brain-header__title">BRAIN</span>
-          <span className="brain-header__connection">{getConnectionStatusText()}</span>
+    <div className={rootClassName}>
+      {/* Header（可选，用于独立面板模式） */}
+      {showHeader && (
+        <div className="brain-header">
+          <div className="brain-header__left">
+            <div className={`brain-status-indicator brain-status-indicator--${connectionStatus}`} />
+            <span className="brain-header__title">BRAIN</span>
+            <span className="brain-header__connection">{getConnectionStatusText()}</span>
+          </div>
+          <div className="brain-header__right">
+            {workflow.status === 'executing' && onStop && (
+              <button className="brain-stop-btn" onClick={onStop}>
+                Stop
+              </button>
+            )}
+          </div>
         </div>
-        <div className="brain-header__right">
-          {workflow.status === 'executing' && onStop && (
-            <button className="brain-stop-btn" onClick={onStop}>
-              Stop
-            </button>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Status Bar */}
       {workflow.status !== 'idle' && (

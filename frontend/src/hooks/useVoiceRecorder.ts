@@ -75,13 +75,14 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       const duration = (Date.now() - startTimeRef.current) / 1000;
-      
+
       // 强制最少录音 0.5 秒
       if (duration < 0.5) {
         console.log(`⏳ Recording too short (${duration.toFixed(2)}s), waiting for minimum 0.5s...`);
-        // 延迟停止，确保至少 0.5 秒
+        // 延迟停止，确保至少 0.5 秒，但避免竞态条件
         const remainingTime = (0.5 - duration) * 1000;
         setTimeout(() => {
+          // 再次检查状态，避免重复停止
           if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
             mediaRecorderRef.current.stop();
             setIsRecording(false);
@@ -91,7 +92,7 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
         }, remainingTime);
         return;
       }
-      
+
       mediaRecorderRef.current.stop();
       setIsRecording(false);
       releaseStream();
@@ -102,13 +103,22 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
   const checkSilence = useCallback((): CleanupFunction => {
     if (!mediaRecorderRef.current) return () => ({ avgAudioEnergy: 0, samplesCount: 0 });
 
-    const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-    const source = audioContext.createMediaStreamSource(
-      mediaRecorderRef.current.stream || new MediaStream()
-    );
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 256;
-    source.connect(analyser);
+    let audioContext: AudioContext | null = null;
+    let source: MediaStreamAudioSourceNode | null = null;
+    let analyser: AnalyserNode | null = null;
+
+    try {
+      audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      source = audioContext.createMediaStreamSource(
+        mediaRecorderRef.current.stream || new MediaStream()
+      );
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+    } catch (e) {
+      console.error('Failed to create audio analysis context:', e);
+      return () => ({ avgAudioEnergy: 0, samplesCount: 0 });
+    }
 
     const silenceThreshold = 0.02; // 静音阈值
     const initialTimeout = 5000; // 初始超时时间（5秒）
@@ -182,9 +192,15 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     // 返回清理函数，包含总能量信息
     return () => {
       clearInterval(checkInterval);
-      analyser.disconnect();
-      source.disconnect();
-      audioContext.close();
+      if (analyser) {
+        analyser.disconnect();
+      }
+      if (source) {
+        source.disconnect();
+      }
+      if (audioContext) {
+        audioContext.close().catch(console.warn);
+      }
 
       // 计算平均音频能量
       const avgAudioEnergy = samplesCount > 0 ? totalAudioEnergy / samplesCount : 0;

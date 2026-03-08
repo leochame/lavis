@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Capsule } from './components/Capsule';
-import { ChatPanel } from './components/ChatPanel';
+import { AgentDashboard } from './components/dashboard/AgentDashboard';
 import { agentApi } from './api/agentApi';
 import { useGlobalVoice } from './hooks/useGlobalVoice';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -43,40 +43,44 @@ export default function App() {
   useEffect(() => {
     // 只在 Electron 模式下且未检查过首次启动时执行
     if (!isElectron || hasCheckedFirstLaunch) return;
-    
+
     // 检查是否已经完成过首次配置（通过 localStorage 标记）
     const FIRST_LAUNCH_COMPLETED_KEY = 'lavis_first_launch_completed';
     const hasCompletedFirstLaunch = localStorage.getItem(FIRST_LAUNCH_COMPLETED_KEY) === 'true';
-    
+
     // 等待设置加载完成后再检查
     const checkFirstLaunch = async () => {
-      // 延迟一点时间，确保设置已从存储加载和后端状态检查完成
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      // 再次检查后端状态，确保获取最新的配置状态
-      await checkStatus();
-      
-      // 再等待一点时间，确保状态已更新
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // 从 store 获取最新的配置状态
-      const currentIsConfigured = useSettingsStore.getState().isConfigured;
-      
-      // 如果是真正的首次启动（未完成过首次配置）且未配置，自动打开设置面板
-      if (!hasCompletedFirstLaunch && !currentIsConfigured) {
-        console.log('🎯 First launch detected - API not configured, opening settings panel');
-        // 切换到聊天模式并展开窗口
-        setViewMode('chat');
-        setWindowState('expanded');
-        // 延迟一点时间，确保窗口已展开，然后触发打开设置面板事件
-        setTimeout(() => {
-          window.dispatchEvent(new CustomEvent('lavis-open-settings'));
-        }, 500);
+      try {
+        // 延迟一点时间，确保设置已从存储加载和后端状态检查完成
+        await new Promise(resolve => setTimeout(resolve, 800));
+
+        // 再次检查后端状态，确保获取最新的配置状态
+        await checkStatus();
+
+        // 再等待一点时间，确保状态已更新
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        // 从 store 获取最新的配置状态
+        const currentIsConfigured = useSettingsStore.getState().isConfigured;
+
+        // 如果是真正的首次启动（未完成过首次配置）且未配置，自动打开设置面板
+        if (!hasCompletedFirstLaunch && !currentIsConfigured) {
+          console.log('🎯 First launch detected - API not configured, opening settings panel');
+          // 切换到聊天模式并展开窗口
+          setViewMode('chat');
+          setWindowState('expanded');
+          // 延迟一点时间，确保窗口已展开，然后触发打开设置面板事件
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('lavis-open-settings'));
+          }, 500);
+        }
+      } catch (error) {
+        console.error('First launch check failed:', error);
+      } finally {
+        setHasCheckedFirstLaunch(true);
       }
-      
-      setHasCheckedFirstLaunch(true);
     };
-    
+
     checkFirstLaunch();
   }, [isElectron, hasCheckedFirstLaunch, checkStatus, setViewMode, setWindowState]);
 
@@ -126,7 +130,7 @@ export default function App() {
   const handleCapsuleDoubleClick = useCallback(() => {
     setViewMode('chat');
     setWindowState('expanded');
-  }, [isElectron, platform, setViewMode, setWindowState]);
+  }, [setViewMode, setWindowState]);
 
   // Handle capsule right-click - show context menu
   const handleCapsuleContextMenu = useCallback(() => {
@@ -138,10 +142,16 @@ export default function App() {
   }, [isElectron]);
 
   // Handle chat close - switch back to capsule mode
+  // 需求：点击面板左上角唯一的「×」时，只收起控制台，保留胶囊常驻
+  // 当关闭面板时，需要重置 windowState 为 idle，确保胶囊模式正常显示
   const handleChatClose = useCallback(() => {
     setViewMode('capsule');
     setWindowState('idle');
-  }, [setViewMode, setWindowState]);
+    // 强制确保胶囊可见
+    if (isElectron && window.electron?.platform) {
+      setTimeout(() => window.electron.platform.resizeWindow('capsule'), 50);
+    }
+  }, [setViewMode, setWindowState, isElectron]);
 
   // Handle wake word detection - set window state to Listening
   useEffect(() => {
@@ -150,33 +160,15 @@ export default function App() {
     }
   }, [globalVoice.wakeWordDetected, setWindowState]);
 
-  // Auto-collapse to capsule when window state becomes idle or listening
-  // This ensures that when the window shrinks (e.g., due to timeout), it returns to capsule mode
-  // Only collapse if we're currently in chat mode and window state is not expanded
-  useEffect(() => {
-    // Only auto-collapse if we're in chat mode but window is not expanded
-    // This handles the case where window auto-shrinks due to timeout or inactivity
-    // When window shrinks to idle or listening state, we should show capsule instead of simplified chat panel
-    if (viewMode === 'chat' && (windowState === 'idle' || windowState === 'listening')) {
-      setViewMode('capsule');
-    }
-  }, [windowState, viewMode, setViewMode]);
+  // 移除可能导致状态冲突的自动折叠逻辑
 
   // 窗口模式变化时同步 Electron 物理窗口
   useEffect(() => {
     if (isElectron) {
-      const targetMode =
-        viewMode === 'chat'
-          ? 'expanded'
-          : windowState === 'idle' || windowState === 'listening'
-            ? windowState
-            : 'capsule';
+      const targetMode = viewMode === 'chat' ? 'expanded' : 'capsule';
       platform.resizeWindow(targetMode);
-      // 注意：不要在这里设置 setIgnoreMouseEvents
-      // 透明区域穿透应该由 CSS 和窗口配置处理，而不是全局禁用鼠标事件
-      // 否则会导致拖拽和点击都无法工作
     }
-  }, [isElectron, platform, viewMode, windowState]);
+  }, [isElectron, platform, viewMode]);
 
   // 监听主进程发送的切换回胶囊模式消息（当用户关闭控制板窗口时）
   useEffect(() => {
@@ -359,63 +351,26 @@ export default function App() {
             onStartRecording={globalVoice.startRecording}
             wsConnected={wsConnected}
             isWorking={(() => {
-              // 工作状态包括：执行中、规划中、或 TTS 正在生成
-              const working = wsWorkflow.status === 'executing' ||
+              return wsWorkflow.status === 'executing' ||
                 wsWorkflow.status === 'planning' ||
-                isTtsGenerating ||  // 新增：TTS 生成中也算工作状态
+                isTtsGenerating ||
                 status?.orchestrator_state?.includes('EXECUTING') ||
                 status?.orchestrator_state?.includes('PLANNING') ||
                 status?.orchestrator_state?.includes('THINKING');
-              // Debug log
-              if (wsConnected) {
-                console.log('🔍 App.tsx isWorking calculation:', {
-                  'wsWorkflow.status': wsWorkflow.status,
-                  'isTtsGenerating': isTtsGenerating,
-                  'status?.orchestrator_state': status?.orchestrator_state ? JSON.stringify(status.orchestrator_state) : 'null',
-                  'isWorking': working,
-                  'wsConnected': wsConnected
-                });
-              }
-              return working;
             })()}
           />
         )}
         {viewMode === 'chat' && (
-          <div className="app-window app-window--chat">
-            <div className="app-window__chrome">
-              <div className="app-window__controls">
-                <span
-                  className="app-window__control app-window__control--close"
-                  onClick={handleChatClose}
-                />
-              </div>
-              <div className="app-window__title">
-                <div className="app-window__intent">
-                  <span className="app-window__intent-label">Lavis</span>
-                  <span className="app-window__intent-pill">
-                    <span className="app-window__intent-dot" />
-                    <span className="app-window__intent-text">
-                      {wsConnected
-                        ? (wsWorkflow.status === 'executing' || wsWorkflow.status === 'planning' ? 'WORKING' : 'READY')
-                        : 'OFFLINE'}
-                    </span>
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="app-window__body">
-              <ChatPanel
-                onClose={handleChatClose}
-                status={status}
-                globalVoice={globalVoice}
-                wsConnected={wsConnected}
-                wsStatus={wsStatus}
-                workflow={wsWorkflow}
-                resetWorkflow={wsResetWorkflow}
-                sendMessage={wsSendMessage}
-              />
-            </div>
-          </div>
+          <AgentDashboard
+            status={status}
+            globalVoice={globalVoice}
+            wsConnected={wsConnected}
+            wsStatus={wsStatus}
+            workflow={wsWorkflow}
+            resetWorkflow={wsResetWorkflow}
+            sendMessage={wsSendMessage}
+            onClose={handleChatClose}
+          />
         )}
       </div>
     </div>

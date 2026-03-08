@@ -1,13 +1,15 @@
 :root {
   /* ========================================
-     Design System - Modern Clean Theme
+     Design System - Ember Garden Theme
+     统一用于所有非胶囊界面，胶囊仍使用自身视觉语言
+     配色基于炽热余烬 / 草木 / 琥珀光，不使用蓝紫色调
      ======================================== */
 
   /* Typography */
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', Monaco, 'Cascadia Code', monospace;
 
-  /* Color Palette - German/industrial: neutral greys + single red accent */
+  /* Neutral base palette */
   --slate-50: #f8fafc;
   --slate-100: #f1f5f9;
   --slate-200: #e2e8f0;
@@ -20,7 +22,7 @@
   --slate-900: #0f172a;
   --slate-950: #020617;
 
-  /* Accent - Red */
+  /* Primary accent family（默认主色仍然是红，搭配暖色与少量绿色） */
   --accent-50: #fef3f2;
   --accent-100: #fee4e2;
   --accent-200: #fecdca;
@@ -29,6 +31,12 @@
   --accent-500: #f04438;
   --accent-600: #d92d20;
   --accent-700: #b42318;
+
+  /* Extra accent palette for自由背景渐变（避免蓝 / 紫） */
+  --accent-pink: #fb7185;   /* warm rose */
+  --accent-violet: #f97316; /* repurposed为橙色，用旧变量名保持兼容 */
+  --accent-cyan: #22c55e;   /* repurposed为明亮绿色，用旧变量名保持兼容 */
+  --accent-amber: #fbbf24;  /* golden amber */
 
   /* Semantic colors */
   --color-success: #22c55e;
@@ -41,12 +49,22 @@
   --color-info: var(--slate-300);
   --color-info-subtle: rgba(203, 213, 225, 0.08);
 
-  /* Surface colors */
-  --surface-base: #0b0d10;
-  --surface-elevated: rgba(12, 14, 18, 0.98);
-  --surface-overlay: rgba(12, 14, 18, 0.96);
+  /* Surface colors（去掉金属工业感，改为柔和深夜园林） */
+  --surface-base: #050816;
+  --surface-elevated: rgba(10, 10, 16, 0.97);
+  --surface-overlay: rgba(15, 18, 28, 0.98);
   --surface-hover: rgba(248, 250, 252, 0.06);
   --surface-active: rgba(248, 250, 252, 0.08);
+
+  /* Glass surfaces for仪表盘/面板（更深、更不透明的黑灰磨砂玻璃） */
+  --surface-glass: rgba(3, 7, 18, 0.98);       /* 几乎实心的黑色玻璃 */
+  --surface-glass-soft: rgba(15, 23, 42, 0.85); /* 用于局部柔和过渡 */
+
+  /* Backwards‑compat aliases for older components (VoicePanel 等) */
+  --bg-secondary: var(--surface-elevated);
+  --border-color: var(--border-subtle);
+  --status-idle-bg: var(--surface-base);
+  --status-idle-text: var(--text-secondary);
 
   /* Border colors */
   --border-subtle: rgba(248, 250, 252, 0.12);
@@ -60,11 +78,11 @@
   --text-tertiary: rgba(148, 163, 184, 0.9);
   --text-muted: rgba(100, 116, 139, 0.9);
 
-  /* Primary color tokens (single accent: red) */
-  --primary: var(--accent-600);
-  --primary-hover: var(--accent-500);
-  --primary-subtle: rgba(217, 45, 32, 0.12);
-  --primary-muted: rgba(217, 45, 32, 0.32);
+  /* Primary color tokens（全局主色改为琥珀金，红色仅用于错误态） */
+  --primary: var(--accent-amber);
+  --primary-hover: #facc15;
+  --primary-subtle: rgba(251, 191, 36, 0.16);
+  --primary-muted: rgba(251, 191, 36, 0.36);
 
   /* Spacing */
   --space-1: 4px;
@@ -75,18 +93,18 @@
   --space-6: 24px;
   --space-8: 32px;
 
-  /* Border radius (no rounded corners) */
-  --radius-sm: 0px;
-  --radius-md: 0px;
-  --radius-lg: 0px;
-  --radius-xl: 0px;
-  --radius-full: 0px;
+  /* Border radius - 全局去直角，统一为柔和圆角 */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-full: 999px;
 
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.7);
-  --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.75);
-  --shadow-lg: 0 18px 52px rgba(0, 0, 0, 0.78);
-  --shadow-xl: 0 26px 90px rgba(0, 0, 0, 0.82);
+  /* Shadows - compressed, low-noise hierarchy */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.6);
+  --shadow-xl: 0 22px 64px rgba(0, 0, 0, 0.65);
   --shadow-glow: 0 0 0 rgba(0, 0, 0, 0);
 
   /* Transitions */
@@ -111,8 +129,8 @@
 
 /* Minimalist scrollbar styling */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
@@ -155,7 +173,8 @@ html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
-  overflow: hidden;
+  /* 放开全局滚动裁剪，避免主界面内容在窗口边缘被截断 */
+  overflow: visible;
   background: transparent;
 }
 
@@ -180,6 +199,19 @@ button:hover {
   background-color: var(--surface-hover);
   border-color: var(--border-hover);
   color: var(--text-primary);
+}
+button:active {
+  background-color: var(--surface-active);
+  border-color: var(--border-hover);
+  transform: translateY(1px) scale(0.98);
+  box-shadow: none;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  background-color: var(--surface-base);
+  border-color: var(--border-subtle);
+  color: var(--text-muted);
 }
 button:focus,
 button:focus-visible {

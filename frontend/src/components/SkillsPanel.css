@@ -2,18 +2,30 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--surface-elevated);
-  border-radius: 0;
+  background: radial-gradient(circle at top, rgba(251, 191, 36, 0.08), transparent 60%),
+    radial-gradient(circle at bottom, rgba(52, 211, 153, 0.08), transparent 55%),
+    var(--surface-elevated);
+  border-radius: 14px;
   border: 1px solid var(--border-subtle);
   overflow: hidden;
+}
+
+/* 嵌入 AgentDashboard 卡片时，去掉自身卡片外壳，避免双层边框和阴影 */
+.skills-panel--embedded {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  /* 在 Dashboard 右侧主工作区内时，为面板增加统一的上下窄留白 */
+  height: calc(100% - 16px);
+  margin: 8px 0;
 }
 
 .skills-panel__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  background: var(--surface-overlay);
+  padding: 12px 18px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(30, 64, 175, 0));
   border-bottom: 1px solid var(--border-subtle);
   -webkit-app-region: drag;
 }
@@ -28,9 +40,9 @@
 }
 
 .skills-panel__close {
-  background: none;
-  border: 1px solid rgba(255, 100, 100, 0.3);
-  color: rgba(255, 100, 100, 0.8);
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  color: rgba(251, 191, 36, 0.9);
   font-size: 14px;
   cursor: pointer;
   padding: 2px 8px;
@@ -40,8 +52,8 @@
 }
 
 .skills-panel__close:hover {
-  background: rgba(255, 0, 0, 0.2);
-  border-color: rgba(255, 0, 0, 0.5);
+  background: rgba(251, 191, 36, 0.16);
+  border-color: rgba(251, 191, 36, 0.7);
 }
 
 .skills-panel__content {
@@ -322,7 +334,7 @@
 .skills-panel__form-row textarea {
   resize: vertical;
   min-height: 100px;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
 }
 
@@ -400,7 +412,7 @@
   background: rgba(0, 0, 0, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 0;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   color: var(--text-primary);
   word-break: break-all;
@@ -412,7 +424,7 @@
   background: rgba(0, 0, 0, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 0;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: rgba(255, 255, 255, 0.7);
   white-space: pre-wrap;

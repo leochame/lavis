@@ -62,6 +62,16 @@ export function Capsule({
   const clickTimeoutRef = useRef<number | null>(null);
   const lastClickTimeRef = useRef<number>(0);
 
+  // 清理定时器
+  useEffect(() => {
+    return () => {
+      if (clickTimeoutRef.current !== null) {
+        window.clearTimeout(clickTimeoutRef.current);
+        clickTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   // Debug: log state changes
   useEffect(() => {
     console.log('Capsule state:', {
@@ -102,29 +112,8 @@ export function Capsule({
   // TTS 播放时显示声波纹路（覆盖 speaking 状态）
   const showVoiceRings = (capsuleState === 'listening' || capsuleState === 'speaking') || isTtsPlaying;
   
-  // 工作状态指示器：WebSocket 连接正常且后端正在工作
-  // 注意：当处于 thinking/executing 状态时也应该显示，即使同时有语音状态
-  const showWorkingIndicator = wsConnected && isWorking && 
-    (capsuleState === 'thinking' || capsuleState === 'executing' || 
-     (capsuleState !== 'listening' && capsuleState !== 'speaking' && !isTtsPlaying));
-  
-  // Debug: log working indicator state
-  useEffect(() => {
-    const debugInfo = {
-      wsConnected: String(wsConnected),
-      isWorking: String(isWorking),
-      capsuleState: String(capsuleState),
-      isTtsPlaying: String(isTtsPlaying),
-      showWorkingIndicator: String(showWorkingIndicator),
-      statusOrchestrator: status?.orchestrator_state ? JSON.stringify(status.orchestrator_state) : 'null',
-      statusAvailable: typeof status?.available === 'boolean' ? String(status.available) : 'null',
-      voiceState: voiceState ? JSON.stringify(voiceState) : 'null'
-    };
-    console.log('🔍 Capsule working indicator debug:', debugInfo);
-    console.log('   → showWorkingIndicator =', showWorkingIndicator, 
-                '(wsConnected:', wsConnected, '&& isWorking:', isWorking, 
-                '&& capsuleState in [thinking, executing] or not listening/speaking)');
-  }, [wsConnected, isWorking, capsuleState, isTtsPlaying, showWorkingIndicator, status, voiceState]);
+  // 工作状态指示器：简化逻辑，只在连接且工作时显示
+  const showWorkingIndicator = wsConnected && isWorking;
 
   /**
    * 拖拽处理 - 使用 IPC 实现丝滑拖拽
@@ -280,33 +269,9 @@ export function Capsule({
         </div>
       )}
       
-      {/* 工作状态指示器 - 青烟和波纹效果 */}
+      {/* 工作状态指示器 - 简化版本 */}
       {showWorkingIndicator && (
-        <>
-          <div className="capsule__working-indicator">
-            <div className="capsule__smoke-ring capsule__smoke-ring--1"></div>
-            <div className="capsule__smoke-ring capsule__smoke-ring--2"></div>
-            <div className="capsule__smoke-ring capsule__smoke-ring--3"></div>
-            <div className="capsule__ripple capsule__ripple--1"></div>
-            <div className="capsule__ripple capsule__ripple--2"></div>
-          </div>
-          {/* Debug: 添加一个可见的测试标记 */}
-          {process.env?.NODE_ENV === 'development' && (
-            <div style={{
-              position: 'absolute',
-              top: '-30px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              color: '#00d4ff',
-              fontSize: '10px',
-              zIndex: 10000,
-              pointerEvents: 'none',
-              whiteSpace: 'nowrap'
-            }}>
-              WORKING
-            </div>
-          )}
-        </>
+        <div className="capsule__working-indicator" />
       )}
     </div>
   );

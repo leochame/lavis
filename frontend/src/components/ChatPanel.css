@@ -6,27 +6,29 @@
   width: 100%;
   height: 100%;
   display: flex;
-  background: var(--surface-overlay);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border-radius: var(--radius-xl);
+  /* 统一跟随父级背景，不再叠加一层蓝黑毛玻璃卡片 */
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-radius: 0;
   overflow: hidden;
-  border: 1px solid var(--border-subtle);
-  box-shadow: var(--shadow-xl);
+  border: none;
+  box-shadow: none;
   -webkit-app-region: no-drag;
-  animation: panel-enter 0.3s ease-out;
 }
 
-@keyframes panel-enter {
-  from {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+/* Embedded mode: 在 Dashboard 内渲染时，保持与主卡片完全融合 */
+.chat-panel--embedded {
+  background: transparent;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  /* 在 Dashboard 右侧主工作区内时，为整个聊天区域增加上下窄留白 */
+  height: calc(100% - 16px);
+  margin: 8px 0;
 }
+
+/* 不再需要独立缩放进场动画，避免额外“叠加感” */
 
 /* Main content area (right of sidebar) */
 .chat-panel__content {
@@ -212,6 +214,11 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+}
+
+/* 在 AgentDashboard 嵌入模式下，让气泡更“铺开”，减轻内容挤在中间的感觉 */
+.chat-panel--embedded .message {
+  max-width: 92%;
 }
 
 .message--user {

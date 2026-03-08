@@ -9,8 +9,10 @@
 
   display: flex;
   flex-direction: column;
-  height: 100%;
-  padding: 20px;
+  /* 让设置面板上下不再完全贴边：保留一条细细的“呼吸”留白 */
+  height: calc(100% - 16px);
+  margin: 8px 10px;
+  padding: 20px 32px;
   overflow-y: auto;
 }
 
@@ -40,12 +42,10 @@
 }
 
 .settings-panel__section {
-  /* Neutral dark panel background */
-  background: linear-gradient(135deg, rgba(12, 12, 15, 0.97), rgba(9, 9, 11, 0.99));
-  border-radius: 6px;
-  border: 1px solid var(--border-subtle);
-  box-shadow: 0 0 0 1px rgba(9, 9, 11, 1);
-  padding: 16px 18px;
+  /* 在 Dashboard 主卡片内渲染时，避免再套一层大卡片：
+     只保留内容排版和分隔线，不再使用独立背景 / 阴影。 */
+  padding: 4px 0 18px 0;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .settings-panel__section-header {
@@ -174,7 +174,7 @@
 
 .settings-panel__input--full-width {
   width: 100%;
-  min-width: 400px;
+  min-width: 640px;
 }
 
 .settings-panel__toggle-visibility {
@@ -265,11 +265,8 @@
 }
 
 .settings-panel__info {
-  /* Match main section with neutral dark background */
-  background: radial-gradient(circle at top left, rgba(15, 15, 18, 0.96), rgba(9, 9, 11, 1));
-  border-radius: 6px;
-  border: 1px solid var(--border-subtle);
-  padding: 12px 16px;
+  /* 信息区域也去掉额外卡片外壳，只保留文字内容 */
+  padding: 4px 0 0 0;
 }
 
 .settings-panel__info h4 {

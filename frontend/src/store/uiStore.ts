@@ -4,7 +4,7 @@ export type ViewMode = 'capsule' | 'chat';
 
 /**
  * 窗口状态枚举
- * - Idle: 休眠/待机，胶囊隐藏或仅显示托盘图标
+ * - Idle: 休眠/待机，显示胶囊，等待用户交互
  * - Listening: 语音唤醒/监听中，显示胶囊，呼吸灯动效，不显示面板
  * - Expanded: 交互展开，显示完整聊天与工作流面板
  */

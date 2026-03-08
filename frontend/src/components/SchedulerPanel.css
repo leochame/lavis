@@ -8,6 +8,16 @@
   overflow: hidden;
 }
 
+/* 嵌入 AgentDashboard 卡片时，去掉自身卡片外壳，避免双层边框和阴影 */
+.scheduler-panel--embedded {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  /* 在 Dashboard 右侧主工作区内时，为面板增加统一的上下窄留白 */
+  height: calc(100% - 16px);
+  margin: 8px 0;
+}
+
 .scheduler-panel__header {
   display: flex;
   align-items: center;
@@ -219,7 +229,7 @@
   background: rgba(0, 0, 0, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 0;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-primary);
 }
@@ -415,7 +425,7 @@
   padding: 8px;
   background: rgba(0, 0, 0, 0.4);
   border-radius: 4px;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   white-space: pre-wrap;
   word-break: break-all;

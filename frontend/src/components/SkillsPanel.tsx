@@ -4,11 +4,15 @@ import './SkillsPanel.css';
 
 interface SkillsPanelProps {
   onClose?: () => void;
+  /** 允许外部传入附加样式（例如嵌入 AgentDashboard 卡片时去掉外部边框） */
+  className?: string;
+  /** 是否显示顶部 Header（嵌入模式下可关闭） */
+  showHeader?: boolean;
 }
 
 type ViewMode = 'list' | 'create' | 'edit' | 'detail';
 
-export function SkillsPanel({ onClose }: SkillsPanelProps) {
+export function SkillsPanel({ onClose, className, showHeader = true }: SkillsPanelProps) {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -395,9 +399,11 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
     }
   };
 
+  const rootClassName = ['skills-panel', className].filter(Boolean).join(' ');
+
   return (
-    <div className="skills-panel">
-      {onClose && (
+    <div className={rootClassName}>
+      {onClose && showHeader && (
         <div className="skills-panel__header">
           <h2>{getTitle()}</h2>
           <button className="skills-panel__close" onClick={onClose} aria-label="Close">×</button>
