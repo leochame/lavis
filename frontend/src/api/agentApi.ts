@@ -124,8 +124,9 @@ class AgentApi {
     return response.data;
   }
 
-  async getStatus(): Promise<{ data: AgentStatus }> {
-    return this.client.get<AgentStatus>('/status', { timeout: 0 });
+  async getStatus(): Promise<AgentStatus> {
+    const response = await this.client.get<AgentStatus>('/status', { timeout: 0 });
+    return response.data;
   }
 
   // Utilities

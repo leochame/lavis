@@ -72,16 +72,6 @@ export function Capsule({
     };
   }, []);
 
-  // Debug: log state changes
-  useEffect(() => {
-    console.log('Capsule state:', {
-      voiceState: typeof voiceState === 'object' ? JSON.stringify(voiceState) : voiceState,
-      isWakeWordListening,
-      isRecorderReady,
-      isTtsPlaying
-    });
-  }, [voiceState, isWakeWordListening, isRecorderReady, isTtsPlaying]);
-
   /**
    * 综合 Agent 状态和语音状态，确定 Capsule 显示状态
    * 优先级：语音状态 > Agent 状态
@@ -186,7 +176,6 @@ export function Capsule({
         clickTimeoutRef.current = null;
       }
 
-      console.log('Capsule core double-click detected, expanding to chat mode');
       lastClickTimeRef.current = 0;
       onDoubleClick?.();
       return;
@@ -200,8 +189,6 @@ export function Capsule({
     }
 
     clickTimeoutRef.current = window.setTimeout(() => {
-      console.log('Capsule core single-click, state:', capsuleState);
-
       // 如果在待机状态且有录音功能，开始录音
       if (capsuleState === 'idle' && onStartRecording) {
         onStartRecording();
@@ -220,7 +207,6 @@ export function Capsule({
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    console.log('Capsule right-clicked, showing context menu');
     onContextMenu?.();
   }, [onContextMenu]);
 

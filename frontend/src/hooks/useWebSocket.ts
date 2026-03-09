@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+
 import { agentApi } from '../api/agentApi';
 import { audioService } from '../services/audioService';
 import { useUIStore } from '../store/uiStore';
@@ -158,81 +159,52 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
   // 消息处理逻辑
   const handleMessage = useCallback((message: WorkflowEvent) => {
     const { type, data } = message;
-    // 对于 tts_audio 等包含大量数据的消息，只打印类型和数据长度
-    if (type === 'tts_audio') {
-      const dataStr = data?.data as string | undefined;
-      console.log('🔍 [WS] 处理消息:', type, 'data length:', dataStr?.length ?? 0);
-    } else {
-      console.log('🔍 [WS] 处理消息:', type, 'data:', data);
-    }
 
     switch (type) {
       case 'connected': {
         // 保存服务器返回的 sessionId
-        // 消息格式：{ type: "connected", data: { sessionId: "...", message: "..." }, timestamp: ... }
-        console.log('✅ [WS] 收到 connected 消息:', message);
         const sessionIdValue = data?.sessionId as string | undefined;
         if (sessionIdValue) {
-          console.log('✅ [WS] 保存 sessionId:', sessionIdValue);
           setSessionId(sessionIdValue);
         } else {
-          console.warn('⚠️ [WS] connected 消息中未找到 sessionId，data:', data);
+          console.warn('⚠️ [WS] connected 消息中未找到 sessionId');
         }
         break;
       }
 
       case 'plan_created':
         if (!data) {
-          console.warn('[WS] ⚠️ plan_created message missing data');
+          console.warn('[WS] plan_created message missing data');
           break;
         }
-        console.log('📋 [WS] 处理 plan_created:', {
-          planId: data.planId,
-          userGoal: data.userGoal,
-          stepsCount: (data.steps as PlanStepEvent[])?.length || 0,
-          steps: data.steps
-        });
-        setWorkflow((prev) => {
-          const newState = {
-            ...prev,
-            planId: data.planId as string,
-            userGoal: data.userGoal as string,
-            steps: (data.steps as PlanStepEvent[]) || [],
-            progress: 0,
-            status: 'planning' as const,
-            currentStepId: null,
-          };
-          console.log('📋 [WS] 更新 workflow 状态为 planning:', newState);
-          return newState;
-        });
+        setWorkflow((prev) => ({
+          ...prev,
+          planId: data.planId as string,
+          userGoal: data.userGoal as string,
+          steps: (data.steps as PlanStepEvent[]) || [],
+          progress: 0,
+          status: 'planning' as const,
+          currentStepId: null,
+        }));
         break;
 
       case 'step_started':
         if (!data) {
-          console.warn('[WS] ⚠️ step_started message missing data');
+          console.warn('[WS] step_started message missing data');
           break;
         }
-        console.log('🔄 [WS] 处理 step_started:', {
-          stepId: data.stepId,
-          progress: data.progress,
-          description: data.description
-        });
-        setWorkflow((prev) => {
-          const newState: WorkflowState = {
-            ...prev,
-            status: 'executing' as const,
-            currentStepId: data.stepId as number,
-            progress: data.progress as number,
-            steps: prev.steps.map(
-              (step): PlanStepEvent =>
-                step.id === data.stepId
-                  ? { ...step, status: 'IN_PROGRESS' }
-                  : step
-            ),
-          };
-          console.log('🔄 [WS] 更新 workflow 状态为 executing:', newState);
-          return newState;
-        });
+        setWorkflow((prev) => ({
+          ...prev,
+          status: 'executing' as const,
+          currentStepId: data.stepId as number,
+          progress: data.progress as number,
+          steps: prev.steps.map(
+            (step): PlanStepEvent =>
+              step.id === data.stepId
+                ? { ...step, status: 'IN_PROGRESS' }
+                : step
+          ),
+        }));
         break;
 
       case 'step_completed':
@@ -305,7 +277,7 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
       case 'execution_error': {
         // 处理执行错误事件
         if (!data) {
-          console.warn('[WS] ⚠️ execution_error message missing data');
+          console.warn('[WS] execution_error message missing data');
           break;
         }
         const errorData = data as {
@@ -316,14 +288,9 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
         };
         const errorMessage = errorData.errorMessage ?? '';
         const errorType = errorData.errorType ?? '';
-        const errorPlanId = errorData.planId ?? '';
-        
-        console.error('[WS] ❌ 执行错误:', {
-          errorType,
-          errorMessage,
-          planId: errorPlanId
-        });
-        
+
+        console.error('[WS] 执行错误:', errorType, errorMessage);
+
         // 更新工作流状态为失败
         setWorkflow((prev) => ({
           ...prev,
@@ -402,7 +369,6 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
         }
         // 如果是最后一个音频片段，标记 TTS 生成完成
         if (data.isLast) {
-          console.log('[WS] TTS generation completed (isLast=true)');
           setIsTtsGenerating(false);
         }
         break;
@@ -461,29 +427,22 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
             ws.close();
             return;
         }
-        console.log('🔌 [WS] WebSocket 连接已建立:', url);
         setStatus('connected');
         retryCountRef.current = 0; // 重置重试计数
         // Subscribe to workflow updates
         const subscribeMsg = JSON.stringify({ type: 'subscribe' });
-        console.log('📤 [WS] 发送订阅消息:', subscribeMsg);
         ws.send(subscribeMsg);
       };
 
-      ws.onclose = (event) => {
+      ws.onclose = () => {
         if (isUnmountedRef.current) return;
 
-        console.log('🔌 [WS] WebSocket 连接关闭:', {
-          code: event.code,
-          reason: event.reason,
-          wasClean: event.wasClean
-        });
         setStatus('disconnected');
 
         // 限制最大重试次数为20次，避免无限重连
         const MAX_RETRY_COUNT = 20;
         if (retryCountRef.current >= MAX_RETRY_COUNT) {
-          console.log(`🛑 [WS] 达到最大重试次数 (${MAX_RETRY_COUNT})，停止重连`);
+          console.log('[WS] 达到最大重试次数，停止重连');
           return;
         }
 
@@ -491,7 +450,6 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
         // 延时: 1s, 2s, 4s, 8s, 16s, max 30s
         const backoffDelay = Math.min(1000 * Math.pow(2, retryCountRef.current), 30000);
         retryCountRef.current++;
-        console.log(`🔄 [WS] ${backoffDelay}ms 后尝试重连 (重试次数: ${retryCountRef.current}/${MAX_RETRY_COUNT})`);
 
         reconnectTimeoutRef.current = window.setTimeout(() => {
           connectFn();
@@ -499,101 +457,19 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
       };
 
       ws.onerror = (error) => {
-        console.error('❌ [WS] WebSocket 错误:', error);
+        console.error('[WS] WebSocket 错误:', error);
         // onerror 之后通常会触发 onclose，所以重连逻辑放在 onclose
       };
 
       ws.onmessage = (event) => {
         try {
           const rawData = event.data;
-          // 对于超长消息，只打印摘要
-          const MAX_LOG_LENGTH = 500;
-          if (typeof rawData === 'string' && rawData.length > MAX_LOG_LENGTH) {
-            try {
-              const parsed = JSON.parse(rawData);
-              if (parsed.type === 'tts_audio' && parsed.data?.data) {
-                // TTS 音频消息：只显示摘要
-                console.log('📩 [WS] 收到原始消息:', {
-                  requestId: parsed.requestId,
-                  index: parsed.index,
-                  isLast: parsed.isLast,
-                  type: parsed.type,
-                  dataLength: parsed.data?.data?.length || 0,
-                  dataPreview: parsed.data?.data?.substring(0, 50) + '...'
-                });
-              } else {
-                // 其他超长消息：显示前N个字符
-                console.log('📩 [WS] 收到原始消息 (超长，已截断):', rawData.substring(0, MAX_LOG_LENGTH) + '...');
-              }
-            } catch {
-              // 如果不是JSON，直接截断
-              console.log('📩 [WS] 收到原始消息 (超长，已截断):', rawData.substring(0, MAX_LOG_LENGTH) + '...');
-            }
-          } else {
-            console.log('📩 [WS] 收到原始消息:', rawData);
-          }
-          
           const message = JSON.parse(rawData) as WorkflowEvent;
-          
-          // 格式化解析后的消息，对超长数据字段进行截断
-          const formatMessageForLog = (msg: WorkflowEvent) => {
-            type TtsAudioPayload = {
-              data?: string;
-              requestId?: string;
-              index?: number;
-              isLast?: boolean;
-            };
 
-            const logData: {
-              type: string;
-              hasData: boolean;
-              dataKeys: string[];
-              timestamp: number;
-              data?: unknown;
-            } = {
-              type: msg.type,
-              hasData: !!msg.data,
-              dataKeys: msg.data ? Object.keys(msg.data) : [],
-              timestamp: msg.timestamp,
-            };
-            
-            // 对于包含大量数据的消息类型，只显示摘要
-            if (msg.type === 'tts_audio' && msg.data) {
-              const ttsData = msg.data as TtsAudioPayload;
-              const dataStr = ttsData.data ?? '';
-              if (typeof dataStr === 'string' && dataStr.length > 100) {
-                logData.data = {
-                  requestId: ttsData.requestId,
-                  index: ttsData.index,
-                  isLast: ttsData.isLast,
-                  dataLength: dataStr.length,
-                  dataPreview: dataStr.substring(0, 50) + '...'
-                };
-              } else {
-                logData.data = msg.data;
-              }
-            } else if (msg.data) {
-              // 对于其他消息，如果data字段太大，也进行截断
-              const dataStr = JSON.stringify(msg.data);
-              if (dataStr.length > MAX_LOG_LENGTH) {
-                logData.data = {
-                  _truncated: true,
-                  _originalLength: dataStr.length,
-                  _preview: dataStr.substring(0, MAX_LOG_LENGTH) + '...'
-                };
-              } else {
-                logData.data = msg.data;
-              }
-            }
-            
-            return logData;
-          };
-          
-          console.log('📩 [WS] 解析后的消息:', formatMessageForLog(message));
           setLastEvent(message);
           handleMessage(message);
         } catch (e) {
-          console.error('[WS] ❌ 解析消息失败:', e, '原始数据:', event.data?.substring?.(0, 200) || event.data);
+          console.error('[WS] 解析消息失败:', e);
         }
       };
     } catch (e) {

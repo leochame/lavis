@@ -15,7 +15,6 @@ export default function App() {
   const appClassName = `app ${isElectron ? 'app--electron' : 'app--web'}`;
   const viewMode = useUIStore((s) => s.viewMode);
   const setViewMode = useUIStore((s) => s.setViewMode);
-  const windowState = useUIStore((s) => s.windowState);
   const setWindowState = useUIStore((s) => s.setWindowState);
   const loadSettingsFromStorage = useSettingsStore((s) => s.loadFromStorage);
   const checkStatus = useSettingsStore((s) => s.checkStatus);
@@ -65,7 +64,6 @@ export default function App() {
 
         // 如果是真正的首次启动（未完成过首次配置）且未配置，自动打开设置面板
         if (!hasCompletedFirstLaunch && !currentIsConfigured) {
-          console.log('🎯 First launch detected - API not configured, opening settings panel');
           // 切换到聊天模式并展开窗口
           setViewMode('chat');
           setWindowState('expanded');
@@ -134,10 +132,11 @@ export default function App() {
 
   // Handle capsule right-click - show context menu
   const handleCapsuleContextMenu = useCallback(() => {
-    // 在 Electron 中，右键菜单由主进程处理
+    // 在 Electron 中,右键菜单由主进程处理
     // 这里可以通过 IPC 触发主进程显示菜单
-    if (isElectron && window.electron?.ipcRenderer) {
-      window.electron.ipcRenderer.sendMessage('show-context-menu', {});
+    const electron = window.electron;
+    if (isElectron && electron?.ipcRenderer) {
+      electron.ipcRenderer.sendMessage('show-context-menu', {});
     }
   }, [isElectron]);
 
@@ -149,7 +148,7 @@ export default function App() {
     setWindowState('idle');
     // 强制确保胶囊可见
     if (isElectron && window.electron?.platform) {
-      setTimeout(() => window.electron.platform.resizeWindow('capsule'), 50);
+      setTimeout(() => window.electron?.platform?.resizeWindow('capsule'), 50);
     }
   }, [setViewMode, setWindowState, isElectron]);
 
@@ -172,43 +171,43 @@ export default function App() {
 
   // 监听主进程发送的切换回胶囊模式消息（当用户关闭控制板窗口时）
   useEffect(() => {
-    if (isElectron && window.electron?.ipcRenderer) {
+    const electron = window.electron;
+    if (isElectron && electron?.ipcRenderer) {
       const handleSwitchToCapsule = () => {
-        console.log('📋 Received switch-to-capsule message from main process');
         handleChatClose();
       };
 
-      window.electron.ipcRenderer.on('switch-to-capsule', handleSwitchToCapsule);
+      electron.ipcRenderer.on('switch-to-capsule', handleSwitchToCapsule);
 
       return () => {
-        window.electron?.ipcRenderer?.removeAllListeners('switch-to-capsule');
+        electron.ipcRenderer.removeAllListeners('switch-to-capsule');
       };
     }
   }, [isElectron, handleChatClose]);
 
   // 监听主进程发送的切换到聊天模式消息（从右键菜单的 Expand Panel）
   useEffect(() => {
-    if (isElectron && window.electron?.ipcRenderer) {
+    const electron = window.electron;
+    if (isElectron && electron?.ipcRenderer) {
       const handleSwitchToChat = () => {
-        console.log('💬 Received switch-to-chat message from main process');
         // 切换到聊天模式并展开窗口
         setViewMode('chat');
         setWindowState('expanded');
       };
 
-      window.electron.ipcRenderer.on('switch-to-chat', handleSwitchToChat);
+      electron.ipcRenderer.on('switch-to-chat', handleSwitchToChat);
 
       return () => {
-        window.electron?.ipcRenderer?.removeAllListeners('switch-to-chat');
+        electron.ipcRenderer.removeAllListeners('switch-to-chat');
       };
     }
   }, [isElectron, setViewMode, setWindowState]);
 
   // 监听主进程发送的打开设置消息（从右键菜单或系统托盘）
   useEffect(() => {
-    if (isElectron && window.electron?.ipcRenderer) {
+    const electron = window.electron;
+    if (isElectron && electron?.ipcRenderer) {
       const handleOpenSettings = () => {
-        console.log('⚙️ Received open-settings message from main process');
         // 切换到聊天模式并展开窗口
         setViewMode('chat');
         setWindowState('expanded');
@@ -216,10 +215,10 @@ export default function App() {
         window.dispatchEvent(new CustomEvent('lavis-open-settings'));
       };
 
-      window.electron.ipcRenderer.on('open-settings', handleOpenSettings);
+      electron.ipcRenderer.on('open-settings', handleOpenSettings);
 
       return () => {
-        window.electron?.ipcRenderer?.removeAllListeners('open-settings');
+        electron.ipcRenderer.removeAllListeners('open-settings');
       };
     }
   }, [isElectron, setViewMode, setWindowState]);

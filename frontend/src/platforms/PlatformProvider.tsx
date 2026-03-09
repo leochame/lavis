@@ -12,11 +12,12 @@ const PlatformContext = createContext<PlatformContextValue>(defaultValue);
 
 export function PlatformProvider({ children }: { children: ReactNode }) {
   const value = useMemo<PlatformContextValue>(() => {
-    const isElectron = typeof window !== 'undefined' && !!window.electron?.platform;
-    console.log('🔧 PlatformProvider: isElectron =', isElectron, 'window.electron =', !!window.electron);
-    if (isElectron && window.electron?.platform) {
+    const electron = window.electron;
+    const isElectron = typeof window !== 'undefined' && !!electron?.platform;
+    console.log('🔧 PlatformProvider: isElectron =', isElectron, 'window.electron =', !!electron);
+    if (isElectron && electron?.platform) {
       return {
-        platform: new ElectronPlatformService(window.electron.platform),
+        platform: new ElectronPlatformService(electron.platform),
         isElectron,
       };
     }

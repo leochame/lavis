@@ -26,11 +26,12 @@
   align-items: center;
   justify-content: center;
 
-  /* 平滑过渡：避免过度位移 */
+  /* 平滑过渡：避免过度位移 + 状态切换过渡 */
   transition:
     transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1),
     box-shadow 0.25s ease,
-    border-color 0.25s ease;
+    border-color 0.25s ease,
+    background 0.3s ease;
 
   /* 单层柔和阴影 */
   box-shadow: var(--shadow-md, 0 8px 24px rgba(0, 0, 0, 0.55));
@@ -132,6 +133,7 @@
   box-shadow:
     0 0 20px rgba(251, 191, 36, 0.55),
     0 0 40px rgba(248, 250, 252, 0.2);
+  transition: all 0.3s ease;
 }
 
 /* 思考状态 - 玫瑰橙脉冲 */
@@ -143,6 +145,25 @@
   animation: pulse-soft 1.5s ease-in-out infinite;
 }
 
+/* 思考状态 - 能量流动效果 */
+.capsule--thinking .capsule__core::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    rgba(251, 113, 133, 0.4) 90deg,
+    transparent 180deg
+  );
+  animation: energy-flow 1.5s linear infinite;
+  pointer-events: none;
+}
+
 /* 执行状态 - 绿色 */
 .capsule--executing .capsule__core {
   background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
@@ -150,6 +171,25 @@
     0 0 24px rgba(34, 197, 94, 0.6),
     0 0 48px rgba(34, 197, 94, 0.3);
   animation: pulse-soft 1s ease-in-out infinite;
+}
+
+/* 执行状态 - 能量流动效果 */
+.capsule--executing .capsule__core::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    rgba(34, 197, 94, 0.4) 90deg,
+    transparent 180deg
+  );
+  animation: energy-flow 1.2s linear infinite;
+  pointer-events: none;
 }
 
 /* 错误状态 - 红色 */
@@ -176,6 +216,27 @@
     0 0 28px rgba(255, 107, 107, 0.7),
     0 0 56px rgba(255, 142, 83, 0.4);
   animation: breathing 1.2s ease-in-out infinite;
+}
+
+/* 聆听状态 - 粒子旋转效果 */
+.capsule--listening::before {
+  content: '';
+  position: absolute;
+  width: 120%;
+  height: 120%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    transparent 40%,
+    rgba(255, 107, 107, 0.12) 60%,
+    transparent 80%
+  );
+  animation: particle-rotate 4s linear infinite;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .capsule--listening .capsule__glow {
@@ -374,6 +435,21 @@
   animation: capsule-working-pulse 1.4s ease-out infinite;
 }
 
+/* 工作指示器 - 轨道环 */
+.capsule__working-indicator::before {
+  content: '';
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(217, 45, 32, 0.2);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  animation: orbit-ring 2s linear infinite;
+  pointer-events: none;
+}
+
 @keyframes capsule-working-pulse {
   0% {
     box-shadow: 0 0 0 0 rgba(217, 45, 32, 0.5);
@@ -386,5 +462,40 @@
   100% {
     box-shadow: 0 0 0 0 rgba(217, 45, 32, 0);
     transform: translateX(-50%) scale(1);
+  }
+}
+
+/* 粒子旋转动画 */
+@keyframes particle-rotate {
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+/* 能量流动动画 */
+@keyframes energy-flow {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* 轨道环动画 */
+@keyframes orbit-ring {
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg) scale(1);
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg) scale(1);
+    opacity: 0.3;
   }
 }

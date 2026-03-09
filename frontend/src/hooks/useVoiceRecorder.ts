@@ -66,7 +66,6 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track: MediaStreamTrack) => {
         track.stop();
-        console.log('🔇 Audio track stopped');
       });
       streamRef.current = null;
     }
@@ -78,7 +77,6 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
 
       // 强制最少录音 0.5 秒
       if (duration < 0.5) {
-        console.log(`⏳ Recording too short (${duration.toFixed(2)}s), waiting for minimum 0.5s...`);
         // 延迟停止，确保至少 0.5 秒，但避免竞态条件
         const remainingTime = (0.5 - duration) * 1000;
         setTimeout(() => {
@@ -87,7 +85,6 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
             mediaRecorderRef.current.stop();
             setIsRecording(false);
             releaseStream();
-            console.log('Recording stopped (after minimum time)');
           }
         }, remainingTime);
         return;
@@ -96,7 +93,6 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
       releaseStream();
-      console.log(`🛑 Recording stopped (${duration.toFixed(2)}s)`);
     }
   }, [releaseStream]);
 
@@ -129,10 +125,7 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     let timeoutDeadline = startTimeRef.current + initialTimeout; // 超时截止时间
     let totalAudioEnergy = 0; // 记录总音频能量用于全程静音检测
     let samplesCount = 0;
-    let hasVoiceInput = false; // 是否检测到过语音输入
     let lastVoiceTime = 0; // 上次检测到语音的时间（用于防止频繁延长）
-
-    console.log(`⏱️ Voice timeout initialized: ${initialTimeout}ms, deadline: ${new Date(timeoutDeadline).toLocaleTimeString()}`);
 
     // 实时检测（每 100ms 检测一次）
     const checkInterval = setInterval(() => {
@@ -148,7 +141,6 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
 
       // 最大录音时长检查
       if (recordingDuration >= maxRecordingTime) {
-        console.log('🛑 Max recording time reached (60s), stopping...');
         stopRecording();
         clearInterval(checkInterval);
         return;
@@ -156,15 +148,12 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
 
       // 检测到语音输入
       if (!isSilence) {
-        hasVoiceInput = true;
-        
         // 每次检测到语音，延长超时时间（防抖：至少间隔 500ms 才延长）
         if (currentTime - lastVoiceTime > 500) {
           const newDeadline = currentTime + extensionTime;
           // 只有当新的截止时间更晚时才延长
           if (newDeadline > timeoutDeadline) {
             timeoutDeadline = newDeadline;
-            console.log(`🗣️ Voice detected! Extending timeout by ${extensionTime}ms, new deadline: +${((timeoutDeadline - startTimeRef.current) / 1000).toFixed(1)}s`);
           }
           lastVoiceTime = currentTime;
         }
@@ -173,19 +162,9 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       // 检查是否超时
       const remainingTime = timeoutDeadline - currentTime;
       if (remainingTime <= 0 && recordingDuration >= minRecordingTime) {
-        if (hasVoiceInput) {
-          console.log(`🛑 Timeout reached after voice input, stopping recording... (duration: ${(recordingDuration / 1000).toFixed(1)}s)`);
-        } else {
-          console.log(`🛑 No voice input within ${initialTimeout}ms, stopping recording...`);
-        }
         stopRecording();
         clearInterval(checkInterval);
         return;
-      }
-
-      // 实时音频级别日志（每秒一次）
-      if (samplesCount % 10 === 0) {
-        console.log(`🎤 Audio level: ${level.toFixed(4)} | Duration: ${(recordingDuration / 1000).toFixed(1)}s | Timeout in: ${(remainingTime / 1000).toFixed(1)}s`);
       }
     }, 100);
 
@@ -219,7 +198,6 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       setIsRecordingReady(true);
-      console.log('🎤 Microphone stream acquired, recorder ready');
 
       // 选择合适的 MIME 类型（优先 webm/opus，回退到浏览器默认）
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
@@ -234,27 +212,21 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
         audioBitsPerSecond: 128000,
       });
 
-      console.log(`🎙️ MediaRecorder created with mimeType: ${mediaRecorder.mimeType}`);
-
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
           audioChunksRef.current!.push(event.data);
-          console.log(`📦 Audio chunk received: ${event.data.size} bytes`);
         }
       };
 
       mediaRecorder.onstop = () => {
         const duration = (Date.now() - startTimeRef.current) / 1000;
-        console.log(`📼 [useVoiceRecorder] Recording completed: ${duration.toFixed(2)}s`);
-        console.log(`   Audio chunks count: ${audioChunksRef.current.length}`);
-        console.log(`   Total chunks size: ${audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0)} bytes`);
 
         // 检查是否过短（< 0.5秒）
         if (duration < 0.5) {
-          console.warn('⚠️ [useVoiceRecorder] Recording too short (< 0.5s), discarding...');
+          console.warn('⚠️ Recording too short, discarding');
           setIsTooShort(true);
           setAudioBlob(null);
           setAudioDuration(0);
@@ -262,28 +234,24 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
         }
 
         const audioBlob = new Blob(audioChunksRef.current!, { type: mediaRecorder.mimeType || 'audio/webm' });
-        console.log(`📀 [useVoiceRecorder] Audio blob created: ${audioBlob.size} bytes, type: ${audioBlob.type}`);
-        
+
         // 检查音频大小是否合理（至少 5KB，否则可能是空音频）
         if (audioBlob.size < 5000) {
-          console.warn(`⚠️ [useVoiceRecorder] Audio blob too small (${audioBlob.size} bytes), might be empty`);
+          console.warn('⚠️ Audio blob too small, might be empty');
           setIsTooShort(true);
           setAudioBlob(null);
           setAudioDuration(0);
           return;
         }
-        
-        console.log(`✅ [useVoiceRecorder] Setting audioBlob (${audioBlob.size} bytes)`);
+
         setAudioBlob(audioBlob);
         setAudioDuration(duration);
-        console.log(`✅ [useVoiceRecorder] audioBlob state updated, should trigger upload`);
       };
 
       // 使用 timeslice 参数，每 500ms 收集一次数据，确保增量捕获
       mediaRecorder.start(500);
       startTimeRef.current = Date.now();
       setIsRecording(true);
-      console.log('🎤 Recording started (5s initial timeout, +2.5s per voice input)');
 
       // 启动静音检测
       const cleanupDetection = checkSilence();
@@ -293,11 +261,9 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       mediaRecorder.onstop = (event) => {
         const energyInfo: EnergyInfo = cleanupDetection ? cleanupDetection() as EnergyInfo : { avgAudioEnergy: 0, samplesCount: 0 };
 
-        console.log(`📊 Audio analysis: avgEnergy=${energyInfo.avgAudioEnergy.toFixed(4)}, samples=${energyInfo.samplesCount}`);
-
         // 检查是否全程静音（平均能量 < 阈值）
         if (energyInfo.avgAudioEnergy < 0.01 && energyInfo.samplesCount > 10) {
-          console.warn('⚠️ Full silence detected, discarding recording...');
+          console.warn('⚠️ Full silence detected, discarding');
           setIsTooShort(true);
           setAudioBlob(null);
           setAudioDuration(0);
@@ -321,7 +287,6 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
   // 清理音频 Blob，释放内存（消费即焚策略）
   const clearAudioBlob = useCallback(() => {
     if (audioBlob) {
-      console.log(`🗑️ Clearing audioBlob (${audioBlob.size} bytes)`);
       setAudioBlob(null);
       setAudioDuration(0);
       // 清理 audioChunksRef，释放内存

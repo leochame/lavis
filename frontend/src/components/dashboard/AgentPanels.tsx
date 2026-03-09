@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import type { AgentStatus } from '../../types/agent';
 import type { UseGlobalVoiceReturn } from '../../hooks/useGlobalVoice';
 import type { WorkflowState, ConnectionStatus } from '../../hooks/useWebSocket';
@@ -10,14 +10,6 @@ import { SkillsPanel } from '../SkillsPanel';
 import { SettingsPanel } from '../SettingsPanel';
 import { agentApi } from '../../api/agentApi';
 import type { AgentPanelType } from './AgentSidebar';
-
-type InputBridge = {
-  value: string;
-  onChange: (value: string) => void;
-  onSubmit: () => void;
-  disabled: boolean;
-  placeholder: string;
-};
 
 interface AgentPanelsProps {
   status: AgentStatus | null;
@@ -30,7 +22,6 @@ interface AgentPanelsProps {
   onClose: () => void;
   activePanel: AgentPanelType;
   onPanelChange: (panel: AgentPanelType) => void;
-  onBindInput?: (bridge: InputBridge) => void;
 }
 
 export function AgentPanels({
@@ -44,12 +35,7 @@ export function AgentPanels({
   onClose,
   activePanel,
   onPanelChange,
-  onBindInput,
 }: AgentPanelsProps) {
-  const isExecuting = workflow.status === 'executing' || status?.orchestrator_state?.includes('EXECUTING');
-  const isPlanning = workflow.status === 'planning';
-  const isWorking = isExecuting || isPlanning;
-
   const handleEmergencyStop = async () => {
     try {
       await agentApi.stop();
