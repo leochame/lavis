@@ -17,7 +17,7 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ImageContent;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.TextContent;
-import com.lavis.cognitive.message.ToolCallResultMessage;
+import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.model.chat.ChatLanguageModel;
@@ -408,9 +408,9 @@ public class AgentService {
         private ToolExecutionResult executeToolRequests(List<ToolExecutionRequest> toolRequests,
                                                      List<ChatMessage> messages) {
             StringBuilder toolResultsSummary = new StringBuilder();
-        boolean hasVisualImpact = false;
-        boolean shouldTerminate = false;
-        List<String> executedToolNames = new ArrayList<>();
+            boolean hasVisualImpact = false;
+            boolean shouldTerminate = false;
+            List<String> executedToolNames = new ArrayList<>();
 
             for (ToolExecutionRequest request : toolRequests) {
                 String toolName = request.name();
@@ -419,47 +419,47 @@ public class AgentService {
                 log.info(" Calling tool: {}({})", toolName, toolArgs);
                 executedToolNames.add(toolName);
 
-                // 【关键】通过统一工具执lines服务路由（基础工具 + Skill 工具）
+                // 【关键】通过统一工具执行服务路由（基础工具 + Skill 工具）
                 String result = toolExecutionService.executeUnified(toolName, toolArgs);
-                log.info(" Tool result: {}", result.split("\n")[0]); // 只打印第一lines
+                log.info(" Tool result: {}", result.split("\n")[0]); // 只打印第一行
 
-                // 检测工具执linesfailed（仅用于日志记录，让模型通过上下文自己判断）
-                if (result != null && (result.contains("") || result.contains("failed") ||
+                // 检测工具执行 failed（仅用于日志记录，让模型通过上下文自己判断）
+                if (result != null && (result.contains("failed") ||
                     result.contains("error") || result.contains("exception") || result.contains("Error"))) {
                     log.warn("Tool execution failed: {}", toolName);
                 }
 
-                // 添加工具执lines结果
-                ToolCallResultMessage toolResult;
+                // 1）添加符合 OpenAI tool schema 的工具结果消息（文本）
+                ToolExecutionResultMessage toolResultMessage = ToolExecutionResultMessage.from(request, result);
+                messages.add(toolResultMessage);
+                chatMemory.add(toolResultMessage);
+
+                // 2）如果是影响 UI 的工具，再追加一条多模态消息（文本 + 截图）
                 if (toolExecutionService.isVisualImpactTool(toolName)) {
-                    // 视觉影响工具：etc待UI响应后截图并包含在结果中
+                    hasVisualImpact = true;
+
                     String screenshot = captureScreenshotAfterTool(toolName);
                     if (screenshot != null) {
-                        toolResult = ToolCallResultMessage.from(request, result, screenshot);
-                    } else {
-                        toolResult = ToolCallResultMessage.from(request, result);
+                        // 使用多模态 UserMessage，让模型“看到”执行工具后的屏幕
+                        UserMessage visualUpdate = UserMessage.from(
+                                TextContent.from(String.format("屏幕在执行工具 %s 之后的状态截图。", toolName)),
+                                ImageContent.from(screenshot, "image/jpeg")
+                        );
+                        messages.add(visualUpdate);
+                        chatMemory.add(visualUpdate);
                     }
-                } else {
-                    toolResult = ToolCallResultMessage.from(request, result);
                 }
-                messages.add(toolResult);
-                chatMemory.add(toolResult);
 
                 toolResultsSummary.append(String.format("[%s] %s\n", toolName, result.split("\n")[0]));
 
-                // 判断是否是may影响屏幕的操作（统一由 ToolExecutionService 决定）
-                if (toolExecutionService.isVisualImpactTool(toolName)) {
-                    hasVisualImpact = true;
-                }
-
-                // if调用了里程碑completed工具，视为显式终止信号
+                // 如果调用了里程碑 complete 工具，视为显式终止信号
                 if ("complete_tool".equals(toolName)) {
                     shouldTerminate = true;
                 }
             }
 
-        return new ToolExecutionResult(toolResultsSummary.toString(), hasVisualImpact, shouldTerminate, executedToolNames);
-    }
+            return new ToolExecutionResult(toolResultsSummary.toString(), hasVisualImpact, shouldTerminate, executedToolNames);
+        }
 
     /**
      * 工具执lines后截图

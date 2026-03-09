@@ -1,6 +1,5 @@
 package com.lavis.memory;
 
-import com.lavis.cognitive.message.ToolCallResultMessage;
 import com.lavis.service.llm.LlmFactory;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.input.Prompt;
@@ -137,7 +136,7 @@ public class ContextCompactor {
             return "Assistant: " + aiMsg.text();
         } else if (message instanceof SystemMessage sysMsg) {
             return "System: " + sysMsg.text();
-        } else if (message instanceof ToolCallResultMessage toolMsg) {
+        } else if (message instanceof ToolExecutionResultMessage toolMsg) {
             return "Tool Result: " + toolMsg.text();
         }
         return "";
