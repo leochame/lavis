@@ -9,8 +9,8 @@ import java.io.InputStreamReader;
 import java.util.concurrent.TimeUnit;
 
 /**
- * M3 执行模块 - AppleScript 执行器
- * 通过 Runtime.exec 执行 macOS 系统指令
+ * M3 执lines模块 - AppleScript 执lines器
+ * 通过 Runtime.exec 执lines macOS 系统指令
  * 采用指令合并策略优化性能
  */
 @Slf4j
@@ -20,21 +20,21 @@ public class AppleScriptExecutor {
     private static final int DEFAULT_TIMEOUT_SECONDS = 30;
 
     public AppleScriptExecutor() {
-        log.info("AppleScriptExecutor 初始化完成");
+        log.info("AppleScriptExecutor initializecompleted");
     }
 
     /**
-     * 执行 AppleScript 脚本
+     * 执lines AppleScript 脚本
      */
     public ExecutionResult executeAppleScript(String script) {
         return executeAppleScript(script, DEFAULT_TIMEOUT_SECONDS);
     }
 
     /**
-     * 执行 AppleScript 脚本 (带超时)
+     * 执lines AppleScript 脚本 (带超时)
      */
     public ExecutionResult executeAppleScript(String script, int timeoutSeconds) {
-        log.info("执行 AppleScript: {}", script.length() > 100 ? script.substring(0, 100) + "..." : script);
+        log.info("执lines AppleScript: {}", script.length() > 100 ? script.substring(0, 100) + "..." : script);
         
         try {
             ProcessBuilder pb = new ProcessBuilder("osascript", "-e", script);
@@ -54,46 +54,46 @@ public class AppleScriptExecutor {
             
             if (!completed) {
                 process.destroyForcibly();
-                return new ExecutionResult(false, "执行超时", -1);
+                return new ExecutionResult(false, "执lines超时", -1);
             }
             
             int exitCode = process.exitValue();
             String result = output.toString().trim();
             
-            log.debug("AppleScript 执行结果: exitCode={}, output={}", exitCode, result);
+            log.debug("AppleScript 执lines结果: exitCode={}, output={}", exitCode, result);
             
             return new ExecutionResult(exitCode == 0, result, exitCode);
             
         } catch (IOException | InterruptedException e) {
-            log.error("AppleScript 执行失败", e);
+            log.error("AppleScript 执linesfailed", e);
             return new ExecutionResult(false, e.getMessage(), -1);
         }
     }
 
     /**
-     * 执行 Shell 命令
+     * 执lines Shell 命令
      */
     public ExecutionResult executeShell(String command) {
         return executeShell(command, DEFAULT_TIMEOUT_SECONDS);
     }
 
     /**
-     * 执行 Shell 命令 (带超时)
+     * 执lines Shell 命令 (带超时)
      * 
-     * 改进：使用交互式 shell 模式，加载用户的 shell 配置文件
-     * 这样可以访问用户的环境变量、PATH、别名等配置
+     * 改进：使用交互式 shell 模式，加载用户的 shell configuration文件
+     * 这样can 访问用户的环境变量、PATH、别名etcconfiguration
      */
     public ExecutionResult executeShell(String command, int timeoutSeconds) {
-        log.info("执行 Shell: {}", command);
+        log.info("执lines Shell: {}", command);
         
         try {
-            // 使用 -l (login shell) 或 -i (interactive) 参数加载用户配置
-            // 或者通过 source ~/.zshrc 来加载配置
+            // 使用 -l (login shell) 或 -i (interactive) 参数加载用户configuration
+            // or通过 source ~/.zshrc 来加载configuration
             // 这里使用 -l 参数，它会加载 ~/.zprofile 和 ~/.zshrc
             ProcessBuilder pb = new ProcessBuilder("/bin/zsh", "-l", "-c", command);
             pb.redirectErrorStream(true);
             
-            // 继承当前进程的环境变量，确保可以访问系统环境
+            // 继承when前进程的环境变量，确保can 访问系统环境
             pb.environment().putAll(System.getenv());
             
             Process process = pb.start();
@@ -110,18 +110,18 @@ public class AppleScriptExecutor {
             
             if (!completed) {
                 process.destroyForcibly();
-                return new ExecutionResult(false, "执行超时", -1);
+                return new ExecutionResult(false, "执lines超时", -1);
             }
             
             int exitCode = process.exitValue();
             String result = output.toString().trim();
             
-            log.debug("Shell 执行结果: exitCode={}, output={}", exitCode, result);
+            log.debug("Shell 执lines结果: exitCode={}, output={}", exitCode, result);
             
             return new ExecutionResult(exitCode == 0, result, exitCode);
             
         } catch (IOException | InterruptedException e) {
-            log.error("Shell 执行失败", e);
+            log.error("Shell 执linesfailed", e);
             return new ExecutionResult(false, e.getMessage(), -1);
         }
     }
@@ -145,7 +145,7 @@ public class AppleScriptExecutor {
     }
 
     /**
-     * 获取当前活动应用程序名称
+     * 获取when前活动应用程序名称
      */
     public String getActiveApplication() {
         String script = """
@@ -159,7 +159,7 @@ public class AppleScriptExecutor {
     }
 
     /**
-     * 获取当前活动窗口标题
+     * 获取when前活动窗口标题
      */
     public String getActiveWindowTitle() {
         String script = """
@@ -288,7 +288,7 @@ public class AppleScriptExecutor {
     }
 
     /**
-     * 合并执行多条 AppleScript 命令 (性能优化)
+     * 合并执lines多records AppleScript 命令 (性能优化)
      */
     public ExecutionResult executeBatchAppleScript(String... scripts) {
         StringBuilder combined = new StringBuilder();
@@ -299,7 +299,7 @@ public class AppleScriptExecutor {
     }
 
     /**
-     * 执行结果包装类
+     * 执lines结果包装类
      */
     public record ExecutionResult(boolean success, String output, int exitCode) {
         @Override

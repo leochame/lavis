@@ -3,9 +3,9 @@ package com.lavis.config.llm;
 import lombok.Data;
 
 /**
- * 单个 LLM 模型的配置 POJO
+ * 单items LLM 模型的configuration POJO
  * * 支持的 provider:
- * - OPENAI: OpenAI 兼容接口（包括阿里云 DashScope Chat、Azure OpenAI 等）
+ * - OPENAI: OpenAI 兼容接口（包括阿里云 DashScope Chat、Azure OpenAI etc）
  * - GEMINI: Google Gemini 原生接口
  * - DASHSCOPE: 阿里云 DashScope 原生接口 (用于语音服务)
  */
@@ -17,8 +17,8 @@ public class ModelConfig {
      */
     public enum ModelType {
         CHAT,   // 对话模型
-        STT,    // 语音转文字
-        TTS     // 文字转语音
+        STT,    // 语音转文characters
+        TTS     // 文characters转语音
     }
 
     /**
@@ -52,7 +52,7 @@ public class ModelConfig {
 
     /**
      * 模型名称
-     * 例如: qwen-max, paraformer-realtime-v1, cosyvoice-v1
+     * for example: qwen-max, paraformer-realtime-v1, cosyvoice-v1
      */
     private String modelName;
 
@@ -62,22 +62,22 @@ public class ModelConfig {
     private Double temperature = 0.4;
 
     /**
-     * 请求超时时间（秒）
+     * 请求超时时间（seconds）
      */
     private Integer timeoutSeconds = 60;
 
     /**
-     * 最大重试次数
+     * 最大重试times数
      */
     private Integer maxRetries = 3;
 
     /**
-     * TTS 语音音色 (例如: longxiaochun, Cherry)
+     * TTS 语音音色 (for example: longxiaochun, Cherry)
      */
     private String voice = "longxiaochun";
 
     /**
-     * TTS 音频格式 (例如: mp3, wav)
+     * TTS 音频格式 (for example: mp3, wav)
      */
     private String format = "mp3";
 }

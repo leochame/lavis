@@ -19,15 +19,15 @@ import java.util.List;
  *
  * 实现深度优先的网络搜索策略：
  * - 最多 5 轮迭代搜索
- * - 置信度驱动的终止条件
+ * - 置信度驱动的终止records件
  * - 自动查询优化
  * - 结果汇总提炼
  *
- * 执行流程：
+ * 执lines流程：
  * 1. 分析原始查询，生成搜索策略
- * 2. 执行搜索，评估结果质量
- * 3. 如果信息不足，优化查询并重新搜索
- * 4. 达到置信度阈值或最大轮次后，生成最终报告
+ * 2. 执lines搜索，评估结果质量
+ * 3. ifinfo不足，优化查询并重新搜索
+ * 4. 达到置信度阈值或最大轮times后，生成最终报告
  */
 @Slf4j
 @Service
@@ -80,7 +80,7 @@ public class SearchAgent {
             """;
 
     /**
-     * 执行搜索任务
+     * 执lines搜索任务
      *
      * @param query 原始查询
      * @param chatModel LLM 模型（用于分析和合成）
@@ -96,7 +96,7 @@ public class SearchAgent {
         for (int i = 0; i < MAX_ITERATIONS; i++) {
             log.info("Search iteration {}/{}: query={}", i + 1, MAX_ITERATIONS, currentQuery);
 
-            // 执行搜索
+            // 执lines搜索
             SearchResult searchResult = webSearchService.search(currentQuery);
 
             if (!searchResult.success()) {
@@ -218,7 +218,7 @@ public class SearchAgent {
         } catch (Exception e) {
             log.error("Failed to synthesize report: {}", e.getMessage());
 
-            // 回退：返回最后一次迭代的发现
+            // 回退：返回最后一times迭代的发现
             if (!iterations.isEmpty()) {
                 SearchIteration last = iterations.get(iterations.size() - 1);
                 return "Search completed with " + iterations.size() + " iterations.\n\n" +
@@ -281,7 +281,7 @@ public class SearchAgent {
     ) {}
 
     /**
-     * 单次搜索迭代
+     * 单times搜索迭代
      */
     public record SearchIteration(
             int iteration,

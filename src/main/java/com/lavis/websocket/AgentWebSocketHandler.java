@@ -61,10 +61,10 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
             switch (type) {
                 case "ping" -> sendToSession(session, Map.of("type", "pong"));
                 case "subscribe" -> log.info("📢 客户端订阅工作流更新: {}", session.getId());
-                default -> log.warn("未知消息类型: {}", type);
+                default -> log.warn("not 知消息类型: {}", type);
             }
         } catch (Exception e) {
-            log.error("处理 WebSocket 消息失败", e);
+            log.error("处理 WebSocket 消息failed", e);
         }
     }
 
@@ -84,7 +84,7 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
                 String json = objectMapper.writeValueAsString(message);
                 session.sendMessage(new TextMessage(json));
             } catch (IOException e) {
-                log.error("发送 WebSocket 消息失败: {}", session.getId(), e);
+                log.error("发送 WebSocket 消息failed: {}", session.getId(), e);
             }
         }
     }
@@ -95,7 +95,7 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
      *
      * @param sessionId WebSocket Session ID
      * @param message 消息内容
-     * @return true 如果发送成功，false 如果 session 不存在或已关闭
+     * @return true if发送success，false if session 不存在或has been 关闭
      */
     public boolean sendToSessionById(String sessionId, Map<String, Object> message) {
         WebSocketSession session = sessions.get(sessionId);
@@ -113,10 +113,10 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
     }
 
     /**
-     * 获取第一个可用的 Session ID
+     * 获取第一items可用的 Session ID
      * 用于单客户端场景（如语音交互）
      *
-     * @return Session ID，如果没有连接则返回 null
+     * @return Session ID，if没有连接则返回 null
      */
     public String getFirstSessionId() {
         return sessions.keySet().stream().findFirst().orElse(null);
@@ -131,7 +131,7 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
     }
 
     /**
-     * 获取当前连接数
+     * 获取when前连接数
      */
     public int getConnectionCount() {
         return sessions.size();

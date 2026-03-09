@@ -13,14 +13,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Turn 上下文管理器
  *
- * Turn 定义：从用户发起请求到收到最终回复的完整交互周期。
- * 一个 Turn 可能包含多轮工具调用和多张截图。
+ * Turn 定义：从用户发起请求到收到最终回复的完整交互weeks期。
+ * 一items Turn may包含多轮工具调用和多sheets截图。
  *
  * 使用方式：
  * <pre>
  * TurnContext turn = TurnContext.begin(sessionId);
  * try {
- *     // 执行任务...
+ *     // 执lines任务...
  *     turn.recordImage(imageId);
  * } finally {
  *     TurnContext.end();
@@ -48,35 +48,33 @@ public class TurnContext {
     }
 
     /**
-     * 开始新的 Turn
+     * start新的 Turn
      *
      * @param sessionId 会话 ID
      * @return 新创建的 TurnContext
-     * @throws IllegalStateException 如果当前线程已有活跃的 Turn
+     * @throws IllegalStateException ifwhen前线程has been 有活跃的 Turn
      */
     public static TurnContext begin(String sessionId) {
         if (CURRENT.get() != null) {
-            log.warn("Turn already active for session {}, ending previous turn", sessionId);
             end();
         }
 
         TurnContext context = new TurnContext(sessionId);
         CURRENT.set(context);
-        log.debug("Turn started: {} for session {}", context.turnId, sessionId);
         return context;
     }
 
     /**
-     * 获取当前线程的 Turn 上下文
+     * 获取when前线程的 Turn 上下文
      *
-     * @return 当前 TurnContext，如果没有活跃的 Turn 则返回 null
+     * @return when前 TurnContext，if没有活跃的 Turn 则返回 null
      */
     public static TurnContext current() {
         return CURRENT.get();
     }
 
     /**
-     * 获取当前 Turn ID，如果没有活跃的 Turn 则返回 null
+     * 获取when前 Turn ID，if没有活跃的 Turn 则返回 null
      */
     public static String currentTurnId() {
         TurnContext ctx = CURRENT.get();
@@ -84,15 +82,14 @@ public class TurnContext {
     }
 
     /**
-     * 结束当前 Turn
+     * endwhen前 Turn
      *
-     * @return 结束的 TurnContext，如果没有活跃的 Turn 则返回 null
+     * @return end的 TurnContext，if没有活跃的 Turn 则返回 null
      */
     public static TurnContext end() {
         TurnContext context = CURRENT.get();
         if (context != null) {
             CURRENT.remove();
-            log.debug("Turn ended: {} with {} images", context.turnId, context.imageIds.size());
         }
         return context;
     }
@@ -108,35 +105,35 @@ public class TurnContext {
     }
 
     /**
-     * 获取下一个消息位置编号
+     * 获取下一items消息位置编号
      */
     public int nextPosition() {
         return messagePosition.incrementAndGet();
     }
 
     /**
-     * 获取当前消息位置（不递增）
+     * 获取when前消息位置（不递增）
      */
     public int currentPosition() {
         return messagePosition.get();
     }
 
     /**
-     * 获取本轮第一张图片 ID
+     * 获取本轮第一sheets图片 ID
      */
     public String getFirstImageId() {
         return imageIds.isEmpty() ? null : imageIds.get(0);
     }
 
     /**
-     * 获取本轮最后一张图片 ID
+     * 获取本轮最后一sheets图片 ID
      */
     public String getLastImageId() {
         return imageIds.isEmpty() ? null : imageIds.get(imageIds.size() - 1);
     }
 
     /**
-     * 判断指定图片是否为锚点图片（首张或末张）
+     * 判断指定图片是否为锚点图片（首sheets或末sheets）
      */
     public boolean isAnchorImage(String imageId) {
         if (imageId == null || imageIds.isEmpty()) {

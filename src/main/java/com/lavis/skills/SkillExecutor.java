@@ -17,18 +17,18 @@ import java.util.Map;
 import java.util.function.BiFunction;
 
 /**
- * Skill 执行器 - 重构版本
+ * Skill 执lines器 - 重构版本
  *
  * 核心改进：上下文注入（Context Injection）
  *
- * 执行流程：
- * 1. LLM 决定调用某个 Skill（如 java_coding）
+ * 执lines流程：
+ * 1. LLM 决定调用某items Skill（如 java_coding）
  * 2. SkillExecutor 拦截调用
- * 3. 【关键】读取 Skill 的 content（Markdown 正文），构建执行上下文
- * 4. 将上下文注入到 Agent 的对话中
- * 5. 执行具体指令（或让 Agent 基于上下文生成回复）
+ * 3. 【关键】读取 Skill 的 content（Markdown 正文），构建执lines上下文
+ * 4. will 上下文注入到 Agent 的对话中
+ * 5. 执lines具体指令（或让 Agent 基于上下文生成回复）
  *
- * 这样 Agent 就能真正"学会"文档里的知识，而不仅仅是运行脚本。
+ * 这样 Agent 就能真正"学会"文档里的知识，而不仅仅是运lines脚本。
  */
 @Component
 public class SkillExecutor {
@@ -40,8 +40,8 @@ public class SkillExecutor {
 
     /**
      * 上下文注入回调。
-     * 当设置后，执行 agent: 命令时会先注入上下文，再执行。
-     * 这个回调由 AgentService 设置，用于将知识注入到对话中。
+     * when设置后，执lines agent: 命令时会先注入上下文，再执lines。
+     * 这items回调由 AgentService 设置，用于will 知识注入到对话中。
      */
     private BiFunction<SkillExecutionContext, String, String> contextInjectionCallback;
 
@@ -61,19 +61,19 @@ public class SkillExecutor {
     }
 
     /**
-     * 执行 Skill（使用结构化参数）- 新版本
+     * 执lines Skill（使用结构化参数）- 新版本
      *
      * @param skill  解析后的技能
      * @param params 来自 LLM Function Call 的 JSON 参数
-     * @return 执行结果
+     * @return 执lines结果
      */
     public ExecutionResult executeWithContext(ParsedSkill skill, Map<String, Object> params) {
-        // 构建执行上下文（包含知识注入）
+        // 构建执lines上下文（包含知识注入）
         SkillExecutionContext context = skill.buildExecutionContext(params);
 
         String command = context.getResolvedCommand();
         if (command == null || command.isEmpty()) {
-            // 如果没有命令，但有知识内容，则纯粹作为知识注入
+            // if没有命令，但有知识内容，则纯粹作为知识注入
             if (context.getKnowledgeContent() != null && !context.getKnowledgeContent().isBlank()) {
                 return executeKnowledgeInjection(context);
             }
@@ -88,7 +88,7 @@ public class SkillExecutor {
     }
 
     /**
-     * 执行 Skill（兼容旧版本 Map<String, String> 参数）
+     * 执lines Skill（兼容旧版本 Map<String, String> 参数）
      */
     public ExecutionResult execute(ParsedSkill skill, Map<String, String> params) {
         // 转换为 Object Map
@@ -100,7 +100,7 @@ public class SkillExecutor {
     }
 
     /**
-     * 执行 Skill（使用 JSON 字符串参数）
+     * 执lines Skill（使用 JSON characters符串参数）
      * 这是 LLM Function Call 的入口点
      */
     public ExecutionResult executeFromJson(ParsedSkill skill, String paramsJson) {
@@ -117,7 +117,7 @@ public class SkillExecutor {
     }
 
     /**
-     * 执行原始命令（不带上下文）
+     * 执lines原始命令（不带上下文）
      */
     public ExecutionResult executeCommand(String command) {
         return executeCommandWithContext(null, command);
@@ -126,7 +126,7 @@ public class SkillExecutor {
     // ==================== Private Methods ====================
 
     /**
-     * 带上下文的命令执行
+     * 带上下文的命令执lines
      */
     private ExecutionResult executeCommandWithContext(SkillExecutionContext context, String command) {
         if (command.startsWith("agent:")) {
@@ -140,11 +140,11 @@ public class SkillExecutor {
     }
 
     /**
-     * 执行 Agent 命令（带上下文注入）
+     * 执lines Agent 命令（带上下文注入）
      *
      * 这是解决"Context Gap"的核心方法：
-     * 1. 如果有上下文，先将知识注入到对话中
-     * 2. 然后执行 Agent 命令
+     * 1. if有上下文，先will 知识注入到对话中
+     * 2. 然后执lines Agent 命令
      */
     private ExecutionResult executeAgentCommand(SkillExecutionContext context, String goal) {
         long startTime = System.currentTimeMillis();
@@ -157,7 +157,7 @@ public class SkillExecutor {
                 logger.info("Injecting skill knowledge into agent context");
                 response = contextInjectionCallback.apply(context, goal);
             } else {
-                // 降级：无上下文注入，直接执行
+                // 降级：无上下文注入，直接执lines
                 logger.warn("No context injection callback, executing without knowledge injection");
                 response = "Context injection not available. Goal: " + goal;
             }
@@ -173,8 +173,8 @@ public class SkillExecutor {
     }
 
     /**
-     * 纯知识注入（无命令执行）
-     * 用于那些只提供指导而不执行具体操作的 Skill
+     * 纯知识注入（无命令执lines）
+     * 用于那些只提供指导而不执lines具体操作的 Skill
      */
     private ExecutionResult executeKnowledgeInjection(SkillExecutionContext context) {
         long startTime = System.currentTimeMillis();
@@ -201,7 +201,7 @@ public class SkillExecutor {
     }
 
     /**
-     * 执行 Shell 命令
+     * 执lines Shell 命令
      */
     private ExecutionResult executeShellCommand(String command) {
         long startTime = System.currentTimeMillis();

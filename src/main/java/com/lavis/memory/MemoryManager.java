@@ -99,26 +99,17 @@ public class MemoryManager {
             return;
         }
 
-        log.info("Turn ended: {} with {} images, {} messages",
-                turn.getTurnId(), turn.getImageCount(), turn.currentPosition());
-
         // Context Engineering: Trigger visual compression for previous turns
         try {
             VisualCompactor.CompactionResult result = visualCompactor.compactPreviousTurns(
                     turn.getSessionId(), turn.getTurnId());
 
             if (result.compactedCount() > 0) {
-                log.info("Visual compaction completed: {} images compressed, ~{} tokens saved",
+                log.info("Visual compaction: {} images compressed, ~{} tokens saved",
                         result.compactedCount(), result.estimatedTokensSaved());
             }
         } catch (Exception e) {
             log.error("Error during visual compaction", e);
-        }
-
-        // Log turn summary for debugging
-        if (turn.getImageCount() > 0) {
-            log.debug("Turn {} anchors: first={}, last={}",
-                    turn.getTurnId(), turn.getFirstImageId(), turn.getLastImageId());
         }
     }
 

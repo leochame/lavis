@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Gemini TTS (Text-to-Speech) 实现
  *
- * 使用 Gemini streamGenerateContent API 进行语音合成
+ * 使用 Gemini streamGenerateContent API 进lines语音合成
  * API 端点: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:streamGenerateContent
  *
  * 请求格式: 使用 generateContent API，设置 responseModalities: ["AUDIO"]
@@ -122,7 +122,7 @@ public class GeminiTtsModel implements TtsModel {
                 try {
                     if (attempt > 0) {
                         long backoffMs = (long) Math.pow(2, attempt - 1) * 1000;
-                        log.warn("🔄 Retrying Gemini TTS request (attempt {}/{}) after {}ms",
+                        log.warn(" Retrying Gemini TTS request (attempt {}/{}) after {}ms",
                                 attempt, maxRetries, backoffMs);
                         Thread.sleep(backoffMs);
                     }
@@ -137,10 +137,10 @@ public class GeminiTtsModel implements TtsModel {
                             int statusCode = response.code();
 
                             if (statusCode >= 400 && statusCode < 500) {
-                                log.error("❌ Gemini TTS API failed (client error): {} - {}", statusCode, responseBody);
+                                log.error(" Gemini TTS API failed (client error): {} - {}", statusCode, responseBody);
                                 throw new IOException("Gemini TTS failed: " + statusCode + " - " + responseBody);
                             } else {
-                                log.warn("⚠️ Gemini TTS API server error: {} (attempt {}/{})",
+                                log.warn(" Gemini TTS API server error: {} (attempt {}/{})",
                                         statusCode, attempt + 1, maxRetries + 1);
                                 if (attempt < maxRetries) {
                                     lastException = new IOException("Server error: " + statusCode);
@@ -157,7 +157,7 @@ public class GeminiTtsModel implements TtsModel {
                             throw new RuntimeException("No audio data received from TTS API");
                         }
 
-                        log.info("✅ TTS audio generated successfully, PCM size: {} bytes", pcmData.length);
+                        log.info(" TTS audio generated successfully, PCM size: {} bytes", pcmData.length);
 
                         // 转换为 WAV 格式
                         byte[] wavData = pcmToWav(pcmData);
@@ -170,7 +170,7 @@ public class GeminiTtsModel implements TtsModel {
                 } catch (SocketException | SocketTimeoutException e) {
                     lastException = e;
                     if (attempt < maxRetries) {
-                        log.warn("⚠️ Connection error (attempt {}/{}): {}",
+                        log.warn(" Connection error (attempt {}/{}): {}",
                                 attempt + 1, maxRetries, e.getMessage());
                         httpClient.connectionPool().evictAll();
                         continue;
@@ -188,7 +188,7 @@ public class GeminiTtsModel implements TtsModel {
             throw new IOException("Failed to generate speech after " + (maxRetries + 1) + " attempts");
 
         } catch (IOException e) {
-            log.error("❌ TTS generation failed", e);
+            log.error(" TTS generation failed", e);
             throw new RuntimeException("Failed to generate speech: " + e.getMessage(), e);
         }
     }
@@ -211,7 +211,7 @@ public class GeminiTtsModel implements TtsModel {
         // generationConfig
         ObjectNode generationConfig = root.putObject("generationConfig");
 
-        // responseModalities: ["AUDIO"] - 关键配置，指定返回音频
+        // responseModalities: ["AUDIO"] - 关键configuration，指定返回音频
         ArrayNode responseModalities = generationConfig.putArray("responseModalities");
         responseModalities.add("AUDIO");
 
@@ -255,7 +255,7 @@ public class GeminiTtsModel implements TtsModel {
                 try {
                     JsonNode root = objectMapper.readTree(jsonData);
 
-                    // 检查错误
+                    // 检查error
                     if (root.has("error")) {
                         String errorMsg = root.get("error").has("message")
                                 ? root.get("error").get("message").asText()
@@ -279,7 +279,7 @@ public class GeminiTtsModel implements TtsModel {
                                                 String base64Audio = inlineData.get("data").asText();
                                                 byte[] audioBytes = Base64.getDecoder().decode(base64Audio);
                                                 audioBuffer.write(audioBytes);
-                                                log.debug("📦 Received audio chunk: {} bytes", audioBytes.length);
+                                                log.debug(" Received audio chunk: {} bytes", audioBytes.length);
                                             }
                                         }
                                     }
@@ -288,7 +288,7 @@ public class GeminiTtsModel implements TtsModel {
                         }
                     }
                 } catch (Exception e) {
-                    log.warn("⚠️ Failed to parse SSE data: {}", e.getMessage());
+                    log.warn(" Failed to parse SSE data: {}", e.getMessage());
                 }
             }
         }
@@ -297,7 +297,7 @@ public class GeminiTtsModel implements TtsModel {
     }
 
     /**
-     * 将 PCM 数据转换为 WAV 格式
+     * will  PCM 数据转换为 WAV 格式
      */
     private byte[] pcmToWav(byte[] pcmData) {
         try {

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Include Spring Boot's default Logback configuration -->
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <!-- Console appender -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss} %clr(%-5level) %cyan(%logger{20}) - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- MessageList dedicated file appender -->
+    <appender name="MESSAGE_LIST_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>.lavis/logs/message-list.log</file>
+        <encoder>
+            <pattern>%msg%n</pattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>.lavis/logs/message-list.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <maxFileSize>10MB</maxFileSize>
+            <maxHistory>7</maxHistory>
+            <totalSizeCap>100MB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <!-- MessageList logger -->
+    <logger name="MESSAGE_LIST" level="INFO" additivity="false">
+        <appender-ref ref="MESSAGE_LIST_FILE"/>
+    </logger>
+
+    <!-- Root logger -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+    <!-- Application loggers -->
+    <logger name="com.lavis" level="INFO"/>
+    <logger name="dev.langchain4j" level="WARN"/>
+</configuration>

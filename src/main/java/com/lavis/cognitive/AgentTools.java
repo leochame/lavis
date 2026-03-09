@@ -26,7 +26,7 @@ import java.util.Map;
  * AI 可调用的工具集 - 改进版
  * * 改进核心：
  * 修改了工具的返回值，从 "Success" 改为 "Action Performed"，
- * 并明确提示 AI 需要通过视觉反馈来验证操作结果。
+ * 并明确提示 AI need通过视觉反馈来验证操作结果。
  */
 @Slf4j
 @Component
@@ -60,21 +60,21 @@ public class AgentTools {
      * 纯思考/反思/规划工具（无任何外部副作用）
      *
      * 用途：
-     * - 在「开始执行前」先梳理整体思路和步骤规划。
-     * - 在「执行过程中」对当前进展进行反思、调整策略。
-     * - 在「出现异常或卡住」时，总结问题、提出假设和下一步计划。
+     * - 在「start执lines前」先梳理整体思路和步骤规划。
+     * - 在「执lines过程中」对when前进展进lines反思、调整策略。
+     * - 在「出现exception或卡住」时，总结问题、提出假设和下一步计划。
      *
      * 设计约束：
-     * - 本工具绝不调用任何外部系统，不做点击/输入/网络请求等操作，仅在内部记录一段文字。
-     * - 每次调用时，入参中的思考内容会被**原样作为 tool_result 返回**，便于编排器/上层系统记录和展示思考链路。
+     * - 本工具绝不调用任何外部系统，不做点击/输入/网络请求etc操作，仅在内部记录一段文characters。
+     * - 每times调用时，入参中的思考内容会被**原样作为 tool_result 返回**，便于编排器/上层系统记录和展示思考链路。
      *
      * 使用建议（对 LLM）：
-     * - 当任务复杂、多步骤或存在不确定性时，优先调用本工具进行显式规划。
-     * - 反思内容应尽量结构化，例如：
-     *   1) 当前目标
-     *   2) 已知信息
+     * - when任务复杂、多步骤或存在不确定性时，优先调用本工具进lines显式规划。
+     * - 反思内容应尽量结构化，for example：
+     *   1) when前目标
+     *   2) has been 知info
      *   3) 风险与不确定点
-     *   4) 接下来 1~3 步的具体行动计划（对应可调用的工具）
+     *   4) 接下来 1~3 步的具体lines动计划（对应可调用的工具）
      */
     @Tool("Reflect, analyze, and plan before or during actions. This tool has NO side effects: it only records your structured thinking. The input reflection text will be returned verbatim as the tool_result so orchestrators can log your reasoning.")
     public String think_tool(
@@ -87,11 +87,11 @@ public class AgentTools {
     // ==================== 鼠标操作 (反馈语调更加中性) ====================
 
     /**
-     * 将 Gemini 归一化坐标 (0-999) 转为 macOS AWT Robot 使用的逻辑屏幕坐标 (points)。
+     * will  Gemini 归一化坐标 (0-999) 转为 macOS AWT Robot 使用的逻辑屏幕坐标 (points)。
      * 说明：
      * - 屏幕截图叠加网格/模型输出使用 Gemini 坐标系 (0-999)；
-     * - Java 9+ macOS 下 AWT Robot 使用逻辑坐标，不是物理像素；
-     * - 因此这里需要做"坐标系转换"，而不是乘以 Retina 缩放因子。
+     * - Java 9+ macOS 下 AWT Robot 使用logical coordinates，不是物理像素；
+     * - therefore这里need做"坐标系转换"，而不是乘以 Retina 缩放因子。
      * 
      * 【修复】添加坐标验证和钳制，确保输入坐标在有效范围内 (0-999)
      */
@@ -102,121 +102,105 @@ public class AgentTools {
         int geminiY = geminiCoords[1];
         
         // 验证并钳制 Gemini 坐标到有效范围 (0-999)
-        boolean clamped = false;
         if (geminiX < 0 || geminiX > ScreenCapturer.COORD_MAX) {
             geminiX = Math.max(0, Math.min(ScreenCapturer.COORD_MAX, geminiX));
-            clamped = true;
         }
         if (geminiY < 0 || geminiY > ScreenCapturer.COORD_MAX) {
             geminiY = Math.max(0, Math.min(ScreenCapturer.COORD_MAX, geminiY));
-            clamped = true;
-        }
-        
-        if (clamped) {
-            log.warn("⚠️ Gemini 坐标超出范围，已自动钳制: 原始[{}, {}] -> 修正[{}, {}] (有效范围: 0-{})",
-                    geminiCoords[0], geminiCoords[1], geminiX, geminiY, ScreenCapturer.COORD_MAX);
         }
         
         // 使用 ScreenCapturer 内置转换（直接映射，无安全区限制）
         Point logical = screenCapturer.toLogical(geminiX, geminiY);
-        log.info("🎯 坐标校准: Gemini[{}, {}] -> 逻辑坐标[{}, {}]",
-                geminiX, geminiY, logical.x, logical.y);
         return logical;
     }
 
-    public String moveMouse(@P("Coordinate position array [x, y] in Gemini format (0-999)") int[] coords) {
-        if (coords == null || coords.length < 2) return "❌ 错误: 坐标无效";
+    public String moveMouse(int[] coords) {
+        if (coords == null || coords.length < 2) return " Error: Invalid coordinates";
         try {
             Point logical = toLogicalPoint(coords);
-            if (logical == null) return "❌ 错误: 坐标无效";
+            if (logical == null) return " Error: Invalid coordinates";
             robotDriver.moveTo(logical.x, logical.y);
-            return String.format("鼠标已移动到 逻辑坐标(%d, %d)（输入Gemini:%d,%d）",
+            return String.format("Mouse moved to logical coordinates(%d, %d)（Input Gemini:%d,%d)",
                     logical.x, logical.y, coords[0], coords[1]);
         } catch (Exception e) {
-            return "❌ 移动失败: " + e.getMessage();
+            return " Move failed: " + e.getMessage();
         }
     }
 
     @Tool("Click at specified screen position. Coordinates must be in Gemini format [x, y] where x and y are integers between 0 and 999. Note: After click operation executes must observe screen changes such as button color change page jump popup disappearance to confirm if click took effect")
     public String click(@P("Coordinate position array [x, y] in Gemini format (0-999)") int[] coords) {
         if (coords == null || coords.length < 2) {
-            return String.format("❌ 错误: 坐标无效 (需要 [x, y] 数组，Gemini 格式 0-%d)", ScreenCapturer.COORD_MAX);
-        }
-        // 检查坐标范围（在 toLogicalPoint 中会自动钳制，但这里先给出警告）
-        if (coords[0] < 0 || coords[0] > ScreenCapturer.COORD_MAX || 
-            coords[1] < 0 || coords[1] > ScreenCapturer.COORD_MAX) {
-            log.warn("⚠️ 坐标超出范围: [{}, {}] (有效范围: 0-{})，将自动钳制", 
-                    coords[0], coords[1], ScreenCapturer.COORD_MAX);
+            return String.format(" Error: Invalid coordinates (need [x, y] array, Gemini format 0-%d)", ScreenCapturer.COORD_MAX);
         }
         try {
             Point logical = toLogicalPoint(coords);
             if (logical == null) {
-                return String.format("❌ 错误: 坐标转换失败 (输入: [%d, %d]，Gemini 格式应为 0-%d)", 
+                return String.format(" Error: Coordinate conversion failed (Input: [%d, %d], Gemini formatshould be 0-%d)", 
                         coords[0], coords[1], ScreenCapturer.COORD_MAX);
             }
             robotDriver.clickAt(logical.x, logical.y);
-            // 记录逻辑坐标（截图侧会再转回 Gemini 做标注）
+            // 记录logical coordinates（截图侧会再转回 Gemini 做标注）
             screenCapturer.recordClickPosition(logical.x, logical.y);
-            // 关键修改：不再仅仅说"成功"，而是提示动作已完成，暗示需要验证
-            return String.format("🖱️ 已在 逻辑坐标(%d, %d) 执行点击（输入Gemini:%d,%d）。请等待下一次截图以验证UI是否响应。",
+            // 关键修改：不再仅仅说"success"，而是提示动作has been completed，暗示need验证
+            return String.format(" Performed at logical coordinates(%d, %d) click（Input Gemini:%d,%d)。Please wait for next screenshot to verify UI response。",
                     logical.x, logical.y, coords[0], coords[1]);
         } catch (Exception e) {
-            log.error("点击失败", e);
-            return "❌ 点击操作执行异常: " + e.getMessage();
+            log.error("Click failed", e);
+            return " Click operation exception: " + e.getMessage();
         }
     }
 
     @Tool("Double click at specified screen position. Coordinates must be in Gemini format [x, y] where x and y are integers between 0 and 999. If single click did not trigger expected UI changes try using this tool")
     public String doubleClick(@P("Coordinate position array [x, y] in Gemini format (0-999)") int[] coords) {
         if (coords == null || coords.length < 2) {
-            return String.format("❌ 错误: 坐标无效 (需要 [x, y] 数组，Gemini 格式 0-%d)", ScreenCapturer.COORD_MAX);
+            return String.format(" Error: Invalid coordinates (need [x, y] array, Gemini format 0-%d)", ScreenCapturer.COORD_MAX);
         }
         if (coords[0] < 0 || coords[0] > ScreenCapturer.COORD_MAX || 
             coords[1] < 0 || coords[1] > ScreenCapturer.COORD_MAX) {
-            log.warn("⚠️ 坐标超出范围: [{}, {}] (有效范围: 0-{})，将自动钳制", 
+            log.warn(" 坐标超出范围: [{}, {}] (有效范围: 0-{}), will 自动钳制", 
                     coords[0], coords[1], ScreenCapturer.COORD_MAX);
         }
         try {
             Point logical = toLogicalPoint(coords);
             if (logical == null) {
-                return String.format("❌ 错误: 坐标转换失败 (输入: [%d, %d]，Gemini 格式应为 0-%d)", 
+                return String.format(" Error: Coordinate conversion failed (Input: [%d, %d], Gemini formatshould be 0-%d)", 
                         coords[0], coords[1], ScreenCapturer.COORD_MAX);
             }
             robotDriver.doubleClickAt(logical.x, logical.y);
             screenCapturer.recordClickPosition(logical.x, logical.y);
-            return String.format("🖱️ 已在 逻辑坐标(%d, %d) 执行双击（输入Gemini:%d,%d）。请检查屏幕变化。",
+            return String.format(" Performed at logical coordinates(%d, %d) double-click（Input Gemini:%d,%d)。Please check screen changes。",
                     logical.x, logical.y, coords[0], coords[1]);
         } catch (Exception e) {
-            return "❌ 双击异常: " + e.getMessage();
+            return " Double-click exception: " + e.getMessage();
         }
     }
 
     @Tool("Right click at specified screen position. Coordinates must be in Gemini format [x, y] where x and y are integers between 0 and 999")
     public String rightClick(@P("Coordinate position array [x, y] in Gemini format (0-999)") int[] coords) {
-        if (coords == null || coords.length < 2) return "❌ 错误: 坐标无效";
+        if (coords == null || coords.length < 2) return " Error: Invalid coordinates";
         try {
             Point logical = toLogicalPoint(coords);
-            if (logical == null) return "❌ 错误: 坐标无效";
+            if (logical == null) return " Error: Invalid coordinates";
             robotDriver.rightClickAt(logical.x, logical.y);
             screenCapturer.recordClickPosition(logical.x, logical.y);
-            return String.format("🖱️ 已在 逻辑坐标(%d, %d) 执行右键点击（输入Gemini:%d,%d）。请寻找上下文菜单。",
+            return String.format(" Performed at logical coordinates(%d, %d) right-click（Input Gemini:%d,%d)。Please look for context menu。",
                     logical.x, logical.y, coords[0], coords[1]);
         } catch (Exception e) {
-            return "❌ 右键点击异常: " + e.getMessage();
+            return " Right-click exception: " + e.getMessage();
         }
     }
 
     @Tool("Drag operation. Coordinates must be in Gemini format [x, y] where x and y are integers between 0 and 999")
     public String drag(@P("Start position [x, y] in Gemini format (0-999)") int[] from, @P("Target position [x, y] in Gemini format (0-999)") int[] to) {
         try {
-            if (from == null || from.length < 2 || to == null || to.length < 2) return "❌ 错误: 坐标无效";
+            if (from == null || from.length < 2 || to == null || to.length < 2) return " Error: Invalid coordinates";
             Point fromLogical = toLogicalPoint(from);
             Point toLogical = toLogicalPoint(to);
-            if (fromLogical == null || toLogical == null) return "❌ 错误: 坐标无效";
+            if (fromLogical == null || toLogical == null) return " Error: Invalid coordinates";
             robotDriver.drag(fromLogical.x, fromLogical.y, toLogical.x, toLogical.y);
-            return "已执行拖拽操作。请确认对象位置是否改变。";
+            return "Drag operation performed。Please confirm if object position changed。";
         } catch (Exception e) {
-            return "❌ 拖拽异常: " + e.getMessage();
+            return " Drag exception: " + e.getMessage();
         }
     }
 
@@ -224,9 +208,9 @@ public class AgentTools {
     public String scroll(@P("Scroll amount: positive down, negative up") int amount) {
         try {
             robotDriver.scroll(amount);
-            return "已执行滚动操作。请检查可视区域是否更新。";
+            return "has been 执lines滚动操作。请检查可视区域是否更新。";
         } catch (Exception e) {
-            return "❌ 滚动异常: " + e.getMessage();
+            return " 滚动exception: " + e.getMessage();
         }
     }
 
@@ -235,17 +219,17 @@ public class AgentTools {
     public String type_at(String text) {
         try {
             robotDriver.type(text);
-            return String.format("⌨️ 键盘敲击已发送: \"%s\"。请通过截图验证文字是否上屏。", text);
+            return String.format("⌨️ 键盘敲击has been 发送: \"%s\"。请通过截图验证文characters是否上屏。", text);
         } catch (Exception e) {
-            return "❌ 输入异常: " + e.getMessage();
+            return " 输入exception: " + e.getMessage();
         }
     }
 
     /**
-     * 在指定坐标输入文本（1000x1000 Gemini 坐标系）
+     * 在指定坐标Input text（1000x1000 Gemini 坐标系）
      *
      * 说明：
-     * - x、y 使用与点击工具相同的 Gemini 坐标（0-999），内部会自动转换为逻辑坐标。
+     * - x、y 使用与点击工具相同的 Gemini 坐标（0-999），内部会自动转换为logical coordinates。
      * - 默认会先点击该坐标位置以聚焦输入框。
      * - 默认会先全选并清空原有内容（clear_before_typing = true）。
      *
@@ -264,7 +248,7 @@ public class AgentTools {
             int[] coords = new int[]{x, y};
             Point logical = toLogicalPoint(coords);
             if (logical == null) {
-                return "❌ 错误: 坐标无效，无法转换为逻辑坐标";
+                return " Error: Invalid coordinates, 无法转换为logical coordinates";
             }
 
             // 1. 在该位置点击以获得输入焦点
@@ -277,29 +261,29 @@ public class AgentTools {
                 robotDriver.pressBackspace();
             }
 
-            // 3. 输入文本（不包含 Enter）
+            // 3. Input text（不包含 Enter）
             robotDriver.type(text != null ? text : "");
 
-            // 4. 返回提示信息，强调不会自动按 Enter
+            // 4. 返回提示info，强调不会自动按 Enter
             return String.format(
-                    "⌨️ 已在 逻辑坐标(%d, %d) 输入文本: \"%s\"（Gemini 坐标:%d,%d）。本工具不会自动按下 Enter，如需提交请单独调用 keyCombination(\"enter\")。",
+                    "⌨️ Performed at logical coordinates(%d, %d) Input text: \"%s\"（Gemini 坐标:%d,%d)。本工具不会自动按下 Enter, 如需提交请单独调用 keyCombination(\"enter\")。",
                     logical.x, logical.y, text, x, y
             );
         } catch (Exception e) {
-            return "❌ 坐标输入异常: " + e.getMessage();
+            return " 坐标输入exception: " + e.getMessage();
         }
     }
 
     @Tool("Press keyboard keys or combinations. Use '+' to join keys for combinations, e.g. 'cmd+c', 'cmd+shift+p', 'ctrl+alt+delete'. Useful for submitting forms (\"enter\"), clipboard operations, navigation, etc.")
     public String keyCombination(@P("Keyboard key or combination, e.g. 'enter', 'esc', 'tab', 'backspace', 'cmd+c', 'cmd+v', 'cmd+a', 'cmd+s', 'cmd+z', 'cmd+shift+p'") String keys) {
         if (keys == null || keys.isEmpty()) {
-            return "❌ 错误: keys 不能为空，例如 'enter' 或 'cmd+c'";
+            return " Error: keys cannot 为空, for example 'enter' 或 'cmd+c'";
         }
 
         String normalized = keys.trim().toLowerCase();
 
         try {
-            // 支持任意按键组合：使用 '+' 分隔，如 "cmd+shift+p"、"ctrl+alt+delete"
+            // 支持任意Key combination：使用 '+' 分隔，如 "cmd+shift+p"、"ctrl+alt+delete"
             String[] parts = normalized.split("\\+");
             int[] keyCodes = new int[parts.length];
 
@@ -307,8 +291,8 @@ public class AgentTools {
                 String token = parts[i].trim();
                 Integer code = mapKeyToken(token);
                 if (code == null) {
-                    return "❌ 暂不支持的按键或别名: '" + token + "' 于组合 \"" + keys +
-                            "\"。请使用常见写法，如 cmd/ctrl/alt/shift + 字母/数字/enter/esc/tab/backspace 等。";
+                    return " 暂不支持的按键或别名: '" + token + "' 于组合 \"" + keys +
+                            "\"。请使用常见写法, 如 cmd/ctrl/alt/shift + characters母/数characters/enter/esc/tab/backspace etc。";
                 }
                 keyCodes[i] = code;
             }
@@ -316,27 +300,27 @@ public class AgentTools {
             if (keyCodes.length == 1) {
                 // 单键
                 robotDriver.pressKey(keyCodes[0]);
-                return "已按下按键: " + normalized;
+                return "has been 按下按键: " + normalized;
             } else {
                 // 组合键：同时按下
                 robotDriver.pressKeys(keyCodes);
-                return "已发送组合键: " + normalized;
+                return "has been 发送组合键: " + normalized;
             }
         } catch (Exception e) {
-            return "❌ 按键/组合键执行异常: " + e.getMessage();
+            return " 按键/组合键执linesexception: " + e.getMessage();
         }
     }
 
     /**
-     * 将字符串按键标识映射为 KeyEvent keyCode
+     * will characters符串按键标识映射为 KeyEvent keyCode
      * 支持：
      * - 修饰键：cmd/command/meta, ctrl/control, alt/option, shift
      * - 功能键：enter/return, esc/escape, tab, backspace/delete/del, space
      * - F键：f1-f12
      * - 方向键：up, down, left, right
      * - 编辑键：home, end, pageup/pgup, pagedown/pgdn, insert
-     * - 字母：a-z (大小写不敏感)
-     * - 数字：0-9
+     * - characters母：a-z (大小写不敏感)
+     * - 数characters：0-9
      */
     private Integer mapKeyToken(String token) {
         if (token == null || token.isEmpty()) {
@@ -413,22 +397,22 @@ public class AgentTools {
                 return KeyEvent.VK_INSERT;
         }
 
-        // 单个字符处理：字母、数字、特殊字符（大小写不敏感）
+        // 单itemscharacters符处理：characters母、数characters、特殊characters符（大小写不敏感）
         if (token.length() == 1) {
             char c = token.charAt(0);
             
-            // 字母 a-z 或 A-Z（大小写不敏感）
+            // characters母 a-z 或 A-Z（大小写不敏感）
             if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
                 char lowerC = Character.toLowerCase(c);
                 return KeyEvent.VK_A + (lowerC - 'a');
             }
             
-            // 数字 0-9
+            // 数characters 0-9
             if (c >= '0' && c <= '9') {
                 return KeyEvent.VK_0 + (c - '0');
             }
             
-            // 特殊字符：尝试通过字符码获取
+            // 特殊characters符：尝试通过characters符码获取
             int keyCode = KeyEvent.getExtendedKeyCodeForChar(c);
             if (keyCode != KeyEvent.VK_UNDEFINED) {
                 return keyCode;
@@ -445,10 +429,10 @@ public class AgentTools {
         try {
             var result = appleScriptExecutor.openApplication(appName);
             return result.success() ?
-                    "已发送打开指令给: " + appName + "。请等待UI加载。" :
-                    "❌ 打开失败: " + result.output();
+                    "has been 发送打开指令给: " + appName + "。请etc待UI加载。" :
+                    " Failed to open: " + result.output();
         } catch (Exception e) {
-            return "❌ 异常: " + e.getMessage();
+            return " exception: " + e.getMessage();
         }
     }
 
@@ -456,9 +440,9 @@ public class AgentTools {
     public String listInstalledApplications() {
         try {
             var result = appleScriptExecutor.executeShell("ls /Applications | grep '.app'");
-            return result.success() ? "应用列表:\n" + result.output() : "❌ 获取列表失败";
+            return result.success() ? "应用columns表:\n" + result.output() : " 获取columns表failed";
         } catch (Exception e) {
-            return "❌ 异常: " + e.getMessage();
+            return " exception: " + e.getMessage();
         }
     }
 
@@ -466,18 +450,18 @@ public class AgentTools {
     public String quitApplication(@P("Application name") String appName) {
         try {
             var result = appleScriptExecutor.quitApplication(appName);
-            return result.success() ? "已发送关闭指令。" : "❌ 关闭失败: " + result.output();
+            return result.success() ? "has been 发送关闭指令。" : " 关闭failed: " + result.output();
         } catch (Exception e) {
-            return "❌ 异常: " + e.getMessage();
+            return " exception: " + e.getMessage();
         }
     }
 
     @Tool("Get current active application")
     public String getActiveApp() {
         try {
-            return "当前活动应用: " + appleScriptExecutor.getActiveApplication();
+            return "Current active app: " + appleScriptExecutor.getActiveApplication();
         } catch (Exception e) {
-            return "❌ 获取失败: " + e.getMessage();
+            return " Failed to get: " + e.getMessage();
         }
     }
 
@@ -486,7 +470,7 @@ public class AgentTools {
         try {
             return "窗口标题: " + appleScriptExecutor.getActiveWindowTitle();
         } catch (Exception e) {
-            return "❌ 获取失败: " + e.getMessage();
+            return " Failed to get: " + e.getMessage();
         }
     }
 
@@ -494,9 +478,9 @@ public class AgentTools {
     public String openURL(@P("URL address") String url) {
         try {
             var result = appleScriptExecutor.openURL(url);
-            return result.success() ? "已请求打开 URL: " + url + "。请检查浏览器是否已加载页面。" : "❌ 打开失败";
+            return result.success() ? "has been 请求打开 URL: " + url + "。请检查浏览器是否has been 加载pages面。" : " Failed to open";
         } catch (Exception e) {
-            return "❌ 异常: " + e.getMessage();
+            return " exception: " + e.getMessage();
         }
     }
 
@@ -504,9 +488,9 @@ public class AgentTools {
     public String openFile(@P("File path") String filePath) {
         try {
             var result = appleScriptExecutor.openFile(filePath);
-            return result.success() ? "已请求打开文件: " + filePath : "❌ 打开失败";
+            return result.success() ? "has been 请求打开File: " + filePath : " Failed to open";
         } catch (Exception e) {
-            return "❌ 异常: " + e.getMessage();
+            return " exception: " + e.getMessage();
         }
     }
 
@@ -514,9 +498,9 @@ public class AgentTools {
     public String revealInFinder(@P("Path") String filePath) {
         try {
             var result = appleScriptExecutor.revealInFinder(filePath);
-            return result.success() ? "已在 Finder 中选中。" : "❌ 操作失败";
+            return result.success() ? "Performed at Finder 中选中。" : " 操作failed";
         } catch (Exception e) {
-            return "❌ 异常: " + e.getMessage();
+            return " exception: " + e.getMessage();
         }
     }
 
@@ -525,9 +509,9 @@ public class AgentTools {
     public String executeAppleScript(@P("Script") String script) {
         try {
             var result = appleScriptExecutor.executeAppleScript(script);
-            return "脚本执行结果: " + result.output();
+            return "Script execution result: " + result.output();
         } catch (Exception e) {
-            return "❌ 异常: " + e.getMessage();
+            return " exception: " + e.getMessage();
         }
     }
 
@@ -537,7 +521,7 @@ public class AgentTools {
             var result = appleScriptExecutor.executeShell(command);
             return "Shell 输出: " + result.output();
         } catch (Exception e) {
-            return "❌ 异常: " + e.getMessage();
+            return " exception: " + e.getMessage();
         }
     }
 
@@ -547,9 +531,9 @@ public class AgentTools {
     public String captureScreen() {
         try {
             String base64 = screenCapturer.captureScreenAsBase64();
-            return "截图已获取 (Base64长度: " + base64.length() + ")";
+            return "截图has been 获取 (Base64长度: " + base64.length() + ")";
         } catch (IOException e) {
-            return "❌ 截图失败: " + e.getMessage();
+            return " Screenshot failed: " + e.getMessage();
         }
     }
 
@@ -557,10 +541,10 @@ public class AgentTools {
     public String wait(@P("Milliseconds") int milliseconds) {
         try {
             Thread.sleep(milliseconds);
-            return String.format("⏳ 已等待 %d ms。请检查屏幕是否已就绪。", milliseconds);
+            return String.format(" has been etc待 %d ms。请检查屏幕是否has been 就绪。", milliseconds);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return "等待被中断";
+            return "etc待被中断";
         }
     }
 
@@ -569,28 +553,28 @@ public class AgentTools {
         try {
             java.awt.Point mousePos = java.awt.MouseInfo.getPointerInfo().getLocation();
             java.awt.Dimension screenSize = screenCapturer.getScreenSize();
-            return String.format("🖱️ 当前鼠标: (%d, %d), 屏幕: %d x %d",
+            return String.format(" when前鼠标: (%d, %d), 屏幕: %d x %d",
                     mousePos.x, mousePos.y, screenSize.width, screenSize.height);
         } catch (Exception e) {
-            return "❌ 获取失败: " + e.getMessage();
+            return " Failed to get: " + e.getMessage();
         }
     }
-    // ==================== 任务完成工具 ====================
+    // ==================== 任务completed工具 ====================
 
     /**
-     * 任务完成工具（单层架构下，表示“整个用户任务”已经完成）
+     * 任务completed工具（单层架构下，表示“整items用户任务”has been 经completed）
      *
      * 【架构规则】
-     * 1. 单层任务：当前架构下不存在子任务/里程碑分层；调用本工具 == 当前用户给定的整个任务已完成。
-     * 2. 必须在「观察轮」调用：只能在收到最新截图并确认界面已达到最终目标状态后调用。
-     * 3. 严禁在「执行动作的同一轮」调用：如果本轮你刚刚执行了 click / type / keyCombination / scroll 等会改变界面的动作，
-     *    必须等待下一轮截图验证动作结果，再根据截图决定是否调用本工具。
-     * 4. 调用本工具即视为整个任务成功结束，编排器会退出当前任务循环，不再规划或调用任何其他工具。
+     * 1. 单层任务：when前架构下不存在子任务/里程碑分层；调用本工具 == when前用户给定的整items任务has been completed。
+     * 2. must在「观察轮」调用：只能在收到最新截图并确认界面has been 达到最终目标状态后调用。
+     * 3. 严禁在「执lines动作的同一轮」调用：if本轮你刚刚执lines了 click / type / keyCombination / scroll etc会改变界面的动作，
+     *    mustetc待下一轮截图验证动作结果，再根据截图决定是否调用本工具。
+     * 4. 调用本工具即视为整items任务successend，编排器会退出when前任务循环，不再规划或调用任何其他工具。
      */
     @Tool("Use ONLY when the entire user task is fully completed and the latest screenshot clearly proves the final goal state. This tool marks the WHOLE task as SUCCESS and ends the current task loop completely. CRITICAL ARCHITECTURE RULE: never call this tool in the same turn as any visual-impact action (click, type_text_at, keyCombination, scroll, drag, etc). Always wait for the next screenshot, verify full task success, then (and only then) call this tool. After calling this tool, you must NOT plan or call any further tools.")
     public String complete_tool(
             @P("Summarize: (1) concrete visual evidence from the latest screenshot proving that the ENTIRE user task is completed; (2) the final completed state / user goal in natural language.") String summary) {
-        log.info("✅ 里程碑完成: {}", summary);
+        log.info(" Milestone completed: {}", summary);
         return "Milestone marked as completed: " + summary;
     }
 
@@ -607,13 +591,13 @@ public class AgentTools {
             }
             SkillExecutor.ExecutionResult result = skillService.executeSkill(skillName, paramMap);
             if (result.isSuccess()) {
-                return String.format("✅ 技能 '%s' 执行成功。输出: %s", skillName, result.getOutput());
+                return String.format(" Skill '%s' Execution successful。输出: %s", skillName, result.getOutput());
             } else {
-                return String.format("❌ 技能 '%s' 执行失败: %s", skillName, result.getError());
+                return String.format(" Skill '%s' Execution failed: %s", skillName, result.getError());
             }
         } catch (Exception e) {
-            log.error("执行技能失败: {}", skillName, e);
-            return "❌ 执行技能异常: " + e.getMessage();
+            log.error("执linesSkillfailed: {}", skillName, e);
+            return " 执linesSkillexception: " + e.getMessage();
         }
     }
 
@@ -622,9 +606,9 @@ public class AgentTools {
         try {
             List<SkillResponse> skills = skillService.getEnabledSkills();
             if (skills.isEmpty()) {
-                return "当前没有可用的技能。";
+                return "when前没有可用的Skill。";
             }
-            StringBuilder sb = new StringBuilder("📋 可用技能列表:\n");
+            StringBuilder sb = new StringBuilder("📋 可用Skillcolumns表:\n");
             for (SkillResponse skill : skills) {
                 sb.append(String.format("- %s", skill.getName()));
                 if (skill.getCategory() != null) {
@@ -637,8 +621,8 @@ public class AgentTools {
             }
             return sb.toString();
         } catch (Exception e) {
-            log.error("获取技能列表失败", e);
-            return "❌ 获取技能列表异常: " + e.getMessage();
+            log.error("获取Skillcolumns表failed", e);
+            return " 获取Skillcolumns表exception: " + e.getMessage();
         }
     }
 
@@ -649,33 +633,32 @@ public class AgentTools {
     //         @P("Search query - be specific and include relevant keywords") String query,
     //         @P("Whether to use deep search with multiple iterations (true) or quick single search (false)") boolean deepSearch) {
     //     try {
-    //         log.info("🔍 Internet search: query={}, deepSearch={}", query, deepSearch);
+    //         log.info(" Internet search: query={}, deepSearch={}", query, deepSearch);
 
     //         if (deepSearch) {
-    //             // 使用 SearchAgent 进行深度搜索
+    //             // 使用 SearchAgent 进lines深度搜索
     //             var chatModel = llmFactory.getModel();
     //             var report = searchAgent.execute(query, chatModel);
     //             return report.toCompactSummary();
     //         } else {
-    //             // 快速单次搜索
+    //             // 快速单times搜索
     //             var result = webSearchService.search(query);
     //             return result.toSummary();
     //         }
     //     } catch (Exception e) {
     //         log.error("Internet search failed: {}", e.getMessage(), e);
-    //         return "❌ 搜索失败: " + e.getMessage();
+    //         return " Search failed: " + e.getMessage();
     //     }
     // }
 
     @Tool("Quick web search - single query, no iteration. Use this for simple factual queries.")
     public String quickSearch(@P("Search query") String query) {
         try {
-            log.info("🔍 Quick search: {}", query);
             var result = webSearchService.search(query);
             return result.toSummary();
         } catch (Exception e) {
             log.error("Quick search failed: {}", e.getMessage(), e);
-            return "❌ 搜索失败: " + e.getMessage();
+            return " Search failed: " + e.getMessage();
         }
     }
 }

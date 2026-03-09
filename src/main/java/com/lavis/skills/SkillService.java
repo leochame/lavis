@@ -29,9 +29,9 @@ import java.util.function.BiFunction;
  * Skill 服务 - 重构版本
  *
  * 核心职责：
- * 1. 维护实时更新的 ToolSpecification 列表（供 AgentService 使用）
+ * 1. 维护实时更新的 ToolSpecification columns表（供 AgentService 使用）
  * 2. 处理 Skill 的 CRUD 操作
- * 3. 执行 Skill（带上下文注入）
+ * 3. 执lines Skill（带上下文注入）
  * 4. 响应热重载事件
  *
  * 这是"技能即工具"架构的核心服务。
@@ -46,7 +46,7 @@ public class SkillService {
     private final SkillExecutor skillExecutor;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    /** 实时更新的工具规格列表 */
+    /** 实时更新的工具规格columns表 */
     private final List<ToolSpecification> currentToolSpecifications = new CopyOnWriteArrayList<>();
 
     /** 工具更新监听器 */
@@ -87,7 +87,7 @@ public class SkillService {
     // ==================== 工具规格管理 ====================
 
     /**
-     * 获取当前所有 Skill 的 ToolSpecification 列表。
+     * 获取when前所有 Skill 的 ToolSpecification columns表。
      * AgentService 调用此方法获取可用工具。
      */
     public List<ToolSpecification> getToolSpecifications() {
@@ -95,7 +95,7 @@ public class SkillService {
     }
 
     /**
-     * 获取所有 Skill 的 SkillToolDefinition 列表（用于 API 响应）
+     * 获取所有 Skill 的 SkillToolDefinition columns表（用于 API 响应）
      */
     public List<SkillToolDefinition> getSkillToolDefinitions() {
         return skillLoader.getSkillToolDefinitions();
@@ -103,7 +103,7 @@ public class SkillService {
 
     /**
      * 添加工具更新监听器。
-     * AgentService 调用此方法注册监听器，以便在工具列表变更时收到通知。
+     * AgentService 调用此方法注册监听器，以便在工具columns表变更时收到通知。
      */
     public void addToolUpdateListener(ToolUpdateListener listener) {
         toolUpdateListeners.add(listener);
@@ -119,7 +119,7 @@ public class SkillService {
 
     /**
      * 设置上下文注入回调。
-     * AgentService 调用此方法注册回调，用于在执行 Skill 时注入知识。
+     * AgentService 调用此方法注册回调，用于在执lines Skill 时注入知识。
      */
     public void setContextInjectionCallback(BiFunction<SkillExecutionContext, String, String> callback) {
         skillExecutor.setContextInjectionCallback(callback);
@@ -143,7 +143,7 @@ public class SkillService {
         logger.info("Received SkillsUpdatedEvent: type={}, changed={}",
                 event.getUpdateType(), event.getChangedSkillName());
 
-        // 更新工具规格列表
+        // 更新工具规格columns表
         currentToolSpecifications.clear();
         currentToolSpecifications.addAll(skillLoader.getToolSpecifications());
 
@@ -170,15 +170,15 @@ public class SkillService {
         }
     }
 
-    // ==================== Skill 执行 ====================
+    // ==================== Skill 执lines ====================
 
     /**
-     * 执行 Skill（通过工具名称，使用 JSON 参数）。
+     * 执lines Skill（通过工具名称，使用 JSON 参数）。
      * 这是 LLM Function Call 的入口点。
      *
      * @param toolName   工具名称（snake_case 格式）
      * @param paramsJson JSON 格式的参数
-     * @return 执行结果
+     * @return 执lines结果
      */
     public SkillExecutor.ExecutionResult executeByToolName(String toolName, String paramsJson) {
         // 根据工具名称查找 Skill
@@ -199,7 +199,7 @@ public class SkillService {
                     "Skill is disabled: " + skill.getName(), 0);
         }
 
-        // 执行（带上下文注入）
+        // 执lines（带上下文注入）
         SkillExecutor.ExecutionResult result = skillExecutor.executeFromJson(skill, paramsJson);
 
         // 更新使用统计
@@ -209,7 +209,7 @@ public class SkillService {
     }
 
     /**
-     * 执行 Skill（通过 ID 或名称，使用 Map 参数）- 兼容旧 API
+     * 执lines Skill（通过 ID 或名称，使用 Map 参数）- 兼容旧 API
      */
     public SkillExecutor.ExecutionResult executeSkill(String idOrName, Map<String, String> params) {
         // Try to find by ID first, then by name
@@ -387,7 +387,7 @@ public class SkillService {
                 skillStore.saveSkill(entity);
                 logger.info("Synced new skill to database: {}", parsed.getName());
             } else {
-                // 更新已存在的 skill（保持 content 同步）
+                // 更新has been 存在的 skill（保持 content 同步）
                 skillStore.getSkillByName(parsed.getName()).ifPresent(entity -> {
                     if (!Objects.equals(entity.getContent(), parsed.getContent()) ||
                         !Objects.equals(entity.getDescription(), parsed.getDescription())) {

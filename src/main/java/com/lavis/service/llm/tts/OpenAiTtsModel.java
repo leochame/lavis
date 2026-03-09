@@ -58,11 +58,11 @@ public class OpenAiTtsModel implements TtsModel {
                 apiUrl += TTS_API_ENDPOINT.substring(1); // Remove leading slash since we already added one
             }
 
-            // 构建 JSON 请求体 (OpenAI TTS API 需要 JSON 格式)
+            // 构建 JSON 请求体 (OpenAI TTS API need JSON 格式)
             String voice = config.getVoice() != null ? config.getVoice() : "alloy";
             String format = config.getFormat() != null ? config.getFormat() : "mp3";
             
-            // 转义文本中的特殊字符
+            // 转义文本中的特殊characters符
             String escapedText = escapeJson(text);
             
             String jsonBody = String.format(
@@ -92,7 +92,7 @@ public class OpenAiTtsModel implements TtsModel {
 
                 // 获取音频数据
                 byte[] audioBytes = response.body().bytes();
-                log.info("✅ TTS audio generated successfully, size: {} bytes", audioBytes.length);
+                log.info(" TTS audio generated successfully, size: {} bytes", audioBytes.length);
 
                 // 转换为 Base64
                 return java.util.Base64.getEncoder().encodeToString(audioBytes);
@@ -105,7 +105,7 @@ public class OpenAiTtsModel implements TtsModel {
     }
 
     /**
-     * 转义 JSON 字符串中的特殊字符
+     * 转义 JSON characters符串中的特殊characters符
      */
     private String escapeJson(String text) {
         if (text == null) return "";

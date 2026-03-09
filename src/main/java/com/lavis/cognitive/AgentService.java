@@ -53,6 +53,7 @@ public class AgentService {
     private final LlmFactory llmFactory;
     private final MemoryManager memoryManager;
     private final SkillService skillService;
+    private final MessageListLogger messageListLogger;
 
     @Value("${agent.retry.max:3}")
     private int maxRetries;
@@ -60,15 +61,15 @@ public class AgentService {
     @Value("${agent.retry.delay.ms:2000}")
     private long retryDelayMs;
 
-    /** 使用的模型别名（可通过配置切换） */
+    /** 使用的模型别名（可通过configuration切换） */
     @Value("${agent.model.alias:fast-model}")
     private String modelAlias;
 
-    // 不再缓存模型实例，每次都从 LlmFactory 获取（支持动态配置更新）
+    // 不再缓存模型实例，每times都从 LlmFactory 获取（支持动态configuration更新）
     // private ChatLanguageModel chatModel;
     private ChatMemory chatMemory;
 
-        /** 当前注入的 Skill 上下文（临时） */
+        /** when前注入的 Skill 上下文（临时） */
     private volatile SkillExecutionContext activeSkillContext;
 
     public AgentService(ScreenCapturer screenCapturer,
@@ -76,16 +77,18 @@ public class AgentService {
                         ToolExecutionService toolExecutionService,
                         LlmFactory llmFactory,
                         MemoryManager memoryManager,
-                        @Lazy SkillService skillService) {
+                        @Lazy SkillService skillService,
+                        MessageListLogger messageListLogger) {
         this.screenCapturer = screenCapturer;
         this.taskOrchestrator = taskOrchestrator;
         this.toolExecutionService = toolExecutionService;
         this.llmFactory = llmFactory;
         this.memoryManager = memoryManager;
         this.skillService = skillService;
+        this.messageListLogger = messageListLogger;
     }
 
-    // 工具执行后等待 UI 响应的时间（毫秒）
+    // 工具执lines后etc待 UI 响应的时间（毫seconds）
     // 默认改为 200ms：给 UI 留出轻微缓冲，同时不至于太慢
     @Value("${agent.tool.wait.ms:200}")
     private int toolWaitMs = 200;
@@ -95,33 +98,26 @@ public class AgentService {
         try {
             // 通过 LlmFactory 获取模型实例（延迟加载，按需验证 API Key）
             if (!llmFactory.isModelAvailable(modelAlias)) {
-                log.warn("⚠️ 模型 '{}' 未配置或 API Key 缺失，Agent 功能将不可用", modelAlias);
+                log.warn("Model '{}' not configured or API Key missing", modelAlias);
                 return;
             }
 
-            // 不再缓存模型实例，每次都从 LlmFactory 获取（支持动态配置更新）
-            // this.chatModel = llmFactory.getModel(modelAlias);
-
-            // 初始化聊天记忆（使用支持 ImageContent 清理的自定义实现）
+            // initialize聊days记忆（使用支持 ImageContent 清理的自定义实现）
             this.chatMemory = ImageContentCleanableChatMemory.withMaxMessages(20);
 
-            // 初始化调度器（传递 LLM 模型给 Planner 和 Executor）
-            // 注意：TaskOrchestrator.initialize() 现在不存储模型，所以这里可以传 null 或移除
+            // initialize调度器
             taskOrchestrator.initialize(null);
 
-            // 初始化 Skill 集成（仅上下文注入，工具注册统一由 ToolExecutionService 处理）
+            // initialize Skill 集成
             initializeSkillIntegration();
-    
-            log.info("✅ AgentService 初始化完成 - 模型: {}, 基础工具数: {}, Skill工具数: {}",
-                    modelAlias, toolExecutionService.getToolCount(), toolExecutionService.getCombinedToolSpecifications().size() - toolExecutionService.getToolCount());
         } catch (Exception e) {
-            log.error("❌ AgentService 初始化失败", e);
+            log.error("AgentService initialization failed", e);
         }
     }
 
     /**
-     * 初始化 Skill 集成。
-     * 1. 加载当前所有 Skill 的 ToolSpecification
+     * initialize Skill 集成。
+     * 1. 加载when前所有 Skill 的 ToolSpecification
      * 2. 注册工具更新监听器（热重载支持）
      * 3. 注册上下文注入回调
      */
@@ -129,31 +125,28 @@ public class AgentService {
                 // 工具注册与更新监听统一放在 ToolExecutionService 中，这里只负责上下文注入
     
                 // 注册上下文注入回调
-        // 这是解决"Context Gap"的核心：当 Skill 被调用时，将其知识注入到对话中
+        // 这是解决"Context Gap"的核心：when Skill 被调用时，will 其知识注入到对话中
         skillService.setContextInjectionCallback(this::executeWithSkillContext);
 
-        log.info("✅ Skill 集成初始化完成");
     }
 
     /**
-     * 带 Skill 上下文的执行。
+     * 带 Skill 上下文的执lines。
      * 这是"上下文注入"的核心实现：
-     * 1. 将 Skill 的知识（Markdown 正文）注入到 System Prompt
-     * 2. 执行 Agent 命令
+     * 1. will  Skill 的知识（Markdown 正文）注入到 System Prompt
+     * 2. 执lines Agent 命令
      * 3. 清理临时上下文
      *
-     * @param context Skill 执行上下文（包含知识内容）
-     * @param goal    要执行的目标
-     * @return 执行结果
+     * @param context Skill 执lines上下文（包含知识内容）
+     * @param goal    要执lines的目标
+     * @return 执lines结果
      */
     private String executeWithSkillContext(SkillExecutionContext context, String goal) {
-        log.info("🎯 执行带 Skill 上下文的命令: skill={}, goal={}", context.getSkillName(), goal);
-
-        // 设置当前活动的 Skill 上下文
+        // 设置when前活动的 Skill 上下文
         this.activeSkillContext = context;
 
         try {
-            // 执行带截图的对话（上下文会在 processWithTools 中注入）
+            // 执lines带截图的对话（上下文会在 processWithTools 中注入）
             return chatWithScreenshot(goal);
         } finally {
             // 清理临时上下文
@@ -163,11 +156,11 @@ public class AgentService {
 
     /**
      * 发送带截图的消息 (多模态 + 工具调用)
-     * 截图会显示鼠标位置（红色十字）和上次点击位置（绿色圆环），便于 AI 反思
+     * 截图会显示鼠标位置（红色十characters）和上times点击位置（绿色圆环），便于 AI 反思
      */
     public String chatWithScreenshot(String message) {
-        // 传入 0：表示“使用全局配置 maxToolIterations”。
-        // 如果全局配置 <= 0，则表示本轮工具循环不设置次数上限。
+        // 传入 0：表示“使用全局configuration maxToolIterations”。
+        // if全局configuration <= 0，则表示本轮工具循环不设置times数上限。
         return chatWithScreenshot(message, 0);
     }
 
@@ -175,23 +168,24 @@ public class AgentService {
      * 发送带截图的消息 (多模态 + 工具调用)，支持步进模式
      *
      * @param message  用户消息
-     * @param maxSteps 保留参数，用于未来可能的“步进模式”控制。
-     *                 当前实现中**不会对工具循环施加硬性步数上限**，
-     *                 仅由模型在没有工具调用或显式终止信号时自行结束。
-     * @return 执行结果
+     * @param maxSteps 保留参数，用于not 来may的“步进模式”控制。
+     *                 when前实现中**不会对工具循环施加硬性步数上限**，
+     *                 仅由模型在没有工具调用或显式终止信号时自linesend。
+     * @return 执lines结果
      */
     public String chatWithScreenshot(String message, int maxSteps) {
-        // 每次从 LlmFactory 获取模型（支持动态配置更新）
+        // 每times从 LlmFactory 获取模型（支持动态configuration更新）
         ChatLanguageModel chatModel = getChatModel();
         if (chatModel == null) {
-            return "❌ Agent 未初始化，请检查 API Key 配置";
+            return " Agent not initialized, please check API Key configuration";
         }
 
-        log.info("📷 用户消息 (带截图, 步数限制 {}): {}", maxSteps > 0 ? maxSteps : "无限制", message);
-
-        // Context Engineering: 开始新的 Turn
+        // Context Engineering: start新的 Turn
         String sessionKey = memoryManager.getCurrentSessionKey();
         TurnContext turn = TurnContext.begin(sessionKey);
+
+        // start新的 MessageList 日志轮times
+        messageListLogger.startNewTurn(turn.getTurnId());
 
         try {
             return executeWithRetry(() -> {
@@ -199,28 +193,22 @@ public class AgentService {
                 ScreenCapturer.ImageCapture capture = screenCapturer.captureWithDedup();
                 String imageId = capture.imageId();
                 String base64Image = capture.base64();
-                
-                // 如果图片被复用，base64 可能为 null，需要从缓存获取
+
+                // if图片被复用，base64 may为 null，need从缓存获取
                 if (base64Image == null && capture.isReused()) {
                     base64Image = screenCapturer.getLastImageBase64();
                     if (base64Image == null) {
-                        log.warn("图片复用但缓存数据丢失，强制重新截图");
                         // 强制重新截图（清除缓存）
                         screenCapturer.clearDedupCache();
                         capture = screenCapturer.captureWithDedup();
                         imageId = capture.imageId();
                         base64Image = capture.base64();
-                    } else {
-                        log.debug("图片复用，使用缓存的 base64 数据: {}", imageId);
                     }
                 }
-                
+
                 if (base64Image == null) {
                     throw new IllegalStateException("无法获取截图数据");
                 }
-                
-                log.info("📸 截图完成: imageId={}, 复用={}, 大小: {} KB",
-                        imageId, capture.isReused(), base64Image.length() * 3 / 4 / 1024);
 
                 // 记录图片到 Turn 上下文
                 turn.recordImage(imageId);
@@ -233,7 +221,7 @@ public class AgentService {
                 return processWithTools(userMessage, maxSteps, imageId);
             });
         } finally {
-            // Context Engineering: Turn 结束，触发压缩
+            // Context Engineering: Turn end，触发压缩
             TurnContext endedTurn = TurnContext.end();
             if (endedTurn != null) {
                 memoryManager.onTurnEnd(endedTurn);
@@ -242,39 +230,44 @@ public class AgentService {
     }
 
     /**
-     * 核心方法：处理消息并执行工具调用循环
+     * 核心方法：处理消息并执lines工具调用循环
      *
      * 【关键改进】
-     * 1. 工具执行后重新截图，让模型"看见"屏幕变化
+     * 1. 工具执lines后重新截图，让模型"看见"屏幕变化
      * 2. 支持 Skill 上下文注入（解决 Context Gap）
-     * 3. 动态合并 Skill 工具到工具列表
+     * 3. 动态合并 Skill 工具到工具columns表
      * 4. Context Engineering: 集成感知去重和 imageId 追踪
      *
-     * 执行流程：
+     * 执lines流程：
      * 1. 构建 System Prompt（如有活动 Skill，注入其知识）
      * 2. 发送初始消息（含截图）给模型
      * 3. 模型决定调用工具（包括 Skill 工具）
-     * 4. 执行工具（Skill 工具会触发上下文注入）
-     * 5. 等待 UI 响应 + 重新截图
+     * 4. 执lines工具（Skill 工具会触发上下文注入）
+     * 5. etc待 UI 响应 + 重新截图
      * 6. 模型根据新截图决定下一步
      *
      * @param userMessage 用户消息
-     * @param maxSteps    最大执行步数限制
+     * @param maxSteps    最大执lines步数限制
      * @param imageId     初始截图的 imageId（用于追踪）
      */
     private String processWithTools(UserMessage userMessage, int maxSteps, String imageId) {
-        // 构建初始消息列表
+        // 构建初始消息columns表
         List<ChatMessage> messages = buildInitialMessages(userMessage);
-        
+
         // 保存用户消息到记忆和数据库
         saveUserMessageToMemory(userMessage, imageId);
-        
-        // 执行工具调用循环
-        return executeToolCallLoop(messages);
+
+        // 执lines工具调用循环
+        String result = executeToolCallLoop(messages);
+
+        // 记录 Turn end（在 finally 块之前，确保记录最终的消息数）
+        messageListLogger.endTurn(messages.size(), 0, 0);
+
+        return result;
     }
 
     /**
-     * 构建初始消息列表（包含系统提示、历史消息和用户消息）
+     * 构建初始消息columns表（包含系统提示、历史消息和用户消息）
      */
     private List<ChatMessage> buildInitialMessages(UserMessage userMessage) {
         List<ChatMessage> messages = new ArrayList<>();
@@ -300,20 +293,14 @@ public class AgentService {
         try {
             if (imageId != null) {
                 memoryManager.saveMessageWithImage(userMessage, estimateTokenCount(userMessage), imageId);
-                log.debug("用户消息已保存到数据库: imageId={}", imageId);
             } else {
-                // 向后兼容：如果没有 imageId，使用旧方法
+                // 向后兼容：if没有 imageId，使用旧方法
                 memoryManager.saveMessage(userMessage, estimateTokenCount(userMessage));
-                log.warn("用户消息保存时缺少 imageId，使用旧方法");
             }
 
             // Perform periodic memory management
             if (chatMemory instanceof ImageContentCleanableChatMemory cleanableMemory) {
-                MemoryManager.MemoryManagementResult result = memoryManager.manageMemory(cleanableMemory);
-                if (result.imagesCleanedCount() > 0 || result.compressionPerformed()) {
-                    log.info("Memory management: {} images cleaned, compression: {}",
-                            result.imagesCleanedCount(), result.compressionPerformed());
-                }
+                memoryManager.manageMemory(cleanableMemory);
             }
         } catch (Exception e) {
             log.warn("Failed to persist message to database", e);
@@ -321,9 +308,9 @@ public class AgentService {
         }
 
     /**
-     * 执行工具调用循环。
+     * 执lines工具调用循环。
      *
-     * <p>本方法**不设置固定的最大迭代次数**，只要模型持续发起工具调用且未发出终止信号，
+     * <p>本方法**不设置固定的最大迭代times数**，只要模型持续发起工具调用且not 发出终止信号，
      * 就会继续循环，直到：</p>
      * <ul>
      *     <li>模型不再请求工具调用，仅返回文本回复，或</li>
@@ -333,46 +320,43 @@ public class AgentService {
     private String executeToolCallLoop(List<ChatMessage> messages) {
         StringBuilder fullResponse = new StringBuilder();
 
-        // 【关键】合并工具列表：基础工具 + Skill 工具（由 ToolExecutionService 统一管理）
+        // 【关键】合并工具columns表：基础工具 + Skill 工具（由 ToolExecutionService 统一管理）
         List<ToolSpecification> allTools = toolExecutionService.getCombinedToolSpecifications();
-        log.debug("可用工具总数: {}", allTools.size());
 
         int iteration = 0;
         while (true) {
             iteration++;
-            log.info("🔄 工具调用迭代 {}", iteration);
 
             IterationOutcome outcome = processSingleIteration(messages, allTools, fullResponse);
             if (outcome.finished()) {
-                // 没有工具调用，或收到明确的终止信号（例如 complete_tool）
+                // 没有工具调用，或收到明确的终止信号（for example complete_tool）
                 return outcome.response();
             }
         }
     }
 
     /**
-     * 处理单次迭代：调用模型、保存响应、检查工具调用
-     * @return 迭代结果：是否已经结束，以及当前累计响应
+     * 处理单times迭代：调用模型、保存响应、检查工具调用
+     * @return 迭代结果：是否has been 经end，以及when前累计响应
      */
     private IterationOutcome processSingleIteration(List<ChatMessage> messages,
                                                     List<ToolSpecification> allTools,
                                                     StringBuilder fullResponse) {
-        // 每次从 LlmFactory 获取模型（支持动态配置更新）
+        // 每times从 LlmFactory 获取模型（支持动态configuration更新）
         ChatLanguageModel chatModel = getChatModel();
         if (chatModel == null) {
-            throw new IllegalStateException("❌ Agent 未初始化，请检查 API Key 配置");
+            throw new IllegalStateException(" Agent not initialized, please check API Key configuration");
         }
         
-        // 调用模型（使用合并后的工具列表），并统计响应耗时
+        // 调用模型（使用合并后的工具columns表），并统计响应耗时
         long llmStartTime = System.currentTimeMillis();
         Response<AiMessage> response = chatModel.generate(messages, allTools);
         long llmEndTime = System.currentTimeMillis();
         long llmLatencyMs = llmEndTime - llmStartTime;
 
         AiMessage aiMessage = response.content();
-        log.info("🤖 Agent 响应: {}", aiMessage);
-        
-        // 添加 AI 响应到消息列表
+
+        // 添加 AI 响应到消息columns表
         messages.add(aiMessage);
         // 保存 AI 响应到记忆（包括工具调用请求）
         chatMemory.add(aiMessage);
@@ -391,20 +375,17 @@ public class AgentService {
             if (textResponse != null && !textResponse.isBlank()) {
                 fullResponse.append(textResponse);
             }
-            // 统一日志：本轮消息数 + LLM 耗时 + 工具请求数量（此处为 0）
-            log.info("📊 本轮统计 | 消息数: {} | LLM 响应耗时: {} ms | 发送工具消息数量: {}",
-                    messages.size(), llmLatencyMs, 0);
-            log.info("🤖 Agent 响应: {}", fullResponse);
+            // 记录 MessageList 到专用日志文件
+            messageListLogger.logMessageList(messages, (int) llmLatencyMs, 0);
             return new IterationOutcome(true, fullResponse.toString());
         }
 
-        // 执行工具调用
+        // 执lines工具调用
         List<ToolExecutionRequest> toolRequests = aiMessage.toolExecutionRequests();
         ToolExecutionResult result = executeToolRequests(toolRequests, messages);
 
-        // 统一日志：本轮消息数 + LLM 耗时 + 工具请求数量（工具调用请求数）
-        log.info("📊 本轮统计 | 消息数: {} | LLM 响应耗时: {} ms | 发送工具消息数量: {}",
-                messages.size(), llmLatencyMs, toolRequests.size());
+        // 记录 MessageList 到专用日志文件
+        messageListLogger.logMessageList(messages, (int) llmLatencyMs, toolRequests.size());
         
         // 更新响应
         fullResponse.append(result.summary());
@@ -412,9 +393,9 @@ public class AgentService {
             fullResponse.append(aiMessage.text()).append("\n");
         }
 
-        // 如果工具结果中包含"终止信号"（例如 complete_tool），结束循环
+        // if工具结果中包含"终止信号"（for example complete_tool），end循环
         if (result.shouldTerminate()) {
-            log.info("✅ 收到终止信号工具调用，结束主循环");
+            log.info(" Received termination signal from tool call, ending main loop");
             return new IterationOutcome(true, fullResponse.toString());
         }
 
@@ -422,12 +403,10 @@ public class AgentService {
     }
 
         /**
-         * 执行工具调用请求列表（通过统一工具执行服务路由基础工具和 Skill 工具）
+         * 执lines工具调用请求columns表（通过统一工具执lines服务路由基础工具和 Skill 工具）
          */
         private ToolExecutionResult executeToolRequests(List<ToolExecutionRequest> toolRequests,
                                                      List<ChatMessage> messages) {
-            log.info("🔧 执行 {} 个工具调用", toolRequests.size());
-
             StringBuilder toolResultsSummary = new StringBuilder();
         boolean hasVisualImpact = false;
         boolean shouldTerminate = false;
@@ -437,23 +416,23 @@ public class AgentService {
                 String toolName = request.name();
                 String toolArgs = request.arguments();
 
-                log.info("  → 调用工具: {}({})", toolName, toolArgs);
+                log.info(" Calling tool: {}({})", toolName, toolArgs);
                 executedToolNames.add(toolName);
 
-                // 【关键】通过统一工具执行服务路由（基础工具 + Skill 工具）
+                // 【关键】通过统一工具执lines服务路由（基础工具 + Skill 工具）
                 String result = toolExecutionService.executeUnified(toolName, toolArgs);
-                log.info("  ← 工具结果: {}", result.split("\n")[0]); // 只打印第一行
+                log.info(" Tool result: {}", result.split("\n")[0]); // 只打印第一lines
 
-                // 检测工具执行失败（仅用于日志记录，让模型通过上下文自己判断）
-                if (result != null && (result.contains("❌") || result.contains("失败") ||
-                    result.contains("错误") || result.contains("异常") || result.contains("Error"))) {
-                    log.warn("⚠️ 工具执行失败: {}", result.split("\n")[0]);
+                // 检测工具执linesfailed（仅用于日志记录，让模型通过上下文自己判断）
+                if (result != null && (result.contains("") || result.contains("failed") ||
+                    result.contains("error") || result.contains("exception") || result.contains("Error"))) {
+                    log.warn("Tool execution failed: {}", toolName);
                 }
 
-                // 添加工具执行结果
+                // 添加工具执lines结果
                 ToolCallResultMessage toolResult;
                 if (toolExecutionService.isVisualImpactTool(toolName)) {
-                    // 视觉影响工具：等待UI响应后截图并包含在结果中
+                    // 视觉影响工具：etc待UI响应后截图并包含在结果中
                     String screenshot = captureScreenshotAfterTool(toolName);
                     if (screenshot != null) {
                         toolResult = ToolCallResultMessage.from(request, result, screenshot);
@@ -468,12 +447,12 @@ public class AgentService {
 
                 toolResultsSummary.append(String.format("[%s] %s\n", toolName, result.split("\n")[0]));
 
-                // 判断是否是可能影响屏幕的操作（统一由 ToolExecutionService 决定）
+                // 判断是否是may影响屏幕的操作（统一由 ToolExecutionService 决定）
                 if (toolExecutionService.isVisualImpactTool(toolName)) {
                     hasVisualImpact = true;
                 }
 
-                // 如果调用了里程碑完成工具，视为显式终止信号
+                // if调用了里程碑completed工具，视为显式终止信号
                 if ("complete_tool".equals(toolName)) {
                     shouldTerminate = true;
                 }
@@ -483,12 +462,11 @@ public class AgentService {
     }
 
     /**
-     * 工具执行后截图
+     * 工具执lines后截图
      */
     private String captureScreenshotAfterTool(String toolName) {
         try {
             int waitTime = getWaitTimeForTools(List.of(toolName));
-            log.info("⏳ 等待 UI 响应 {}ms (工具: {})...", waitTime, toolName);
             Thread.sleep(waitTime);
 
             ScreenCapturer.ImageCapture capture = screenCapturer.captureWithDedup(true, true);
@@ -496,7 +474,6 @@ public class AgentService {
             String base64Image = capture.base64();
 
             if (base64Image == null) {
-                log.warn("截图失败，工具: {}", toolName);
                 return null;
             }
 
@@ -506,44 +483,42 @@ public class AgentService {
                 currentTurn.recordImage(imageId);
             }
 
-            log.info("📸 工具执行后截图完成: imageId={}, 工具={}", imageId, toolName);
             return base64Image;
         } catch (Exception e) {
-            log.warn("工具执行后截图失败: {}", e.getMessage());
             return null;
         }
     }
 
     /**
-     * 根据工具类型动态计算等待时间
+     * 根据工具类型动态计算etc待时间
      * 
-     * @param toolNames 执行的工具名称列表
-     * @return 等待时间（毫秒）
+     * @param toolNames 执lines的工具名称columns表
+     * @return etc待时间（毫seconds）
      */
     private int getWaitTimeForTools(List<String> toolNames) {
         if (toolNames == null || toolNames.isEmpty()) {
-            return toolWaitMs; // 默认等待时间
+            return toolWaitMs; // 默认etc待时间
         }
         
-        // 取所有工具中需要最长等待时间的工具
+        // 取所有工具中need最长etc待时间的工具
         int maxWaitTime = toolWaitMs;
         for (String toolName : toolNames) {
             int waitTime = switch (toolName) {
-                // 文本输入操作 - 需要更长时间让 UI 响应和渲染
+                // 文本输入操作 - need更长时间让 UI 响应和渲染
                 case "type_text_at" -> 1500;
-                // 打开应用/网页 - 需要较长时间加载
+                // 打开应用/网pages - need较长时间加载
                 case "openApplication", "openURL", "open_browser" -> 2000;
-                // 执行脚本 - 可能需要时间执行
+                // 执lines脚本 - mayneed时间执lines
                 case "executeAppleScript", "executeShell" -> 1200;
-                // 点击操作 - 中等等待时间
+                // 点击操作 - 中etc待时间
                 case "click", "doubleClick", "rightClick" -> 800;
-                // 拖拽操作 - 需要时间完成动画
+                // 拖拽操作 - need时间completed动画
                 case "drag" -> 1000;
-                // 滚动操作 - 需要时间完成滚动动画
+                // 滚动操作 - need时间completed滚动动画
                 case "scroll" -> 600;
-                // 打开文件 - 可能需要时间加载
+                // 打开文件 - mayneed时间加载
                 case "openFile" -> 1500;
-                // 等待操作 - 本身就有等待，截图前不需要额外等待太久
+                // etc待操作 - 本身就有etc待，截图前不need额外etc待太久
                 case "wait" -> 300;
                 // 其他操作使用默认值
                 default -> toolWaitMs;
@@ -555,14 +530,14 @@ public class AgentService {
     }
 
     /**
-     * 单轮工具执行的封装结果
+     * 单轮工具执lines的封装结果
      */
     private static class ToolExecutionResult {
         private final String summary;
         private final boolean hasVisualImpact;
-        /** 是否收到显式终止信号（例如 complete_tool） */
+        /** 是否收到显式终止信号（for example complete_tool） */
         private final boolean shouldTerminate;
-        /** 执行的工具名称列表（用于动态调整等待时间） */
+        /** 执lines的工具名称columns表（用于动态调整etc待时间） */
         private final List<String> toolNames;
 
         ToolExecutionResult(String summary, boolean hasVisualImpact, boolean shouldTerminate, List<String> toolNames) {
@@ -590,7 +565,7 @@ public class AgentService {
     }
 
     /**
-     * 单次迭代的返回结果：是否结束 + 累计响应
+     * 单times迭代的返回结果：是否end + 累计响应
      */
     private record IterationOutcome(boolean finished, String response) {}
 
@@ -602,7 +577,7 @@ public class AgentService {
     }
 
     /**
-     * 带重试的执行
+     * 带重试的执lines
      */
     private String executeWithRetry(ThrowingSupplier<String> action) {
         Exception lastException = null;
@@ -616,10 +591,10 @@ public class AgentService {
 
                 if (errorMsg != null && (errorMsg.contains("429") || errorMsg.contains("RESOURCE_EXHAUSTED"))) {
                     long waitTime = retryDelayMs * attempt * 2;
-                    log.warn("⏳ API 限流/配额耗尽，等待 {}ms 后重试 ({}/{})", waitTime, attempt, maxRetries);
+                    log.warn(" API rate limit/quota exhausted, waiting {}ms before retry ({}/{})", waitTime, attempt, maxRetries);
                     sleep(waitTime);
                 } else {
-                    log.error("❌ 执行失败 ({}/{}): {}", attempt, maxRetries, errorMsg);
+                    log.error(" Execution failed ({}/{}): {}", attempt, maxRetries, errorMsg);
                     if (attempt < maxRetries) {
                         sleep(retryDelayMs);
                     }
@@ -627,8 +602,8 @@ public class AgentService {
             }
         }
 
-        log.error("❌ 重试 {} 次后仍然失败", maxRetries, lastException);
-        return "处理失败: " + (lastException != null ? lastException.getMessage() : "未知错误");
+        log.error(" Still failed after {} retries", maxRetries, lastException);
+        return "处理failed: " + (lastException != null ? lastException.getMessage() : "not 知error");
     }
 
     private void sleep(long ms) {
@@ -640,18 +615,18 @@ public class AgentService {
     }
 
     /**
-     * 获取 Chat 模型实例（每次从 LlmFactory 获取，支持动态配置更新）
-     * 当配置更新时，LlmFactory 会清除缓存，下次获取时会使用新配置
+     * 获取 Chat 模型实例（每times从 LlmFactory 获取，支持动态configuration更新）
+     * whenconfiguration更新时，LlmFactory 会清除缓存，下times获取时会使用新configuration
      */
     private ChatLanguageModel getChatModel() {
         try {
             if (!llmFactory.isModelAvailable(modelAlias)) {
-                log.warn("⚠️ 模型 '{}' 未配置或 API Key 缺失", modelAlias);
+                log.warn(" Model '{}' not configured or API Key missing", modelAlias);
                 return null;
             }
             return llmFactory.getModel(modelAlias);
         } catch (Exception e) {
-            log.error("❌ 获取模型失败: {}", e.getMessage(), e);
+            log.error(" Failed to get model: {}", e.getMessage(), e);
             return null;
         }
     }
@@ -660,18 +635,18 @@ public class AgentService {
      * 检查 Agent 是否可用
      */
     public boolean isAvailable() {
-        // 每次从 LlmFactory 获取模型（支持动态配置更新）
+        // 每times从 LlmFactory 获取模型（支持动态configuration更新）
         ChatLanguageModel chatModel = getChatModel();
         return chatModel != null && toolExecutionService.getToolCount() > 0;
     }
 
     /**
-     * 获取模型信息
+     * 获取模型info
      */
     public String getModelInfo() {
-        return String.format("模型: %s, 状态: %s, 工具: %d 个",
+        return String.format("Model: %s, Status: %s, Tools: %d items",
                 modelAlias,
-                isAvailable() ? "✅ 可用" : "❌ 不可用",
+                isAvailable() ? " Available" : " Not available",
                 toolExecutionService.getToolCount());
     }
 
@@ -697,7 +672,7 @@ public class AgentService {
             chatMemory.clear();
         }
         memoryManager.resetSession();
-        log.info("🔄 对话历史已重置");
+        log.info(" Conversation history reset");
     }
 
     /**
@@ -710,10 +685,10 @@ public class AgentService {
             text = userMsg.hasSingleText() ? userMsg.singleText() : userMsg.toString();
         } else if (message instanceof AiMessage aiMsg) {
             text = aiMsg.text();
-            // 如果 text 为 null（只有工具调用），估算工具调用的 token 数
+            // if text 为 null（只有工具调用），估算工具调用的 token 数
             if (text == null) {
                 if (aiMsg.hasToolExecutionRequests()) {
-                    // 估算每个工具调用的 token 数（工具名 + 参数）
+                    // 估算每items工具调用的 token 数（工具名 + 参数）
                     int toolTokenCount = 0;
                     for (var toolRequest : aiMsg.toolExecutionRequests()) {
                         // 工具名大约 10 tokens，参数大约按长度估算
@@ -738,7 +713,7 @@ public class AgentService {
 
     /**
      * 构建带 Skill 上下文的 System Prompt。
-     * 如果有活动的 Skill 上下文，将其知识注入到 System Prompt 中。
+     * if有活动的 Skill 上下文，will 其知识注入到 System Prompt 中。
      */
     private String buildSystemPromptWithSkillContext() {
         if (activeSkillContext == null) {
@@ -750,11 +725,10 @@ public class AgentService {
         String enhancedPrompt = AgentPrompts.SYSTEM_PROMPT
                 + String.format(AgentPrompts.SKILL_CONTEXT_TEMPLATE, skillInjection);
 
-        log.info("📚 已注入 Skill 上下文: {}", activeSkillContext.getSkillName());
         return enhancedPrompt;
     }
 
-    // Skill 工具数量可通过 ToolExecutionService 的合并视图间接获得，如有需要可在此处添加包装方法
+    // Skill 工具数量可通过 ToolExecutionService 的合并视图间接获得，如有need可在此处添加包装方法
 
     @FunctionalInterface
     interface ThrowingSupplier<T> {

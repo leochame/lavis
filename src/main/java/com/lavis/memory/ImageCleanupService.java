@@ -66,8 +66,7 @@ public class ImageCleanupService {
         }
 
         if (cleanedCount.get() > 0) {
-            log.info("In-memory cleanup: {} old images removed, {} recent images kept",
-                    cleanedCount.get(), Math.min(imageCount.get(), keepLastN));
+            // Silently clean up
         }
 
         return cleanedCount.get();
@@ -83,10 +82,6 @@ public class ImageCleanupService {
     public int cleanupSessionImages(String sessionKey, int keepLastN) {
         try {
             int deletedCount = sessionStore.cleanupOldImages(sessionKey, keepLastN);
-            if (deletedCount > 0) {
-                log.info("Database cleanup: {} old image messages removed from session {}",
-                        deletedCount, sessionKey);
-            }
             return deletedCount;
         } catch (Exception e) {
             log.error("Error cleaning up images for session {}", sessionKey, e);
