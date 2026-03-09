@@ -17,7 +17,7 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ImageContent;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.TextContent;
-import dev.langchain4j.data.message.ToolExecutionResultMessage;
+import com.lavis.cognitive.message.ToolCallResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.model.chat.ChatLanguageModel;
@@ -412,11 +412,6 @@ public class AgentService {
             fullResponse.append(aiMessage.text()).append("\n");
         }
 
-        // 如果有视觉影响，重新截图并注入观察
-        if (result.hasVisualImpact()) {
-            captureAndInjectObservation(messages, result.summary(), result.toolNames());
-        }
-
         // 如果工具结果中包含"终止信号"（例如 complete_tool），结束循环
         if (result.shouldTerminate()) {
             log.info("✅ 收到终止信号工具调用，结束主循环");
@@ -456,9 +451,19 @@ public class AgentService {
                 }
 
                 // 添加工具执行结果
-            ToolExecutionResultMessage toolResult = ToolExecutionResultMessage.from(request, result);
+                ToolCallResultMessage toolResult;
+                if (toolExecutionService.isVisualImpactTool(toolName)) {
+                    // 视觉影响工具：等待UI响应后截图并包含在结果中
+                    String screenshot = captureScreenshotAfterTool(toolName);
+                    if (screenshot != null) {
+                        toolResult = ToolCallResultMessage.from(request, result, screenshot);
+                    } else {
+                        toolResult = ToolCallResultMessage.from(request, result);
+                    }
+                } else {
+                    toolResult = ToolCallResultMessage.from(request, result);
+                }
                 messages.add(toolResult);
-                // 保存工具执行结果到记忆
                 chatMemory.add(toolResult);
 
                 toolResultsSummary.append(String.format("[%s] %s\n", toolName, result.split("\n")[0]));
@@ -475,6 +480,38 @@ public class AgentService {
             }
 
         return new ToolExecutionResult(toolResultsSummary.toString(), hasVisualImpact, shouldTerminate, executedToolNames);
+    }
+
+    /**
+     * 工具执行后截图
+     */
+    private String captureScreenshotAfterTool(String toolName) {
+        try {
+            int waitTime = getWaitTimeForTools(List.of(toolName));
+            log.info("⏳ 等待 UI 响应 {}ms (工具: {})...", waitTime, toolName);
+            Thread.sleep(waitTime);
+
+            ScreenCapturer.ImageCapture capture = screenCapturer.captureWithDedup(true, true);
+            String imageId = capture.imageId();
+            String base64Image = capture.base64();
+
+            if (base64Image == null) {
+                log.warn("截图失败，工具: {}", toolName);
+                return null;
+            }
+
+            // 记录图片到 Turn 上下文
+            TurnContext currentTurn = TurnContext.current();
+            if (currentTurn != null) {
+                currentTurn.recordImage(imageId);
+            }
+
+            log.info("📸 工具执行后截图完成: imageId={}, 工具={}", imageId, toolName);
+            return base64Image;
+        } catch (Exception e) {
+            log.warn("工具执行后截图失败: {}", e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -516,114 +553,6 @@ public class AgentService {
         
         return maxWaitTime;
     }
-
-    /**
-     * 重新截图并注入观察消息
-     * 
-     * @param messages 消息列表
-     * @param toolResultsSummary 工具执行结果摘要
-     * @param toolNames 执行的工具名称列表（用于动态调整等待时间）
-     */
-    private void captureAndInjectObservation(List<ChatMessage> messages, String toolResultsSummary, List<String> toolNames) {
-                try {
-                    // 根据工具类型动态计算等待时间
-                    int waitTime = getWaitTimeForTools(toolNames);
-                    log.info("⏳ 等待 UI 响应 {}ms (工具: {})...", waitTime, toolNames);
-                    Thread.sleep(waitTime);
-
-                    // 【关键修复】工具执行后强制获取新截图，不使用去重
-                    // 因为工具执行后屏幕状态可能已改变，即使变化很小也需要获取最新状态
-                    ScreenCapturer.ImageCapture newCapture = screenCapturer.captureWithDedup(true, true);
-                    String newImageId = newCapture.imageId();
-                    String newScreenshot = newCapture.base64();
-                    
-                    // 如果仍然为 null（理论上不应该发生，但做安全检查）
-                    if (newScreenshot == null) {
-                        log.error("❌ 重新截图失败：强制捕获后仍无法获取图片数据，尝试备用方案");
-                        // 备用方案：清除缓存后重试
-                        screenCapturer.clearDedupCache();
-                        newCapture = screenCapturer.captureWithDedup(true, true);
-                        newImageId = newCapture.imageId();
-                        newScreenshot = newCapture.base64();
-                        
-                        if (newScreenshot == null) {
-                            log.error("❌ 重新截图彻底失败，注入错误消息通知模型");
-                            // 通知模型截图失败，而不是静默跳过
-                            String errorMessage = String.format("""
-                                    ## ⚠️ Screenshot Capture Failed
-                                    
-                                    Last Step Execution Result:
-                                    %s
-                                    
-                                    **Critical Issue**: Unable to capture screenshot after operation.
-                                    This may indicate:
-                                    1. Screen capture service error
-                                    2. System resource issue
-                                    3. Permission problem
-                                    
-                                    Please proceed with caution and verify the operation result based on tool execution feedback.
-                                    """, toolResultsSummary);
-                            
-                            UserMessage errorObservation = UserMessage.from(TextContent.from(errorMessage));
-                            messages.add(errorObservation);
-                            chatMemory.add(errorObservation);
-                            return;
-                        }
-                    }
-                    
-                    log.info("📸 重新截图完成: imageId={}, 复用={}, 注入新的视觉观察",
-                            newImageId, newCapture.isReused());
-
-                    // 记录图片到 Turn 上下文
-                    TurnContext currentTurn = TurnContext.current();
-                    if (currentTurn != null) {
-                        currentTurn.recordImage(newImageId);
-                    }
-
-                    // 构建观察消息，告诉模型这是操作后的新截图
-                    // 提示模型自己检查是否重复操作
-                    String observationText = String.format("""
-                            ## Screen Observation After Operation
-
-                            Last Step Execution Result:
-                            %s
-
-                            Please carefully observe current latest screenshot and judge:
-                            1. Was operation successful? Did screen change as expected?
-                            2. If successful, what should be done next?
-                            3. If failed or no change, how should it be adjusted?
-
-                            **Important Self-Check Before Next Action:**
-                            - Review your conversation history: Have you already tried this same operation or similar operations multiple times?
-                            - If you notice you've executed the same tool with similar parameters 2-3 times without visible success, you MUST try a different approach:
-                              * Adjust coordinates (try 5-30 pixels offset)
-                              * Try a different action type (e.g., double-click instead of click)
-                              * Check if there's a popup, dialog, or loading state blocking the operation
-                              * Wait longer or check if the target element is actually accessible
-                            - Do NOT repeat the same operation if it hasn't worked after 2-3 attempts
-
-                            **Note**: Always make decisions based on this latest screenshot and your action history
-                    """, toolResultsSummary);
-
-                    UserMessage observationMessage = UserMessage.from(
-                            TextContent.from(observationText),
-                            ImageContent.from(newScreenshot, "image/jpeg"));
-                    messages.add(observationMessage);
-                    // 保存观察消息到记忆
-                    chatMemory.add(observationMessage);
-                    
-                    // Context Engineering: 保存观察消息到数据库（带 imageId 追踪）
-                    try {
-                        memoryManager.saveMessageWithImage(observationMessage, 
-                                estimateTokenCount(observationMessage), newImageId);
-                        log.debug("观察消息已保存到数据库: imageId={}", newImageId);
-                    } catch (Exception e) {
-                        log.warn("保存观察消息到数据库失败: {}", e.getMessage());
-                    }
-                } catch (Exception e) {
-                    log.warn("截图失败，继续执行: {}", e.getMessage());
-                }
-            }
 
     /**
      * 单轮工具执行的封装结果
