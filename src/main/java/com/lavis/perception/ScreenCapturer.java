@@ -19,7 +19,7 @@ import java.util.UUID;
  * 感知模块 - 屏幕截图器
  * * 【坐标系统】
  * 使用 Gemini 标准坐标系统：
- * - 范围: 0-999 归一化坐标（1000x1000 网格，共 1000 个值）
+ * - 范围: 0-999 归一化坐标（1000x1000 网格，共 1000 items值）
  * - 格式: [y_min, x_min, y_max, x_max] (注意 Y 在 X 前面)
  * - 转换: geminiToLogical() / logicalToGemini()
  * * 负责高频截取屏幕，支持 Retina 缩放压缩
@@ -36,14 +36,14 @@ public class ScreenCapturer {
     @Autowired(required = false)
     private WorkflowEventService workflowEventService;
 
-    // 截图前隐藏窗口的等待时间（毫秒）
+    // 截图前隐藏窗口的etc待时间（毫seconds）
     private static final int WINDOW_HIDE_DELAY_MS = 100;
 
     // 截图压缩宽度 (仅用于减少 token 消耗，不影响坐标系统)
     private static final int COMPRESS_WIDTH = 768;
 
     // ========================================
-    // Context Engineering: 感知去重配置
+    // Context Engineering: 感知去重configuration
     // ========================================
 
     @Value("${lavis.perception.dedup.enabled:true}")
@@ -63,7 +63,7 @@ public class ScreenCapturer {
 
     /**
      * Gemini 坐标归一化范围 (0-999)
-     * 根据 Gemini API 文档，坐标范围是 0-999（1000x1000 网格，共 1000 个值）
+     * 根据 Gemini API 文档，坐标范围是 0-999（1000x1000 网格，共 1000 items值）
      */
     public static final int COORD_MAX = 999;
 
@@ -73,13 +73,13 @@ public class ScreenCapturer {
     private static final Color CLICK_MARKER_COLOR = new Color(0, 255, 0, 180);
 
     // 网格样式
-    private static final int GRID_DIVISIONS = 10;  // 10x10 网格 (每格代表 100 个坐标单位)
+    private static final int GRID_DIVISIONS = 10;  // 10x10 网格 (每格代表 100 items坐标单位)
     private static final Color GRID_LINE_COLOR = new Color(255, 255, 0, 60);
     private static final Color GRID_MAJOR_COLOR = new Color(255, 165, 0, 100);
     private static final Color GRID_LABEL_BG = new Color(0, 0, 0, 150);
     private static final Color GRID_LABEL_COLOR = new Color(255, 255, 200);
 
-    // 最后一次点击位置 (逻辑屏幕坐标)
+    // 最后一times点击位置 (逻辑屏幕坐标)
     private volatile Point lastClickPosition = null;
     private volatile long lastClickTime = 0;
 
@@ -93,7 +93,7 @@ public class ScreenCapturer {
         this.scaleX = transform.getScaleX();
         this.scaleY = transform.getScaleY();
 
-        log.info("ScreenCapturer 初始化 - Retina 缩放: {}x{}, 坐标系: Gemini 0-{}",
+        log.info("ScreenCapturer initialize - Retina 缩放: {}x{}, 坐标系: Gemini 0-{}",
                 scaleX, scaleY, COORD_MAX);
     }
 
@@ -109,7 +109,7 @@ public class ScreenCapturer {
 
         public static BoundingBox fromArray(int[] coords) {
             if (coords == null || coords.length != 4) {
-                throw new IllegalArgumentException("需要 4 个坐标: [y_min, x_min, y_max, x_max]");
+                throw new IllegalArgumentException("need 4 items坐标: [y_min, x_min, y_max, x_max]");
             }
             return new BoundingBox(coords[0], coords[1], coords[2], coords[3]);
         }
@@ -134,19 +134,19 @@ public class ScreenCapturer {
     }
 
     /**
-     * 解析 Gemini 返回的边界框字符串
+     * 解析 Gemini 返回的边界框characters符串
      * 支持: "[123, 456, 789, 1000]" 或 "123, 456, 789, 1000"
      */
     public BoundingBox parseBoundingBox(String bboxStr) {
         if (bboxStr == null || bboxStr.isBlank()) {
-            throw new IllegalArgumentException("边界框字符串为空");
+            throw new IllegalArgumentException("边界框characters符串为空");
         }
 
         String cleaned = bboxStr.replaceAll("[\\[\\]\\s]", "");
         String[] parts = cleaned.split(",");
 
         if (parts.length != 4) {
-            throw new IllegalArgumentException("无效的边界框格式: " + bboxStr);
+            throw new IllegalArgumentException("invalid的边界框格式: " + bboxStr);
         }
 
         int[] coords = new int[4];
@@ -168,21 +168,21 @@ public class ScreenCapturer {
     /**
      * Gemini 坐标 (0-999) → 逻辑屏幕坐标
      * * 【精度说明】
-     *   - Gemini API 提供 1000 个坐标值 (0-999)，无法精确表示所有像素位置
-     *   - 精度损失：每个 Gemini 坐标单位 ≈ (screen.width-1)/999 像素
+     *   - Gemini API 提供 1000 items坐标值 (0-999)，无法精确表示所有像素位置
+     *   - 精度损失：每items Gemini 坐标单位 ≈ (screen.width-1)/999 像素
      *   - 示例：1920px 屏幕 → 每单位 ≈ 1.922px，最大误差约 ±0.96px
      *   - 示例：2560px 屏幕 → 每单位 ≈ 2.56px，最大误差约 ±1.28px
      *   - 这是 API 限制，无法避免。使用 Math.round() 四舍五入最小化误差
-     * * 【精度改进】使用 Math.round() 进行四舍五入，而不是直接截断，提高坐标转换精度
+     * * 【精度改进】使用 Math.round() 进lines四舍五入，而不是直接截断，提高坐标转换精度
      * * 【修复】增加边界钳位，确保坐标不超出 [0, width-1]
      * * 【修正】根据 Gemini API 文档，坐标范围是 0-999，映射到屏幕坐标 [0, width-1]
      */
     public Point toLogical(int geminiX, int geminiY) {
         Dimension screen = getScreenSize();
-        // 将 0-999 映射到 0 到 screen.width-1
+        // will  0-999 映射到 0 到 screen.width-1
         // 使用 (screen.width - 1) 确保 999 映射到屏幕右边缘
-        // 处理边界情况：如果屏幕宽度为 1，直接返回 0
-        // 精度：每个 Gemini 单位 = (screen.width-1)/999 像素，使用四舍五入最小化误差
+        // 处理边界情况：if屏幕宽度为 1，直接返回 0
+        // 精度：每items Gemini 单位 = (screen.width-1)/999 像素，使用四舍五入最小化误差
         double xDouble = screen.width > 1 ? (double) geminiX / COORD_MAX * (screen.width - 1) : 0;
         double yDouble = screen.height > 1 ? (double) geminiY / COORD_MAX * (screen.height - 1) : 0;
         // 四舍五入后钳位到 [0, width-1] 防止溢出
@@ -218,14 +218,14 @@ public class ScreenCapturer {
     /**
      * 逻辑屏幕坐标 → Gemini 坐标 (0-999)
      * * 【精度说明】同 toLogical()，精度损失是 API 限制，使用四舍五入最小化误差
-     * * 【精度改进】使用 Math.round() 进行四舍五入，提高坐标转换精度
+     * * 【精度改进】使用 Math.round() 进lines四舍五入，提高坐标转换精度
      * * 【修正】根据 Gemini API 文档，坐标范围是 0-999
      */
     public Point toGemini(int logicalX, int logicalY) {
         Dimension screen = getScreenSize();
-        // 将逻辑坐标映射到 0-999 范围
+        // will 逻辑坐标映射到 0-999 范围
         // 使用 (screen.width - 1) 确保屏幕右边缘映射到 999
-        // 处理边界情况：如果屏幕宽度为 1，直接返回 0
+        // 处理边界情况：if屏幕宽度为 1，直接返回 0
         // 精度：使用四舍五入最小化误差
         double xDouble = screen.width > 1 ? (double) logicalX / (screen.width - 1) * COORD_MAX : 0;
         double yDouble = screen.height > 1 ? (double) logicalY / (screen.height - 1) * COORD_MAX : 0;
@@ -241,21 +241,21 @@ public class ScreenCapturer {
 
     /**
      * 精度分析：计算坐标转换的精度损失
-     * @return 精度分析信息字符串
+     * @return 精度分析infocharacters符串
      */
     public String getPrecisionAnalysis() {
         Dimension screen = getScreenSize();
         double pixelsPerUnitX = screen.width > 1 ? (double) (screen.width - 1) / COORD_MAX : 0;
         double pixelsPerUnitY = screen.height > 1 ? (double) (screen.height - 1) / COORD_MAX : 0;
-        double maxErrorX = pixelsPerUnitX / 2.0;  // 最大误差约为半个单位
+        double maxErrorX = pixelsPerUnitX / 2.0;  // 最大误差约为半items单位
         double maxErrorY = pixelsPerUnitY / 2.0;
         
         return String.format(
             "坐标精度分析 [屏幕 %dx%d]:\n" +
-            "  - Gemini 坐标范围: 0-%d (共 %d 个值)\n" +
+            "  - Gemini 坐标范围: 0-%d (共 %d items值)\n" +
             "  - X 轴: 每单位 ≈ %.3f 像素，最大误差约 ±%.3f 像素\n" +
             "  - Y 轴: 每单位 ≈ %.3f 像素，最大误差约 ±%.3f 像素\n" +
-            "  - 说明: 精度损失是 Gemini API 限制（仅提供 1000 个坐标值），使用四舍五入最小化误差",
+            "  - 说明: 精度损失是 Gemini API 限制（仅提供 1000 items坐标值），使用四舍五入最小化误差",
             screen.width, screen.height,
             COORD_MAX, COORD_MAX + 1,
             pixelsPerUnitX, maxErrorX,
@@ -286,7 +286,7 @@ public class ScreenCapturer {
     }
 
     /**
-     * 安全区域配置
+     * 安全区域configuration
      */
     public static class SafeZone {
         public final int top;     // 避开菜单栏
@@ -399,13 +399,13 @@ public class ScreenCapturer {
         // 绘制网格（标签显示 Gemini 坐标 0-999）
         drawGeminiGrid(compressed);
 
-        // 绘制鼠标位置（将物理坐标转为逻辑坐标，避免 Retina 2x 偏差）
+        // 绘制鼠标位置（will 物理坐标转为逻辑坐标，避免 Retina 2x 偏差）
         Point mouseLogical = getMouseLogicalLocation();
         Point mouseGemini = toGemini(mouseLogical.x, mouseLogical.y);
         Point mouseOnImage = logicalToImageCoord(mouseLogical, compressed);
         drawCursorMarker(compressed, mouseOnImage, mouseGemini);
 
-        // 绘制上次点击位置
+        // 绘制上times点击位置
         if (lastClickPosition != null && (System.currentTimeMillis() - lastClickTime) < 5000) {
             Point clickGemini = toGemini(lastClickPosition.x, lastClickPosition.y);
             Point clickOnImage = logicalToImageCoord(lastClickPosition, compressed);
@@ -421,7 +421,7 @@ public class ScreenCapturer {
 
         drawGeminiGrid(compressed);
 
-        // 将物理鼠标坐标转换为逻辑坐标
+        // will 物理鼠标坐标转换为逻辑坐标
         Point mouseLogical = getMouseLogicalLocation();
         Point mouseGemini = toGemini(mouseLogical.x, mouseLogical.y);
         Point mouseOnImage = logicalToImageCoord(mouseLogical, compressed);
@@ -449,8 +449,8 @@ public class ScreenCapturer {
 
     /**
      * 获取鼠标的逻辑坐标
-     * * 【修复】在 macOS (Java 9+) 上，MouseInfo 返回的已经是逻辑坐标。
-     * 无需再除以 scale 因子，否则会导致坐标在 Retina 屏上只有实际位置的一半。
+     * * 【修复】在 macOS (Java 9+) 上，MouseInfo 返回的has been 经是逻辑坐标。
+     * 无需再除以 scale 因子，else会导致坐标在 Retina 屏上只有实际位置的一半。
      */
     private Point getMouseLogicalLocation() {
         return MouseInfo.getPointerInfo().getLocation();
@@ -539,7 +539,7 @@ public class ScreenCapturer {
         g2d.drawLine(x - size, y, x + size, y);
         g2d.drawLine(x, y - size, x, y + size);
 
-        // 红色十字
+        // 红色十characters
         g2d.setColor(CURSOR_COLOR);
         g2d.setStroke(new BasicStroke(2));
         g2d.drawLine(x - size, y, x + size, y);
@@ -589,7 +589,7 @@ public class ScreenCapturer {
 
         // 标签
         g2d.setFont(new Font("Arial", Font.BOLD, 9));
-        String label = String.format("上次点击 (%d,%d)", geminiCoord.x, geminiCoord.y);
+        String label = String.format("上times点击 (%d,%d)", geminiCoord.x, geminiCoord.y);
         FontMetrics fm = g2d.getFontMetrics();
         int textW = fm.stringWidth(label);
 
@@ -652,8 +652,8 @@ public class ScreenCapturer {
      * 截图捕获结果
      *
      * @param imageId   图片唯一标识
-     * @param base64    Base64 编码的图片数据（如果复用则为 null）
-     * @param isReused  是否复用了上一张图片
+     * @param base64    Base64 编码的图片数据（if复用则为 null）
+     * @param isReused  是否复用了上一sheets图片
      * @param hash      感知哈希值
      */
     public record ImageCapture(
@@ -670,8 +670,8 @@ public class ScreenCapturer {
     /**
      * 带感知去重的屏幕捕获
      *
-     * 如果当前屏幕与上一次截图的差异低于阈值，则复用上一张图片。
-     * 这可以显著减少 Token 消耗，特别是在等待 UI 响应时。
+     * ifwhen前屏幕与上一times截图的差异低于阈值，则复用上一sheets图片。
+     * 这can 显著减少 Token 消耗，特别是在etc待 UI 响应时。
      *
      * @return ImageCapture 包含 imageId 和 base64（复用时 base64 为 null）
      */
@@ -693,7 +693,7 @@ public class ScreenCapturer {
      * 带感知去重的屏幕捕获
      *
      * @param transparent 是否在截图前隐藏窗口
-     * @param forceCapture 是否强制捕获新截图（忽略去重，用于工具执行后确保获取最新状态）
+     * @param forceCapture 是否强制捕获新截图（忽略去重，用于工具执lines后确保获取最新状态）
      * @return ImageCapture 包含 imageId 和 base64
      */
     public ImageCapture captureWithDedup(boolean transparent, boolean forceCapture) throws IOException {
@@ -703,12 +703,12 @@ public class ScreenCapturer {
         // 计算感知哈希
         long currentHash = computeDHash(compressed);
 
-        // 检查是否可以复用（如果强制捕获，跳过去重检查）
+        // 检查是否can 复用（if强制捕获，跳过去重检查）
         if (!forceCapture && dedupEnabled && lastImageHash != 0 && lastImageBase64 != null) {
             int distance = hammingDistance(currentHash, lastImageHash);
 
             if (distance <= dedupThreshold) {
-                // 安全检查：如果缓存存在，才复用；否则强制重新生成
+                // 安全检查：if缓存存在，才复用；else强制重新生成
                 if (lastImageBase64 != null && lastImageId != null) {
                 log.debug("Screen unchanged (hamming distance: {}), reusing image: {}",
                         distance, lastImageId);
@@ -757,7 +757,7 @@ public class ScreenCapturer {
      * dHash 算法：
      * 1. 缩小图片到 9x8 (产生 8x8=64 位哈希)
      * 2. 转为灰度
-     * 3. 比较相邻像素：左 > 右 则为 1，否则为 0
+     * 3. 比较相邻像素：左 > 右 则为 1，else为 0
      *
      * 优点：
      * - 对缩放、轻微颜色变化不敏感
@@ -789,9 +789,9 @@ public class ScreenCapturer {
     }
 
     /**
-     * 计算两个哈希值的汉明距离
+     * 计算两items哈希值的汉明距离
      *
-     * 汉明距离 = 两个哈希值中不同位的数量
+     * 汉明距离 = 两items哈希值中不同位的数量
      * 距离越小，图片越相似
      */
     private int hammingDistance(long hash1, long hash2) {
@@ -800,7 +800,7 @@ public class ScreenCapturer {
 
     /**
      * 清除去重缓存
-     * 在需要强制刷新时调用
+     * 在need强制刷新时调用
      */
     public void clearDedupCache() {
         lastImageHash = 0;
@@ -810,28 +810,28 @@ public class ScreenCapturer {
     }
 
     /**
-     * 获取上一张图片的 ID
+     * 获取上一sheets图片的 ID
      */
     public String getLastImageId() {
         return lastImageId;
     }
 
     /**
-     * 获取上一张图片的 Base64
+     * 获取上一sheets图片的 Base64
      */
     public String getLastImageBase64() {
         return lastImageBase64;
     }
 
     /**
-     * 获取去重统计信息
+     * 获取去重统计info
      */
     public DedupStats getDedupStats() {
         return new DedupStats(dedupEnabled, dedupThreshold, lastImageId != null);
     }
 
     /**
-     * 去重统计信息
+     * 去重统计info
      */
     public record DedupStats(
             boolean enabled,

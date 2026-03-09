@@ -32,27 +32,27 @@ public class DashScopeSttModel implements SttModel {
     private final OkHttpClient httpClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    // 多模态生成 API (qwen3-asr-flash, qwen-audio 系列)
+    // 多模态生成 API (qwen3-asr-flash, qwen-audio 系columns)
     private static final String MULTIMODAL_API_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
     // 同步语音识别 API (sensevoice, paraformer-realtime)
     private static final String SYNC_RECOGNITION_URL = "https://dashscope.aliyuncs.com/api/v1/services/audio/asr/recognition";
-    // 异步文件转写 API (filetrans 系列)
+    // 异步文件转写 API (filetrans 系columns)
     private static final String ASYNC_TRANSCRIPTION_URL = "https://dashscope.aliyuncs.com/api/v1/services/audio/asr/transcription";
     private static final MediaType JSON_MEDIA_TYPE = MediaType.parse("application/json; charset=utf-8");
 
     public DashScopeSttModel(ModelConfig config) {
         this.config = config;
         // 优化超时设置：
-        // 1. 连接超时：10秒（快速失败，避免长时间等待连接）
-        // 2. 读取超时：使用配置的超时时间（API 处理音频需要时间）
-        // 3. 写入超时：30秒（上传音频文件需要时间，但不应过长）
+        // 1. 连接超时：10seconds（快速failed，避免长时间etc待连接）
+        // 2. 读取超时：使用configuration的超时时间（API 处理音频need时间）
+        // 3. 写入超时：30seconds（上传音频文件need时间，但不应过长）
         int timeoutSeconds = config.getTimeoutSeconds() != null ? config.getTimeoutSeconds() : 60;
         this.httpClient = new OkHttpClient.Builder()
-                .connectTimeout(10, TimeUnit.SECONDS)  // 连接超时：快速失败
+                .connectTimeout(10, TimeUnit.SECONDS)  // 连接超时：快速failed
                 .readTimeout(timeoutSeconds, TimeUnit.SECONDS)  // 读取超时：API 处理时间
                 .writeTimeout(30, TimeUnit.SECONDS)  // 写入超时：上传文件时间
                 .connectionPool(new ConnectionPool(5, 30, TimeUnit.SECONDS))  // 连接池优化
-                .retryOnConnectionFailure(true)  // 启用连接失败重试
+                .retryOnConnectionFailure(true)  // 启用连接failed重试
                 .protocols(java.util.Arrays.asList(Protocol.HTTP_2, Protocol.HTTP_1_1))  // 支持 HTTP/2
                 .build();
     }
@@ -73,7 +73,7 @@ public class DashScopeSttModel implements SttModel {
                 return transcribeWithMultimodalApi(audioFile, modelName);
             } else if (isAsyncModel(modelName)) {
                 throw new UnsupportedOperationException(
-                    "异步模型 " + modelName + " 需要文件 URL，请使用 sensevoice-v1 或 qwen3-asr-flash");
+                    "异步模型 " + modelName + " need文件 URL，请使用 sensevoice-v1 或 qwen3-asr-flash");
             } else {
                 return transcribeWithRecognitionApi(audioFile, modelName);
             }
@@ -85,10 +85,10 @@ public class DashScopeSttModel implements SttModel {
     }
 
     /**
-     * 使用多模态生成 API 进行转写 (qwen3-asr-flash, qwen-audio-turbo 等)
+     * 使用多模态生成 API 进lines转写 (qwen3-asr-flash, qwen-audio-turbo etc)
      * 参考官方文档: https://bailian.console.aliyun.com/cn-beijing/#/doc/?type=model&url=2979031
      * 
-     * 重要：qwen3-asr-flash 是专门的 ASR 模型，用户消息只需要包含音频，不需要文字提示！
+     * 重要：qwen3-asr-flash 是专门的 ASR 模型，用户消息只need包含音频，不need文characters提示！
      */
     private String transcribeWithMultimodalApi(MultipartFile audioFile, String modelName) throws IOException {
         String apiUrl = config.getBaseUrl() != null && !config.getBaseUrl().isBlank()
@@ -99,7 +99,7 @@ public class DashScopeSttModel implements SttModel {
                 config.getApiKey() != null && config.getApiKey().length() > 10
                         ? config.getApiKey().substring(0, 10) : "null");
 
-        // 1. 将音频文件转换为 Base64 Data URI（记录编码时间）
+        // 1. will 音频文件转换为 Base64 Data URI（记录编码时间）
         long encodeStartTime = System.currentTimeMillis();
         byte[] audioBytes = audioFile.getBytes();
         String audioBase64 = Base64.getEncoder().encodeToString(audioBytes);
@@ -119,7 +119,7 @@ public class DashScopeSttModel implements SttModel {
         //   "input": {
         //     "messages": [
         //       {"role": "system", "content": [{"text": ""}]},  // 系统消息（用于定制化识别的Context）
-        //       {"role": "user", "content": [{"audio": "data:audio/mpeg;base64,..."}]}  // 只有音频，无文字！
+        //       {"role": "user", "content": [{"audio": "data:audio/mpeg;base64,..."}]}  // 只有音频，无文characters！
         //     ]
         //   },
         //   "parameters": {
@@ -139,17 +139,17 @@ public class DashScopeSttModel implements SttModel {
         ObjectNode sysText = sysContent.addObject();
         sysText.put("text", "");  // 空文本，用于定制化识别
         
-        // 用户消息 - 重要：只包含音频，不需要文字提示！
+        // 用户消息 - 重要：只包含音频，不need文characters提示！
         ObjectNode userMessage = messages.addObject();
         userMessage.put("role", "user");
         ArrayNode userContent = userMessage.putArray("content");
         ObjectNode audioContent = userContent.addObject();
         audioContent.put("audio", dataUri);
         
-        // ASR 选项参数
+        // ASR 选items参数
         ObjectNode parameters = root.putObject("parameters");
         ObjectNode asrOptions = parameters.putObject("asr_options");
-        asrOptions.put("enable_itn", true);  // 启用逆文本正则化（数字/日期等转换）
+        asrOptions.put("enable_itn", true);  // 启用逆文本正则化（数characters/日期etc转换）
         // asrOptions.put("language", "zh");  // 可选：指定语种以提升准确率
 
         String requestJson = root.toString();
@@ -171,9 +171,9 @@ public class DashScopeSttModel implements SttModel {
             String responseBody = response.body() != null ? response.body().string() : "";
 
             if (!response.isSuccessful()) {
-                log.error("❌ DashScope Multimodal API failed: {} - URL: {} (took {}ms)", 
+                log.error(" DashScope Multimodal API failed: {} - URL: {} (took {}ms)", 
                         response.code(), apiUrl, requestDuration);
-                log.error("❌ Error response body: {}", responseBody);
+                log.error(" Error response body: {}", responseBody);
                 throw new IOException("ASR transcription failed: " + response.code() + " - " + responseBody);
             }
 
@@ -185,7 +185,7 @@ public class DashScopeSttModel implements SttModel {
     }
 
     /**
-     * 使用同步识别 API (sensevoice-v1 等传统模型)
+     * 使用同步识别 API (sensevoice-v1 etc传统模型)
      */
     private String transcribeWithRecognitionApi(MultipartFile audioFile, String modelName) throws IOException {
         String apiUrl = config.getBaseUrl() != null && !config.getBaseUrl().isBlank()
@@ -229,9 +229,9 @@ public class DashScopeSttModel implements SttModel {
             String responseBody = response.body() != null ? response.body().string() : "";
 
             if (!response.isSuccessful()) {
-                log.error("❌ DashScope Recognition API failed: {} - URL: {} (took {}ms)", 
+                log.error(" DashScope Recognition API failed: {} - URL: {} (took {}ms)", 
                         response.code(), apiUrl, requestDuration);
-                log.error("❌ Error response body: {}", responseBody);
+                log.error(" Error response body: {}", responseBody);
                 throw new IOException("ASR transcription failed: " + response.code() + " - " + responseBody);
             }
 
@@ -242,7 +242,7 @@ public class DashScopeSttModel implements SttModel {
     }
 
     /**
-     * 判断是否为 Qwen Audio 系列模型 (使用多模态 API)
+     * 判断是否为 Qwen Audio 系columns模型 (使用多模态 API)
      */
     private boolean isQwenAudioModel(String modelName) {
         return modelName.contains("qwen3-asr") 
@@ -279,7 +279,7 @@ public class DashScopeSttModel implements SttModel {
         try {
             JsonNode root = objectMapper.readTree(responseBody);
 
-            // 检查是否有错误
+            // 检查是否有error
             if (root.has("code") && !root.get("code").asText().isEmpty()) {
                 String errorCode = root.get("code").asText();
                 String errorMessage = root.has("message") ? root.get("message").asText() : "Unknown error";
@@ -294,7 +294,7 @@ public class DashScopeSttModel implements SttModel {
                     JsonNode firstChoice = choices.get(0);
                     JsonNode message = firstChoice.get("message");
                     if (message != null) {
-                        // content 可能是数组或字符串
+                        // content may是数组或characters符串
                         JsonNode content = message.get("content");
                         if (content != null) {
                             if (content.isArray()) {
@@ -305,11 +305,11 @@ public class DashScopeSttModel implements SttModel {
                                     }
                                 }
                                 String text = result.toString().trim();
-                                log.info("✅ Transcription successful: {} chars", text.length());
+                                log.info(" Transcription successful: {} chars", text.length());
                                 return text;
                             } else if (content.isTextual()) {
                                 String text = content.asText().trim();
-                                log.info("✅ Transcription successful: {} chars", text.length());
+                                log.info(" Transcription successful: {} chars", text.length());
                                 return text;
                             }
                         }
@@ -317,7 +317,7 @@ public class DashScopeSttModel implements SttModel {
                 }
             }
 
-            log.warn("⚠️ Could not parse multimodal result, returning raw response");
+            log.warn(" Could not parse multimodal result, returning raw response");
             return responseBody;
 
         } catch (IOException e) {
@@ -342,7 +342,7 @@ public class DashScopeSttModel implements SttModel {
         try {
             JsonNode root = objectMapper.readTree(responseBody);
 
-            // 检查是否有错误
+            // 检查是否有error
             if (root.has("code") && !root.get("code").asText().isEmpty()) {
                 String errorCode = root.get("code").asText();
                 String errorMessage = root.has("message") ? root.get("message").asText() : "Unknown error";
@@ -352,18 +352,18 @@ public class DashScopeSttModel implements SttModel {
             // 提取输出文本
             JsonNode output = root.get("output");
             if (output != null) {
-                // 尝试多种可能的字段名
+                // 尝试多种may的characters段名
                 if (output.has("text")) {
                     String text = output.get("text").asText();
-                    log.info("✅ Transcription successful: {} chars", text.length());
+                    log.info(" Transcription successful: {} chars", text.length());
                     return text;
                 }
                 if (output.has("sentence") && output.get("sentence").has("text")) {
                     String text = output.get("sentence").get("text").asText();
-                    log.info("✅ Transcription successful: {} chars", text.length());
+                    log.info(" Transcription successful: {} chars", text.length());
                     return text;
                 }
-                // qwen3-asr-flash 可能直接返回 sentences 数组
+                // qwen3-asr-flash may直接返回 sentences 数组
                 if (output.has("sentences") && output.get("sentences").isArray()) {
                     StringBuilder fullText = new StringBuilder();
                     for (JsonNode sentence : output.get("sentences")) {
@@ -372,13 +372,13 @@ public class DashScopeSttModel implements SttModel {
                         }
                     }
                     String text = fullText.toString();
-                    log.info("✅ Transcription successful: {} chars", text.length());
+                    log.info(" Transcription successful: {} chars", text.length());
                     return text;
                 }
             }
 
-            // 如果无法解析，返回原始响应
-            log.warn("⚠️ Could not parse transcription result, returning raw response");
+            // if无法解析，返回原始响应
+            log.warn(" Could not parse transcription result, returning raw response");
             return responseBody;
 
         } catch (IOException e) {

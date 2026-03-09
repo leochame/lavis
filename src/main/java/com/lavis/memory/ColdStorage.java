@@ -18,7 +18,7 @@ import java.util.stream.Stream;
 /**
  * 冷存储服务
  *
- * 管理被压缩的图片数据，将其从内存/数据库卸载到文件系统。
+ * 管理被压缩的图片数据，will 其从内存/数据库卸载到文件系统。
  * 支持按需恢复，用于历史回溯。
  *
  * 存储结构：
@@ -54,11 +54,11 @@ public class ColdStorage {
     }
 
     /**
-     * 将图片归档到冷存储
+     * will 图片归档到冷存储
      *
      * @param imageId 图片唯一标识
      * @param base64Data Base64 编码的图片数据
-     * @return 存储路径，失败返回 empty
+     * @return 存储路径，failed返回 empty
      */
     public Optional<Path> archive(String imageId, String base64Data) {
         if (imageId == null || base64Data == null) {
@@ -66,7 +66,7 @@ public class ColdStorage {
         }
 
         try {
-            // 按年月组织目录
+            // 按yearsmonths组织目录
             LocalDateTime now = LocalDateTime.now();
             Path monthDir = storagePath
                     .resolve(String.valueOf(now.getYear()))
@@ -90,7 +90,7 @@ public class ColdStorage {
      * 从冷存储恢复图片
      *
      * @param imageId 图片唯一标识
-     * @return Base64 编码的图片数据，未找到返回 empty
+     * @return Base64 编码的图片数据，not found返回 empty
      */
     public Optional<String> retrieve(String imageId) {
         if (imageId == null) {
@@ -98,7 +98,7 @@ public class ColdStorage {
         }
 
         try {
-            // 搜索所有年月目录
+            // 搜索所有yearsmonths目录
             Optional<Path> imagePath = findImagePath(imageId);
             if (imagePath.isEmpty()) {
                 log.debug("Image not found in cold storage: {}", imageId);
@@ -133,9 +133,9 @@ public class ColdStorage {
     }
 
     /**
-     * 清理指定天数前的冷存储数据
+     * 清理指定days数前的冷存储数据
      *
-     * @param daysToKeep 保留天数
+     * @param daysToKeep 保留days数
      * @return 删除的文件数量
      */
     public int cleanup(int daysToKeep) {
@@ -150,7 +150,7 @@ public class ColdStorage {
                     }
                 }
 
-                // 删除空的年目录
+                // 删除空的years目录
                 if (isDirectoryEmpty(yearDir)) {
                     Files.delete(yearDir);
                 }
@@ -167,7 +167,7 @@ public class ColdStorage {
     }
 
     /**
-     * 获取冷存储统计信息
+     * 获取冷存储统计info
      */
     public StorageStats getStats() {
         long totalFiles = 0;
@@ -236,7 +236,7 @@ public class ColdStorage {
     }
 
     /**
-     * 冷存储统计信息
+     * 冷存储统计info
      */
     public record StorageStats(
             long totalFiles,

@@ -16,7 +16,7 @@ import static dev.langchain4j.agent.tool.JsonSchemaProperty.*;
  *
  * 增强功能：
  * - 支持转换为 LangChain4j ToolSpecification（用于 LLM 工具调用）
- * - 支持生成执行上下文（用于知识注入）
+ * - 支持生成执lines上下文（用于知识注入）
  * - 类型安全的参数处理
  */
 @Data
@@ -29,7 +29,7 @@ public class ParsedSkill {
     private String author;
     private String command;
 
-    /** The markdown body content (excluding frontmatter) - 包含 Best Practices 等知识 */
+    /** The markdown body content (excluding frontmatter) - 包含 Best Practices etc知识 */
     private String content;
 
     /** Source file path */
@@ -58,8 +58,8 @@ public class ParsedSkill {
      * 转换为 LangChain4j ToolSpecification。
      *
      * 这是实现"技能即工具"的核心方法：
-     * - LLM 可以看到所有可用的 Skills
-     * - 根据 description 进行语义路由
+     * - LLM can 看到所有可用的 Skills
+     * - 根据 description 进lines语义路由
      * - 参数定义为严格的 JSON Schema
      */
     public ToolSpecification toToolSpecification() {
@@ -71,7 +71,7 @@ public class ParsedSkill {
                 .name(toToolName())
                 .description(enhancedDescription);
 
-        // 为每个参数添加 JsonSchemaProperty
+        // 为每items参数添加 JsonSchemaProperty
         if (parameters != null) {
             for (SkillParameter param : parameters) {
                 List<JsonSchemaProperty> props = new ArrayList<>();
@@ -98,20 +98,20 @@ public class ParsedSkill {
     }
 
     /**
-     * 构建 SkillToolDefinition（自定义格式，用于序列化）
+     * 构建 SkillToolDefinition（自定义格式，用于序columns化）
      */
     public SkillToolDefinition toSkillToolDefinition() {
         return SkillToolDefinition.fromParsedSkill(this);
     }
 
     /**
-     * 构建执行上下文（包含知识注入）
+     * 构建执lines上下文（包含知识注入）
      *
      * @param params 来自 LLM Function Call 的结构化参数
-     * @return 包含完整知识的执行上下文
+     * @return 包含完整知识的执lines上下文
      */
     public SkillExecutionContext buildExecutionContext(Map<String, Object> params) {
-        // 将 Object 参数转换为 String 用于命令解析
+        // will  Object 参数转换为 String 用于命令解析
         Map<String, String> stringParams = new HashMap<>();
         if (params != null) {
             params.forEach((k, v) -> stringParams.put(k, v != null ? v.toString() : ""));
@@ -169,7 +169,7 @@ public class ParsedSkill {
     // ==================== Private Helper Methods ====================
 
     /**
-     * 构建增强的描述（包含 category 信息，帮助 LLM 更好地理解）
+     * 构建增强的描述（包含 category info，帮助 LLM 更好地理解）
      */
     private String buildEnhancedDescription() {
         StringBuilder desc = new StringBuilder();
@@ -184,7 +184,7 @@ public class ParsedSkill {
             desc.append(" [Category: ").append(category).append("]");
         }
 
-        // 添加提示，告诉 LLM 这个技能有详细的知识文档
+        // 添加提示，告诉 LLM 这items技能有详细的知识文档
         if (content != null && !content.isBlank()) {
             desc.append(" (This skill includes detailed guidelines that will be loaded upon execution)");
         }

@@ -6,7 +6,7 @@ package com.lavis.service.llm.tts;
 public interface TtsModel {
     
     /**
-     * 将文本转换为语音
+     * will 文本转换为语音
      *
      * @param text 要转换的文本
      * @return Base64 编码的音频数据

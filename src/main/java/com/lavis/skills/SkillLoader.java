@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
  *
  * 核心改进：
  * 1. 热重载事件传播 - 文件变更时发布 Spring Event
- * 2. 维护实时的 ToolSpecification 列表
+ * 2. 维护实时的 ToolSpecification columns表
  * 3. 支持监听器模式，通知 AgentService 更新工具
  */
 @Component
@@ -39,13 +39,13 @@ public class SkillLoader {
     private final Yaml yaml = new Yaml();
     private final Map<String, ParsedSkill> loadedSkills = new ConcurrentHashMap<>();
 
-    /** 缓存的 ToolSpecification 列表（供 LLM 使用） */
+    /** 缓存的 ToolSpecification columns表（供 LLM 使用） */
     private final List<ToolSpecification> cachedToolSpecifications = new CopyOnWriteArrayList<>();
 
     /** Spring 事件发布器 */
     private final ApplicationEventPublisher eventPublisher;
 
-    /** 变更监听器列表 */
+    /** 变更监听器columns表 */
     private final List<SkillChangeListener> changeListeners = new CopyOnWriteArrayList<>();
 
     @Value("${skills.directory:${user.home}/.lavis/skills}")
@@ -72,7 +72,7 @@ public class SkillLoader {
 
     /**
      * Load all skills from the skills directory.
-     * 加载完成后会发布 SkillsUpdatedEvent 事件。
+     * 加载completed后会发布 SkillsUpdatedEvent 事件。
      */
     public Map<String, ParsedSkill> loadAllSkills() {
         loadedSkills.clear();
@@ -170,7 +170,7 @@ public class SkillLoader {
     // ==================== 工具规格获取 ====================
 
     /**
-     * 获取所有 Skill 的 ToolSpecification 列表。
+     * 获取所有 Skill 的 ToolSpecification columns表。
      * 这是 AgentService 用于动态挂载工具的入口。
      */
     public List<ToolSpecification> getToolSpecifications() {
@@ -178,7 +178,7 @@ public class SkillLoader {
     }
 
     /**
-     * 获取所有 Skill 的 SkillToolDefinition 列表（用于序列化）
+     * 获取所有 Skill 的 SkillToolDefinition columns表（用于序columns化）
      */
     public List<SkillToolDefinition> getSkillToolDefinitions() {
         return loadedSkills.values().stream()

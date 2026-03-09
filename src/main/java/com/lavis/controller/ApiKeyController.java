@@ -10,12 +10,12 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * API 配置控制器
+ * API configuration控制器
  *
- * 提供 REST 端点用于管理运行时 API 配置：
+ * 提供 REST 端点用于管理运lines时 API configuration：
  * - POST /api/config/api-key: 设置 API Key 和 Base URL
- * - GET /api/config/api-key/status: 检查配置状态
- * - DELETE /api/config/api-key: 清除配置
+ * - GET /api/config/api-key/status: 检查configuration状态
+ * - DELETE /api/config/api-key: 清除configuration
  *
  * 支持两种模式：
  * 1. Gemini 官方 - 只设置 apiKey，不设置 baseUrl
@@ -30,7 +30,7 @@ public class ApiKeyController {
     private final DynamicApiKeyService dynamicApiKeyService;
 
     /**
-     * 设置 API 配置（API Key 和可选的 Base URL）
+     * 设置 API configuration（API Key 和可选的 Base URL）
      *
      * 请求体：
      * {
@@ -60,10 +60,10 @@ public class ApiKeyController {
             // 设置 API Key
             dynamicApiKeyService.setApiKey(apiKey);
 
-            // 设置 Base URL（可以为空，表示使用 Gemini 官方）
+            // 设置 Base URL（can 为空，表示使用 Gemini 官方）
             dynamicApiKeyService.setBaseUrl(baseUrl);
 
-            // 可选：运行时覆盖模型名称
+            // 可选：运lines时覆盖模型名称
             if (chatModel != null && !chatModel.isBlank()) {
                 dynamicApiKeyService.setChatModelName(chatModel);
             }
@@ -75,7 +75,7 @@ public class ApiKeyController {
             }
 
             String mode = (baseUrl != null && !baseUrl.isBlank()) ? "proxy" : "official";
-            log.info("✅ API config set via REST endpoint (mode: {})", mode);
+            log.info(" API config set via REST endpoint (mode: {})", mode);
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
@@ -83,7 +83,7 @@ public class ApiKeyController {
                     "mode", mode
             ));
         } catch (Exception e) {
-            log.error("❌ Failed to set API config", e);
+            log.error(" Failed to set API config", e);
             return ResponseEntity.internalServerError().body(Map.of(
                     "success", false,
                     "error", e.getMessage()
@@ -92,7 +92,7 @@ public class ApiKeyController {
     }
 
     /**
-     * 获取 API 配置状态
+     * 获取 API configuration状态
      *
      * 返回：
      * {
@@ -116,20 +116,20 @@ public class ApiKeyController {
     }
 
     /**
-     * 清除 API 配置
+     * 清除 API configuration
      */
     @DeleteMapping("/api-key")
     public ResponseEntity<Map<String, Object>> clearApiConfig() {
         try {
             dynamicApiKeyService.clearConfig();
-            log.info("✅ API config cleared via REST endpoint");
+            log.info(" API config cleared via REST endpoint");
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
                     "message", "API configuration cleared successfully"
             ));
         } catch (Exception e) {
-            log.error("❌ Failed to clear API config", e);
+            log.error(" Failed to clear API config", e);
             return ResponseEntity.internalServerError().body(Map.of(
                     "success", false,
                     "error", e.getMessage()

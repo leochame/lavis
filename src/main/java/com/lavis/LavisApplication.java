@@ -43,14 +43,14 @@ public class LavisApplication {
         log.info("   Lavis - Headless AI Agent 启动中...");
         log.info("===========================================");
 
-        // 打印启动信息
+        // 打印启动info
         printStartupInfo();
     }
 
     private void printStartupInfo() {
         log.info("");
         log.info("┌─────────────────────────────────────────┐");
-        log.info("│          Lavis 启动成功!                 │");
+        log.info("│          Lavis 启动success!                 │");
         log.info("├─────────────────────────────────────────┤");
         log.info("│  REST API: http://localhost:18765        │");
         log.info("│  状态:     GET  /api/agent/status       │");
@@ -65,8 +65,8 @@ public class LavisApplication {
         log.info("");
 
         if (!agentService.isAvailable()) {
-            log.warn("⚠️  Agent 未可用！请检查配置");
-            log.warn("    检查 application.properties 中的 app.llm.models.* 配置");
+            log.warn("  Agent not 可用！请检查configuration");
+            log.warn("    检查 application.properties 中的 app.llm.models.* configuration");
         }
     }
 }
