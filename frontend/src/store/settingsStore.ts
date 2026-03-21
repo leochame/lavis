@@ -1,189 +1,57 @@
 import { create } from 'zustand';
 import { configApi } from '../api/configApi';
 
-const STORAGE_KEY_API = 'lavis_api_key';
-const STORAGE_KEY_URL = 'lavis_base_url';
-const STORAGE_KEY_CHAT_MODEL = 'lavis_chat_model_name';
-const STORAGE_KEY_STT_MODEL = 'lavis_stt_model_name';
-const STORAGE_KEY_TTS_MODEL = 'lavis_tts_model_name';
-const FIRST_LAUNCH_COMPLETED_KEY = 'lavis_first_launch_completed';
-
 type ApiMode = 'official' | 'proxy';
 
 interface SettingsState {
-  apiKey: string | null;
-  baseUrl: string | null;
-  /** 运行时覆盖的主对话模型名称（对应 app.llm.models.fast-model.model-name） */
-  chatModelName: string | null;
-  /** 运行时覆盖的 STT 模型名称（对应 app.llm.models.whisper.model-name） */
-  sttModelName: string | null;
-  /** 运行时覆盖的 TTS 模型名称（对应 app.llm.models.tts.model-name） */
-  ttsModelName: string | null;
   mode: ApiMode;
+  baseUrl: string | null;
   isConfigured: boolean;
   isLoading: boolean;
   error: string | null;
+  source: 'env' | null;
+  chatConfigured: boolean;
+  sttConfigured: boolean;
+  ttsConfigured: boolean;
 }
 
 interface SettingsActions {
-  setConfig: (
-    apiKey: string,
-    baseUrl?: string,
-    chatModelName?: string,
-    sttModelName?: string,
-    /**
-     * When undefined, keep existing TTS model config unchanged.
-     * When null/empty string, clear TTS model config.
-     */
-    ttsModelName?: string | null,
-  ) => Promise<void>;
-  clearConfig: () => Promise<void>;
-  loadFromStorage: () => void;
   checkStatus: () => Promise<void>;
   setError: (error: string | null) => void;
 }
 
 const initialState: SettingsState = {
-  apiKey: null,
-  baseUrl: null,
-  chatModelName: null,
-  sttModelName: null,
-  ttsModelName: null,
   mode: 'official',
+  baseUrl: null,
   isConfigured: false,
   isLoading: false,
   error: null,
+  source: null,
+  chatConfigured: false,
+  sttConfigured: false,
+  ttsConfigured: false,
 };
 
-export const useSettingsStore = create<SettingsState & SettingsActions>((set, get) => ({
+export const useSettingsStore = create<SettingsState & SettingsActions>((set) => ({
   ...initialState,
 
-  setConfig: async (
-    apiKey: string,
-    baseUrl?: string,
-    chatModelName?: string,
-    sttModelName?: string,
-    ttsModelName?: string | null,
-  ) => {
-    set({ isLoading: true, error: null });
-    try {
-      const previousTtsModelName = get().ttsModelName;
-
-      // Save to backend
-      const response = await configApi.setApiKey(apiKey, baseUrl, chatModelName, sttModelName, ttsModelName);
-      if (!response.success) {
-        throw new Error(response.error || 'Failed to set API config');
-      }
-
-      // Save to localStorage for persistence across page reloads
-      localStorage.setItem(STORAGE_KEY_API, apiKey);
-      if (baseUrl) {
-        localStorage.setItem(STORAGE_KEY_URL, baseUrl);
-      } else {
-        localStorage.removeItem(STORAGE_KEY_URL);
-      }
-
-      if (chatModelName) {
-        localStorage.setItem(STORAGE_KEY_CHAT_MODEL, chatModelName);
-      } else {
-        localStorage.removeItem(STORAGE_KEY_CHAT_MODEL);
-      }
-
-      if (sttModelName) {
-        localStorage.setItem(STORAGE_KEY_STT_MODEL, sttModelName);
-      } else {
-        localStorage.removeItem(STORAGE_KEY_STT_MODEL);
-      }
-
-      // Only update TTS model persistence when explicitly provided.
-      if (ttsModelName !== undefined) {
-        if (ttsModelName) {
-          localStorage.setItem(STORAGE_KEY_TTS_MODEL, ttsModelName);
-        } else {
-          localStorage.removeItem(STORAGE_KEY_TTS_MODEL);
-        }
-      }
-
-      const mode: ApiMode = baseUrl ? 'proxy' : 'official';
-      set({
-        apiKey,
-        baseUrl: baseUrl || null,
-        chatModelName: chatModelName || null,
-        sttModelName: sttModelName || null,
-        ttsModelName: ttsModelName !== undefined ? (ttsModelName || null) : previousTtsModelName,
-        mode,
-        isConfigured: true,
-        isLoading: false,
-      });
-      
-      // 标记首次启动已完成（用户已成功配置 API Key）
-      localStorage.setItem(FIRST_LAUNCH_COMPLETED_KEY, 'true');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to set API config';
-      set({ isLoading: false, error: message });
-      throw error;
-    }
-  },
-
-  clearConfig: async () => {
-    set({ isLoading: true, error: null });
-    try {
-      // Clear from backend
-      await configApi.clearApiKey();
-
-      // Clear from localStorage
-      localStorage.removeItem(STORAGE_KEY_API);
-      localStorage.removeItem(STORAGE_KEY_URL);
-      localStorage.removeItem(STORAGE_KEY_CHAT_MODEL);
-      localStorage.removeItem(STORAGE_KEY_STT_MODEL);
-      localStorage.removeItem(STORAGE_KEY_TTS_MODEL);
-
-      set({
-        apiKey: null,
-        baseUrl: null,
-        chatModelName: null,
-        sttModelName: null,
-        ttsModelName: null,
-        mode: 'official',
-        isConfigured: false,
-        isLoading: false,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to clear API config';
-      set({ isLoading: false, error: message });
-      throw error;
-    }
-  },
-
-  loadFromStorage: () => {
-    const storedKey = localStorage.getItem(STORAGE_KEY_API);
-    const storedUrl = localStorage.getItem(STORAGE_KEY_URL);
-    const storedChatModel = localStorage.getItem(STORAGE_KEY_CHAT_MODEL) || undefined;
-    const storedSttModel = localStorage.getItem(STORAGE_KEY_STT_MODEL) || undefined;
-    const storedTtsModel = localStorage.getItem(STORAGE_KEY_TTS_MODEL) || undefined;
-
-    if (storedKey) {
-      // Sync to backend - wait for completion to avoid race conditions
-      get()
-        .setConfig(storedKey, storedUrl || undefined, storedChatModel, storedSttModel, storedTtsModel)
-        .then(() => {
-          console.log('Settings synced to backend successfully');
-        })
-        .catch((error) => {
-          console.error('Failed to sync API config to backend:', error);
-        });
-    }
-  },
-
   checkStatus: async () => {
+    set({ isLoading: true, error: null });
     try {
       const status = await configApi.getApiKeyStatus();
       set({
         isConfigured: status.configured,
         mode: status.mode,
         baseUrl: status.baseUrl,
+        source: status.source ?? 'env',
+        chatConfigured: status.chatConfigured ?? status.configured,
+        sttConfigured: status.sttConfigured ?? status.configured,
+        ttsConfigured: status.ttsConfigured ?? status.configured,
+        isLoading: false,
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to check backend config status';
+      set({ isLoading: false, error: message });
       console.error('Failed to check API config status:', error);
     }
   },

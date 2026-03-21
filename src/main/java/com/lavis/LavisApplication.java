@@ -1,6 +1,7 @@
 package com.lavis;
 
-import com.lavis.cognitive.AgentService;
+import com.lavis.entry.config.DotenvLoader;
+import com.lavis.agent.AgentService;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +32,7 @@ public class LavisApplication {
         // FIX: Explicitly disable headless mode so java.awt.Robot can work
         // Hide Java icon from macOS Dock while keeping AWT functional
         System.setProperty("apple.awt.UIElement", "true");
+        DotenvLoader.loadFromProjectRoot();
 
         new SpringApplicationBuilder(LavisApplication.class)
                 .headless(false)

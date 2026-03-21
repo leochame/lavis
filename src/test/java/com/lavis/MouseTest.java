@@ -1,6 +1,6 @@
 package com.lavis;
 
-import com.lavis.action.BezierMouseUtils;
+import com.lavis.agent.action.BezierMouseUtils;
 
 import java.awt.Point;
 import java.util.List;

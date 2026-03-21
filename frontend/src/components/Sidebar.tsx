@@ -1,13 +1,13 @@
 import {
   MessagesSquare,
   Orbit,
-  CalendarClock,
   Sparkles,
-  Key
+  Key,
+  Clock3,
 } from 'lucide-react';
 import './Sidebar.css';
 
-export type PanelType = 'chat' | 'brain' | 'management' | 'scheduler' | 'skills' | 'settings';
+export type PanelType = 'chat' | 'brain' | 'management' | 'skills' | 'scheduler' | 'settings';
 
 interface SidebarProps {
   activePanel: PanelType;
@@ -26,8 +26,8 @@ interface NavItem {
 const navItems: NavItem[] = [
   { id: 'chat', label: 'Chat', icon: MessagesSquare, shortcut: '⌘1' },
   { id: 'brain', label: 'Brain', icon: Orbit, shortcut: '⌘2' },
-  { id: 'scheduler', label: 'Schedule', icon: CalendarClock, shortcut: '⌘3' },
-  { id: 'skills', label: 'Skills', icon: Sparkles, shortcut: '⌘4' },
+  { id: 'skills', label: 'Skills', icon: Sparkles, shortcut: '⌘3' },
+  { id: 'scheduler', label: 'Schedule', icon: Clock3, shortcut: '⌘4' },
   { id: 'settings', label: 'Settings', icon: Key, shortcut: '⌘5' },
   // Studio / Management 面板当前隐藏，避免与 Skills / Scheduler 重复
   // { id: 'management', label: 'Studio', icon: Settings2, shortcut: '⌘,' },

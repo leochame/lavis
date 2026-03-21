@@ -4,7 +4,8 @@ import type { IPlatformService, SnapState, WindowMode } from '../interface';
  * Web 平台实现：大部分原生能力为空操作或使用 Web API 近似实现。
  */
 export class WebPlatformService implements IPlatformService {
-  resizeWindow(_mode: WindowMode): void {
+  resizeWindow(mode: WindowMode): void {
+    void mode;
     // Web 环境无法控制物理窗口，保持空实现
   }
 
@@ -87,4 +88,3 @@ export class WebPlatformService implements IPlatformService {
     }
   }
 }
-

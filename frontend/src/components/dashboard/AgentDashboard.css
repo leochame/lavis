@@ -1,0 +1,181 @@
+.agent-dashboard {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  color: var(--text-primary);
+  --panel-bg-0: #0b0c0e;
+  --panel-bg-1: #111317;
+  --panel-bg-2: #181b21;
+  --panel-border-soft: rgba(148, 155, 166, 0.24);
+  --panel-border-strong: rgba(178, 186, 198, 0.34);
+  --panel-text-main: rgba(236, 236, 236, 0.95);
+  --panel-text-muted: rgba(148, 155, 166, 0.9);
+  --panel-accent: rgba(178, 186, 198, 0.44);
+  --panel-danger: rgba(248, 113, 113, 0.44);
+}
+
+.agent-dashboard__ambient {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% -20%, rgba(148, 155, 166, 0.08), transparent 52%),
+    linear-gradient(180deg, #08090b 0%, #08090b 100%);
+}
+
+.agent-workspace {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 0;
+  border: none;
+  background: var(--panel-bg-0);
+  box-shadow: inset 0 1px 0 rgba(148, 155, 166, 0.1);
+}
+
+.agent-workspace__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 52px;
+  border-bottom: 1px solid var(--panel-border-soft);
+  background: linear-gradient(180deg, rgba(20, 22, 26, 0.98), rgba(15, 17, 20, 0.98));
+  padding: 0 12px;
+  -webkit-app-region: drag;
+}
+
+.agent-workspace__header-left,
+.agent-workspace__header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  -webkit-app-region: no-drag;
+}
+
+.agent-workspace__close-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border-soft);
+  background: rgba(12, 14, 18, 0.68);
+  color: var(--panel-text-main);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+}
+
+.agent-workspace__close-btn:hover {
+  border-color: var(--panel-danger);
+  background: rgba(239, 68, 68, 0.18);
+}
+
+.agent-workspace__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-workspace__brand-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(178, 186, 198, 0.94);
+  box-shadow: 0 0 0 4px rgba(178, 186, 198, 0.12);
+}
+
+.agent-workspace__brand-text {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--panel-text-main);
+}
+
+.agent-workspace__status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border-soft);
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--panel-text-main);
+}
+
+.agent-workspace__status--offline {
+  border-color: var(--panel-danger);
+  color: rgba(254, 226, 226, 0.94);
+  background: rgba(239, 68, 68, 0.16);
+}
+
+.agent-workspace__status--working {
+  border-color: rgba(234, 179, 8, 0.48);
+  color: rgba(255, 243, 206, 0.95);
+  background: rgba(234, 179, 8, 0.16);
+}
+
+.agent-workspace__status--ready {
+  border-color: rgba(34, 197, 94, 0.45);
+  color: rgba(220, 252, 231, 0.95);
+  background: rgba(34, 197, 94, 0.14);
+}
+
+.agent-workspace__drag-tip {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--panel-text-muted);
+}
+
+.agent-workspace__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.agent-workspace__content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+  background: var(--panel-bg-1);
+}
+
+.agent-panels {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.agent-panels__content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.agent-panels--brain .brain-panel--embedded,
+.agent-panels--skills .skills-panel--embedded,
+.agent-panels--scheduler .scheduler-panel--embedded,
+.agent-panels--settings .settings-panel {
+  filter: saturate(0.5);
+}
+
+@media (max-width: 900px) {
+  .agent-workspace__drag-tip {
+    display: none;
+  }
+}

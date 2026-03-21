@@ -1,106 +1,58 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useSettingsStore } from '../store/settingsStore';
-import { Key, Check, X, Loader2, ExternalLink, Globe } from 'lucide-react';
+import { Key, Check, X, Loader2, RefreshCw, FileCode2, Globe } from 'lucide-react';
 import './SettingsPanel.css';
+
+const ENV_TEMPLATE = `# .env (project root)
+app.llm.models.fast-model.api-key=your_chat_key
+app.llm.models.fast-model.base-url=
+app.llm.models.fast-model.model-name=gemini-3-flash-preview
+
+app.llm.models.whisper.api-key=your_stt_key
+app.llm.models.whisper.base-url=
+app.llm.models.whisper.model-name=gemini-3-flash-preview
+
+app.llm.models.tts.api-key=your_tts_key
+app.llm.models.tts.model-name=gemini-2.5-flash-preview-tts
+app.llm.models.tts.voice=Kore
+app.llm.models.tts.format=wav`;
 
 export function SettingsPanel() {
   const {
-    apiKey,
     baseUrl,
-    chatModelName,
-    sttModelName,
     mode,
     isConfigured,
     isLoading,
     error,
-    setConfig,
-    clearConfig,
+    source,
+    chatConfigured,
+    sttConfigured,
+    ttsConfigured,
     checkStatus,
-    setError,
   } = useSettingsStore();
 
-  const [inputKey, setInputKey] = useState('');
-  const [inputUrl, setInputUrl] = useState('');
-  const [inputChatModel, setInputChatModel] = useState('');
-  const [inputSttModel, setInputSttModel] = useState('');
-  const [showKey, setShowKey] = useState(false);
-
-  // Check status on mount
   useEffect(() => {
     checkStatus();
   }, [checkStatus]);
 
-  // Initialize inputs with stored values
-  useEffect(() => {
-    if (apiKey) {
-      setInputKey(apiKey);
-    }
-    if (baseUrl) {
-      setInputUrl(baseUrl);
-    }
-    if (chatModelName) {
-      setInputChatModel(chatModelName);
-    }
-    if (sttModelName) {
-      setInputSttModel(sttModelName);
-    }
-  }, [apiKey, baseUrl, chatModelName, sttModelName]);
-
-  const handleSave = async () => {
-    if (!inputKey.trim()) {
-      setError('Please enter an API key');
-      return;
-    }
-
-    try {
-      await setConfig(
-        inputKey.trim(),
-        inputUrl.trim() || undefined,
-        inputChatModel.trim() || undefined,
-        inputSttModel.trim() || undefined
-      );
-    } catch {
-      // Error is already set in the store
-    }
-  };
-
-  const handleClear = async () => {
-    try {
-      await clearConfig();
-      setInputKey('');
-      setInputUrl('');
-      setInputChatModel('');
-      setInputSttModel('');
-    } catch {
-      // Error is already set in the store
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !isLoading) {
-      handleSave();
-    }
-  };
-
   return (
     <div className="settings-panel">
       <div className="settings-panel__header">
-        <h2 className="settings-panel__title">API Console</h2>
-        <p className="settings-panel__subtitle">Gemini access channel configuration</p>
+        <h2 className="settings-panel__title">Backend Config</h2>
+        <p className="settings-panel__subtitle">API keys and model settings are loaded from backend .env</p>
       </div>
 
       <div className="settings-panel__content">
         <div className="settings-panel__section">
           <div className="settings-panel__section-header">
             <Key size={16} />
-            <h3>API CHANNEL</h3>
-            {isConfigured && (
-              <span className={`settings-panel__status settings-panel__status--configured`}>
+            <h3>CONFIG STATUS</h3>
+            {isConfigured ? (
+              <span className="settings-panel__status settings-panel__status--configured">
                 <Check size={12} />
                 {mode === 'proxy' ? 'Proxy Mode' : 'Official API'}
               </span>
-            )}
-            {!isConfigured && (
+            ) : (
               <span className="settings-panel__status settings-panel__status--not-configured">
                 <X size={12} />
                 Not Configured
@@ -109,92 +61,36 @@ export function SettingsPanel() {
           </div>
 
           <p className="settings-panel__description">
-            Enter your Gemini API key used by Lavis console. You can get a free API key from{' '}
-            <a
-              href="https://aistudio.google.com/apikey"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="settings-panel__link"
-            >
-              Google AI Studio
-              <ExternalLink size={12} />
-            </a>
+            Frontend no longer uploads API keys. Please edit the project root <code>.env</code> file and restart
+            backend.
           </p>
 
-          {/* API Key Input */}
-          <div className="settings-panel__field">
-            <label className="settings-panel__label">
-              <Key size={14} />
-              API KEY <span className="settings-panel__required">*</span>
-            </label>
-            <div className="settings-panel__input-group">
-              <input
-                type={showKey ? 'text' : 'password'}
-                className="settings-panel__input"
-                placeholder="sk-***************************"
-                value={inputKey}
-                onChange={(e) => setInputKey(e.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={isLoading}
-              />
-              <button
-                className="settings-panel__toggle-visibility"
-                onClick={() => setShowKey(!showKey)}
-                title={showKey ? 'Hide API key' : 'Show API key'}
-              >
-                {showKey ? 'Hide' : 'Show'}
-              </button>
-            </div>
-          </div>
-
-          {/* Base URL Input */}
           <div className="settings-panel__field">
             <label className="settings-panel__label">
               <Globe size={14} />
-              BASE URL <span className="settings-panel__optional">(optional – proxy / relay)</span>
+              SOURCE
             </label>
-            <input
-              type="text"
-              className="settings-panel__input settings-panel__input--full-width"
-              placeholder="Leave empty to use official Gemini endpoint"
-              value={inputUrl}
-              onChange={(e) => setInputUrl(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={isLoading}
-            />
-            <p className="settings-panel__hint">
-              Leave empty to use Gemini official API. Fill in a custom URL to use a proxy/relay server.
-            </p>
+            <p className="settings-panel__hint">{source === 'env' || !source ? '.env / local backend config' : source}</p>
           </div>
 
-          {/* Chat Model Name Input */}
           <div className="settings-panel__field">
             <label className="settings-panel__label">
-              Chat MODEL NAME <span className="settings-panel__optional">(optional)</span>
+              <Globe size={14} />
+              CHAT BASE URL
             </label>
-            <input
-              type="text"
-              className="settings-panel__input settings-panel__input--full-width"
-              placeholder="e.g. gemini-2.0-flash, gemini-2.0-pro (default: gemini-3-flash-preview)"
-              value={inputChatModel}
-              onChange={(e) => setInputChatModel(e.target.value)}
-              disabled={isLoading}
-            />
+            <p className="settings-panel__hint">{baseUrl || 'Using official endpoint (no custom base-url)'}</p>
           </div>
 
-          {/* STT Model Name Input */}
           <div className="settings-panel__field">
             <label className="settings-panel__label">
-              STT MODEL NAME <span className="settings-panel__optional">(optional)</span>
+              <Check size={14} />
+              MODEL CHECKS
             </label>
-            <input
-              type="text"
-              className="settings-panel__input settings-panel__input--full-width"
-              placeholder="e.g. gemini-2.0-flash-audio (default: gemini-3-flash-preview)"
-              value={inputSttModel}
-              onChange={(e) => setInputSttModel(e.target.value)}
-              disabled={isLoading}
-            />
+            <ul className="settings-panel__status-list">
+              <li>Chat: {chatConfigured ? 'configured' : 'missing'}</li>
+              <li>STT: {sttConfigured ? 'configured' : 'missing'}</li>
+              <li>TTS: {ttsConfigured ? 'configured' : 'missing'}</li>
+            </ul>
           </div>
 
           {error && (
@@ -207,44 +103,39 @@ export function SettingsPanel() {
           <div className="settings-panel__actions">
             <button
               className="settings-panel__button settings-panel__button--primary"
-              onClick={handleSave}
-              disabled={isLoading || !inputKey.trim()}
+              onClick={() => checkStatus()}
+              disabled={isLoading}
             >
               {isLoading ? (
                 <>
                   <Loader2 size={14} className="settings-panel__spinner" />
-                  Saving...
+                  Checking...
                 </>
               ) : (
                 <>
-                  <Check size={14} />
-                  Save
+                  <RefreshCw size={14} />
+                  Refresh Status
                 </>
               )}
-            </button>
-            <button
-              className="settings-panel__button settings-panel__button--secondary"
-              onClick={handleClear}
-              disabled={isLoading || !isConfigured}
-            >
-              <X size={14} />
-              Clear
             </button>
           </div>
         </div>
 
         <div className="settings-panel__info">
-          <h4>About API Modes</h4>
+          <h4>How To Configure</h4>
           <ul>
-            <li><strong>Official API:</strong> Direct connection to Google Gemini API (recommended)</li>
-            <li><strong>Proxy Mode:</strong> Use a custom relay server (for regions with restricted access)</li>
+            <li>Copy root file <code>.env.example</code> to <code>.env</code></li>
+            <li>Fill API keys / base URL / model names in <code>.env</code></li>
+            <li>Restart backend process after editing</li>
           </ul>
-          <h4>Storage</h4>
-          <ul>
-            <li>Your configuration is stored locally in your browser</li>
-            <li>It is also sent to the backend server for API calls</li>
-            <li>The config is not persisted on the server (memory only)</li>
-          </ul>
+          <h4>Sample .env</h4>
+          <div className="settings-panel__code-block">
+            <div className="settings-panel__code-header">
+              <FileCode2 size={14} />
+              <span>.env</span>
+            </div>
+            <pre className="settings-panel__code">{ENV_TEMPLATE}</pre>
+          </div>
         </div>
       </div>
     </div>

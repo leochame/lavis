@@ -223,6 +223,31 @@ function getJarPath(): string {
 }
 
 /**
+ * 开发模式下自动构建后端 JAR
+ */
+async function buildBackendJar(resourcePath: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const cmd = './mvnw -Dmaven.test.skip=true package';
+    logCallback('info', `Building backend JAR: ${cmd}`);
+
+    exec(cmd, { cwd: resourcePath }, (error, stdout, stderr) => {
+      if (stdout?.trim()) {
+        logCallback('info', stdout.trim());
+      }
+      if (stderr?.trim()) {
+        logCallback('warn', stderr.trim());
+      }
+      if (error) {
+        logCallback('error', `Backend JAR build failed: ${error.message}`);
+        resolve(false);
+        return;
+      }
+      resolve(true);
+    });
+  });
+}
+
+/**
  * 检查后端是否已经在运行
  */
 async function isBackendRunning(): Promise<boolean> {
@@ -281,7 +306,7 @@ export async function startBackend(): Promise<{success: boolean, error?: string}
   }
 
   const javaPath = getJrePath();
-  const jarPath = getJarPath();
+  let jarPath = getJarPath();
   const resourcePath = getResourcePath();
 
   logCallback('info', `Resource path: ${resourcePath}`);
@@ -331,14 +356,22 @@ export async function startBackend(): Promise<{success: boolean, error?: string}
   }
 
   if (!fs.existsSync(jarPath)) {
-    const resourcePath = getResourcePath();
-    const errorMsg = `JAR file not found at: ${jarPath}\n\nResource path: ${resourcePath}\n\nPlease check if the backend JAR was properly packaged.`;
-    logCallback('error', errorMsg);
-
     if (!app.isPackaged) {
-      logCallback('info', 'Development mode: Please run "mvn package" to build the JAR first');
+      logCallback('warn', `Backend JAR missing: ${jarPath}. Trying to build automatically...`);
+      const built = await buildBackendJar(resourcePath);
+      jarPath = getJarPath();
+      if (built && fs.existsSync(jarPath)) {
+        logCallback('info', `Backend JAR built successfully: ${jarPath}`);
+      } else {
+        const errorMsg = `JAR file not found at: ${jarPath}\n\nResource path: ${resourcePath}\n\nAuto-build failed. Please run "./mvnw -Dmaven.test.skip=true package" manually.`;
+        logCallback('error', errorMsg);
+        return {success: false, error: errorMsg};
+      }
+    } else {
+      const errorMsg = `JAR file not found at: ${jarPath}\n\nResource path: ${resourcePath}\n\nPlease check if the backend JAR was properly packaged.`;
+      logCallback('error', errorMsg);
+      return {success: false, error: errorMsg};
     }
-    return {success: false, error: errorMsg};
   }
 
   // 启动 Java 进程
@@ -584,7 +617,7 @@ async function killProcessTree(pid: number, platform: string): Promise<void> {
       command = `taskkill /F /T /PID ${pid} 2>nul || exit 0`;
     }
 
-    exec(command, (error: any) => {
+    exec(command, () => {
       // 忽略错误，因为进程可能已经不存在
       resolve();
     });
@@ -600,7 +633,7 @@ async function killLavisJavaProcesses(): Promise<void> {
     // 查找所有包含 lavis.jar 的 Java 进程并强制杀死
     const command = `ps aux | grep -i "lavis.jar" | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null || true`;
     
-    exec(command, (error: any) => {
+    exec(command, () => {
       // 忽略错误，因为可能没有找到进程
       resolve();
     });

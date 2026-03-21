@@ -1,63 +1,29 @@
-import { useState, useRef, useEffect } from 'react';
-import type { CSSProperties, ForwardRefExoticComponent, ReactNode, RefAttributes } from 'react';
+import { startTransition, useCallback, useDeferredValue, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { agentApi } from '../api/agentApi';
 import { BrainPanel } from './BrainPanel';
-import { VoicePanel } from './VoicePanel';
 import { ManagementPanel } from './ManagementPanel';
-import { SchedulerPanel } from './SchedulerPanel';
 import { SkillsPanel } from './SkillsPanel';
+import { SchedulerPanel } from './SchedulerPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { Sidebar, type PanelType } from './Sidebar';
 import type { WorkflowState, ConnectionStatus } from '../hooks/useWebSocket';
 import { useUIStore } from '../store/uiStore';
+import { useChatStore, type ChatMessage } from '../store/chatStore';
 import type { AgentStatus } from '../types/agent';
 import type { UseGlobalVoiceReturn } from '../hooks/useGlobalVoice';
 import './ChatPanel.css';
 
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: number;
-}
-
-type FixedSizeListHandle = {
-  scrollToItem: (index: number, align?: 'auto' | 'smart' | 'start' | 'center' | 'end') => void;
-};
-
-type FixedSizeListProps = {
-  height: number;
-  width: number | string;
-  itemCount: number;
-  itemSize: number;
-  style?: CSSProperties;
-  children: (props: { index: number; style: CSSProperties }) => ReactNode;
-};
-
-type FixedSizeListComponent = ForwardRefExoticComponent<
-  FixedSizeListProps & RefAttributes<FixedSizeListHandle>
->;
-
 interface ChatPanelProps {
-  onClose: () => void; // 仍然作为上层控制窗口用，但不再在 Sidebar 里放单独的关闭按钮
+  onClose: () => void;
   status: AgentStatus | null;
-  /** 全局语音控制 (来自 App.tsx) */
   globalVoice: UseGlobalVoiceReturn;
-  /** 复用 App.tsx 创建的 WebSocket 连接，避免重复连接 */
   wsConnected: boolean;
   wsStatus: ConnectionStatus;
   workflow: WorkflowState;
   resetWorkflow: () => void;
   sendMessage: (type: string, data?: Record<string, unknown>) => void;
-  /** 渲染模式：完整面板（带内部 Sidebar）或仅聊天内容（嵌入到 AgentDashboard） */
   mode?: 'full' | 'chat-only';
-  /**
-   * 当需要用外部输入条（如 FloatingInputBar）驱动内部发送逻辑时，
-   * 通过该回调向父组件暴露输入桥接对象
-   */
   onBindInput?: (bridge: {
     value: string;
     onChange: (value: string) => void;
@@ -65,12 +31,56 @@ interface ChatPanelProps {
     disabled: boolean;
     placeholder: string;
   }) => void;
-  /** 隐藏内部底部输入区域（由外部输入条接管） */
   hideInput?: boolean;
 }
 
+const MESSAGE_CACHE_KEY = 'lavis_chat_messages_v3';
+const MAX_DROP_FILE_COUNT = 6;
+const MAX_DROP_TEXT_SIZE = 240_000;
+const MAX_DROP_PREVIEW_LENGTH = 12_000;
+const TEXT_LIKE_EXTENSIONS = new Set([
+  'txt', 'md', 'markdown', 'json', 'yaml', 'yml', 'toml', 'xml',
+  'html', 'css', 'js', 'jsx', 'ts', 'tsx', 'py', 'java', 'sql', 'sh',
+]);
+
+function createMessageId(prefix: ChatMessage['role'] | 'error'): string {
+  const random = Math.random().toString(36).slice(2, 10);
+  return `${prefix}-${Date.now()}-${random}`;
+}
+
+function loadCachedMessages(): ChatMessage[] {
+  if (typeof window === 'undefined') return [];
+
+  try {
+    const raw = window.sessionStorage.getItem(MESSAGE_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ChatMessage[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((message) => message && typeof message.content === 'string');
+  } catch {
+    return [];
+  }
+}
+
+function formatBytes(value: number): string {
+  if (value < 1024) return `${value}B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)}KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function isTextLikeFile(file: File): boolean {
+  if (file.type.startsWith('text/')) return true;
+  const extension = file.name.split('.').pop()?.toLowerCase();
+  return extension ? TEXT_LIKE_EXTENSIONS.has(extension) : false;
+}
+
+function truncateText(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength)}\n\n...(truncated)`;
+}
+
 export function ChatPanel({
-  onClose: _onClose,
+  onClose,
   status,
   globalVoice,
   wsConnected: connected,
@@ -82,118 +92,216 @@ export function ChatPanel({
   onBindInput,
   hideInput = false,
 }: ChatPanelProps) {
-  const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [showScreenshot, setShowScreenshot] = useState(false);
-  const [screenshotData, _setScreenshotData] = useState<string | null>(null);
-  const [showVoicePanel] = useState(false); // 暂时隐藏语音面板入口
+  const input = useChatStore((s) => s.input);
+  const setInput = useChatStore((s) => s.setInput);
+  const messages = useChatStore((s) => s.messages);
+  const setMessages = useChatStore((s) => s.setMessages);
+  const appendMessage = useChatStore((s) => s.appendMessage);
+  const appendMessagesBatch = useChatStore((s) => s.appendMessages);
+  const clearChatStore = useChatStore((s) => s.clearMessages);
+  const isLoading = useChatStore((s) => s.isLoading);
+  const setLoading = useChatStore((s) => s.setLoading);
+  const isDropActive = useChatStore((s) => s.isDropActive);
+  const setDropActive = useChatStore((s) => s.setDropActive);
+  const dropHint = useChatStore((s) => s.dropHint);
+  const setDropHint = useChatStore((s) => s.setDropHint);
+  const lastVoiceSignature = useChatStore((s) => s.lastVoiceSignature);
+  const setLastVoiceSignature = useChatStore((s) => s.setLastVoiceSignature);
+  const deferredMessages = useDeferredValue(messages);
+
   const [activePanel, setActivePanel] = useState<PanelType>('chat');
-  const [FixedSizeList, setFixedSizeList] = useState<FixedSizeListComponent | null>(null);
-  const listRef = useRef<FixedSizeListHandle | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  
-  // 【内存安全】获取窗口状态，在 Listening/Idle 模式下停止渲染复杂组件
+  const shouldStickToBottomRef = useRef(true);
+  const dragDepthRef = useRef(0);
+  const dropHintTimerRef = useRef<number | null>(null);
+  const hasHydratedRef = useRef(false);
+
   const windowState = useUIStore((s) => s.windowState);
   const isEmbeddedMode = mode === 'chat-only';
-  // 嵌入到 AgentDashboard 时（chat-only），始终渲染完整内容；独立窗口模式下才根据 windowState 做性能优化
   const shouldRenderComplexComponents = isEmbeddedMode || windowState === 'expanded';
-  
-  // 动态加载 react-window
+  const isExecuting = workflow.status === 'executing' || Boolean(status?.orchestrator_state?.includes('EXECUTING'));
+  const isPlanning = workflow.status === 'planning' || Boolean(status?.orchestrator_state?.includes('PLANNING'));
+  const isWorking = isExecuting || isPlanning || isLoading;
+
   useEffect(() => {
-    import('react-window').then((module) => {
-      // react-window 是 CommonJS 模块，可能需要从 default 或命名导出中获取
-      const typedModule = module as unknown as {
-        FixedSizeList?: FixedSizeListComponent;
-        default?: FixedSizeListComponent | { FixedSizeList?: FixedSizeListComponent };
-      };
-      const ListComponent =
-        typedModule.FixedSizeList ||
-        (typedModule.default && typeof typedModule.default === 'object'
-          ? (typedModule.default as { FixedSizeList?: FixedSizeListComponent }).FixedSizeList
-          : typedModule.default);
-      if (ListComponent) {
-        setFixedSizeList(() => ListComponent);
-      } else {
-        console.warn('Failed to load FixedSizeList component from react-window');
-      }
-    }).catch((err) => {
-      console.error('Failed to load react-window:', err);
-      // 降级方案：不设置FixedSizeList，使用fallback渲染
+    if (hasHydratedRef.current) return;
+    hasHydratedRef.current = true;
+    if (messages.length > 0) return;
+
+    const cached = loadCachedMessages();
+    if (cached.length > 0) {
+      setMessages(cached);
+    }
+  }, [messages.length, setMessages]);
+
+  const setTransientHint = useCallback((message: string) => {
+    setDropHint(message);
+    if (typeof window === 'undefined') return;
+    if (dropHintTimerRef.current !== null) {
+      window.clearTimeout(dropHintTimerRef.current);
+    }
+    dropHintTimerRef.current = window.setTimeout(() => {
+      setDropHint(null);
+      dropHintTimerRef.current = null;
+    }, 2600);
+  }, [setDropHint]);
+
+  const appendMessages = useCallback((next: ChatMessage | ChatMessage[]) => {
+    const incoming = Array.isArray(next) ? next : [next];
+    startTransition(() => {
+      appendMessagesBatch(incoming);
     });
-  }, []);
-  
-  // 计算消息列表容器高度（动态计算，减去 header 和 input 的高度）
-  const [containerHeight, setContainerHeight] = useState(600);
-  
-  useEffect(() => {
-    const updateHeight = () => {
-      if (messagesContainerRef.current) {
-        const rect = messagesContainerRef.current.getBoundingClientRect();
-        setContainerHeight(rect.height);
-      }
-    };
-    
-    updateHeight();
-    window.addEventListener('resize', updateHeight);
-    return () => window.removeEventListener('resize', updateHeight);
+  }, [appendMessagesBatch]);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    container.scrollTo({ top: container.scrollHeight, behavior });
   }, []);
 
-  // 自动滚动到底部（新消息到达时）
-  useEffect(() => {
-    if (listRef.current && messages.length > 0) {
-      // 使用 setTimeout 确保 DOM 更新后再滚动
-      setTimeout(() => {
-        listRef.current?.scrollToItem(messages.length - 1, 'end');
-      }, 0);
+  const clearMessages = useCallback(() => {
+    clearChatStore();
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem(MESSAGE_CACHE_KEY);
     }
-  }, [messages, isLoading]);
+  }, [clearChatStore]);
 
-  // 当语音对话完成时，将消息添加到聊天记录
   useEffect(() => {
-    if (globalVoice.transcribedText && globalVoice.agentResponse && globalVoice.voiceState === 'idle') {
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage?.content !== globalVoice.agentResponse) {
-        const timestamp = Date.now();
-        const userMessage: Message = {
-          id: `user-${timestamp}-${Math.random().toString(36).substr(2, 9)}`,
-          role: 'user',
-          content: `[Voice] ${globalVoice.transcribedText}`,
-          timestamp,
-        };
-        const assistantMessage: Message = {
-          id: `assistant-${timestamp + 1}-${Math.random().toString(36).substr(2, 9)}`,
-          role: 'assistant',
-          content: globalVoice.agentResponse,
-          timestamp: timestamp + 1,
-        };
-        setMessages(prev => [...prev, userMessage, assistantMessage]);
-      }
-    }
-  }, [globalVoice.transcribedText, globalVoice.agentResponse, globalVoice.voiceState, messages]);
+    if (typeof window === 'undefined') return;
+    window.sessionStorage.setItem(MESSAGE_CACHE_KEY, JSON.stringify(messages));
+  }, [messages]);
 
-  // Auto-show Brain panel when workflow is active
   useEffect(() => {
-    if (workflow.status === 'executing' || workflow.status === 'planning' || workflow.steps.length > 0) {
-      setActivePanel('brain');
-    }
-  }, [workflow.status, workflow.steps.length]);
+    if (typeof window === 'undefined') return;
+    if (!shouldStickToBottomRef.current) return;
 
-  // 监听打开设置面板的事件（从右键菜单或系统托盘触发）
+    const rafId = window.requestAnimationFrame(() => {
+      scrollToBottom(isLoading ? 'auto' : 'smooth');
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [deferredMessages.length, isLoading, scrollToBottom]);
+
   useEffect(() => {
-    const handleOpenSettings = () => {
-      console.log('⚙️ ChatPanel: Received open-settings event, switching to settings panel');
-      setActivePanel('settings');
-    };
-
-    window.addEventListener('lavis-open-settings', handleOpenSettings);
     return () => {
-      window.removeEventListener('lavis-open-settings', handleOpenSettings);
+      if (dropHintTimerRef.current !== null && typeof window !== 'undefined') {
+        window.clearTimeout(dropHintTimerRef.current);
+      }
     };
   }, []);
 
-  // 估算每条消息平均高度（包含 padding 和 gap）
-  const estimatedItemHeight = 150;
+  useEffect(() => {
+    if (globalVoice.voiceState !== 'idle') return;
+    const transcribedText = globalVoice.transcribedText?.trim();
+    const agentResponse = globalVoice.agentResponse?.trim();
+    if (!transcribedText || !agentResponse) return;
+
+    const signature = `${transcribedText}::${agentResponse}`;
+    if (lastVoiceSignature === signature) return;
+
+    setLastVoiceSignature(signature);
+    const timestamp = Date.now();
+    appendMessages([
+      {
+        id: createMessageId('user'),
+        role: 'user',
+        content: `[Voice] ${transcribedText}`,
+        timestamp,
+        source: 'voice',
+      },
+      {
+        id: createMessageId('assistant'),
+        role: 'assistant',
+        content: agentResponse,
+        timestamp: timestamp + 1,
+        source: 'voice',
+      },
+    ]);
+  }, [
+    appendMessages,
+    globalVoice.agentResponse,
+    globalVoice.transcribedText,
+    globalVoice.voiceState,
+    lastVoiceSignature,
+    setLastVoiceSignature,
+  ]);
+
+  useEffect(() => {
+    if (mode !== 'full') return;
+    const handleOpenSettings = () => setActivePanel('settings');
+    window.addEventListener('lavis-open-settings', handleOpenSettings);
+    return () => window.removeEventListener('lavis-open-settings', handleOpenSettings);
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== 'full') return;
+    if (activePanel !== 'chat') return;
+    if (
+      (workflow.status === 'executing' || workflow.status === 'planning') &&
+      workflow.steps.length > 0
+    ) {
+      const timer = window.setTimeout(() => setActivePanel('brain'), 900);
+      return () => window.clearTimeout(timer);
+    }
+  }, [activePanel, mode, workflow.status, workflow.steps.length]);
+
+  const submitInput = useCallback(async () => {
+    const messageText = input.trim();
+    if (!messageText || isLoading) return;
+
+    const timestamp = Date.now();
+    appendMessage({
+      id: createMessageId('user'),
+      role: 'user',
+      content: messageText,
+      timestamp,
+      source: 'text',
+    });
+
+    setInput('');
+    setLoading(true);
+    resetWorkflow();
+
+    if (connected) {
+      sendMessage('subscribe', {});
+      sendMessage('ping', {});
+    }
+
+    try {
+      const response = await agentApi.chat({ message: messageText });
+      appendMessage({
+        id: createMessageId('assistant'),
+        role: 'assistant',
+        content: response.agent_text || response.response,
+        timestamp: timestamp + 1,
+        source: 'text',
+      });
+    } catch (error) {
+      appendMessage({
+        id: createMessageId('error'),
+        role: 'assistant',
+        content: `Error: ${(error as Error).message}`,
+        timestamp: Date.now(),
+        source: 'error',
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [appendMessage, connected, input, isLoading, resetWorkflow, sendMessage, setInput, setLoading]);
+
+  useEffect(() => {
+    if (!onBindInput) return;
+    onBindInput({
+      value: input,
+      onChange: (value: string) => setInput(value),
+      onSubmit: () => {
+        void submitInput();
+      },
+      disabled: isLoading || isExecuting,
+      placeholder: wsStatus === 'connected'
+        ? 'Type a message or drag files here...'
+        : 'Backend reconnecting...',
+    });
+  }, [onBindInput, input, isLoading, isExecuting, setInput, submitInput, wsStatus]);
 
   const handleEmergencyStop = async () => {
     try {
@@ -203,277 +311,208 @@ export function ChatPanel({
     }
   };
 
-  const handleSubmit = async (e?: React.FormEvent) => {
-    if (e) {
-      e.preventDefault();
-    }
-    const messageText = input.trim();
-    if (!messageText || isLoading) return;
+  const applyDropPayload = useCallback(async (dataTransfer: DataTransfer) => {
+    const sections: string[] = [];
+    const files = Array.from(dataTransfer.files).slice(0, MAX_DROP_FILE_COUNT);
 
-    const timestamp = Date.now();
-    const userMessage: Message = {
-      id: `user-${timestamp}-${Math.random().toString(36).substr(2, 9)}`,
-      role: 'user',
-      content: messageText,
-      timestamp,
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-    setInput('');
-    setIsLoading(true);
-    resetWorkflow(); // Reset workflow state for new task
-
-    // 确保 WebSocket 连接保持活跃，继续监听后端状态
-    if (connected) {
-      // 发送订阅消息，确保后端知道前端正在监听
-      sendMessage('subscribe', {});
-      // 发送 ping 保持连接活跃
-      sendMessage('ping', {});
+    for (const file of files) {
+      if (isTextLikeFile(file) && file.size <= MAX_DROP_TEXT_SIZE) {
+        try {
+          const rawText = await file.text();
+          const preview = truncateText(rawText.trim(), MAX_DROP_PREVIEW_LENGTH);
+          sections.push([
+            `File: ${file.name} (${formatBytes(file.size)})`,
+            '```',
+            preview || '(empty file)',
+            '```',
+          ].join('\n'));
+        } catch {
+          sections.push(`File: ${file.name} (${formatBytes(file.size)})\nUnable to read file content.`);
+        }
+      } else {
+        sections.push(
+          `File: ${file.name} (${formatBytes(file.size)})\nType: ${file.type || 'unknown'} (metadata only)`,
+        );
+      }
     }
 
-    try {
-      // 使用已捕获的 messageText，避免在清空 input 后发送空消息
-      const response = await agentApi.chat({ message: messageText });
-      // 支持统一格式：优先使用 agent_text，否则使用向后兼容的 response 字段
-      const responseText = response.agent_text || response.response;
-      const assistantMessage: Message = {
-        id: `assistant-${timestamp + 1}-${Math.random().toString(36).substr(2, 9)}`,
-        role: 'assistant',
-        content: responseText,
-        timestamp: timestamp + 1,
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch (error) {
-      const errorMessage: Message = {
-        id: `error-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        role: 'assistant',
-        content: `Error: ${(error as Error).message}`,
-        timestamp: Date.now(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      setIsLoading(false);
+    const droppedText = dataTransfer.getData('text/plain').trim();
+    if (droppedText) {
+      sections.push(`Dropped Text:\n${truncateText(droppedText, MAX_DROP_PREVIEW_LENGTH)}`);
+    }
+
+    if (sections.length === 0) {
+      setTransientHint('Drop payload is empty.');
+      return;
+    }
+
+    const payload = `Please use this dropped context:\n\n${sections.join('\n\n')}`;
+    const currentInput = useChatStore.getState().input;
+    setInput(currentInput ? `${currentInput}\n\n${payload}` : payload);
+
+    if (files.length > 0 && droppedText) {
+      setTransientHint(`Attached ${files.length} file(s) and text snippet.`);
+      return;
+    }
+    if (files.length > 0) {
+      setTransientHint(`Attached ${files.length} file(s) into input.`);
+      return;
+    }
+    setTransientHint('Attached dropped text into input.');
+  }, [setInput, setTransientHint]);
+
+  const handleMessagesScroll = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    shouldStickToBottomRef.current = distanceToBottom < 64;
+  };
+
+  const handleDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepthRef.current += 1;
+    setDropActive(true);
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!isDropActive) setDropActive(true);
+  };
+
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) {
+      setDropActive(false);
     }
   };
 
-  const isExecuting = workflow.status === 'executing' || status?.orchestrator_state?.includes('EXECUTING');
-  const isPlanning = workflow.status === 'planning';
-  const isWorking = isExecuting || isPlanning || isLoading;
-  
-  // 判断是否应该显示工作状态指示器：WebSocket 连接正常且后端正在工作
-  const shouldShowWorkingIndicator = connected && isWorking;
-  
-  // Debug: log working indicator state
-  useEffect(() => {
-    if (connected || isWorking) {
-      console.log('ChatPanel working indicator:', {
-        connected: String(connected),
-        isWorking: String(isWorking),
-        workflowStatus: String(workflow.status),
-        isExecuting: String(isExecuting),
-        isPlanning: String(isPlanning),
-        isLoading: String(isLoading),
-        shouldShowWorkingIndicator: String(shouldShowWorkingIndicator)
-      });
-    }
-  }, [connected, isWorking, workflow.status, isExecuting, isPlanning, isLoading, shouldShowWorkingIndicator]);
-
-  // 将内部输入状态与提交逻辑暴露给外部（用于 FloatingInputBar）
-  useEffect(() => {
-    if (!onBindInput) return;
-
-    const disabled = isLoading || isExecuting || wsStatus !== 'connected';
-    const placeholder =
-      wsStatus === 'connected'
-        ? 'Type a message...'
-        : 'Connecting...';
-
-    onBindInput({
-      value: input,
-      onChange: (value: string) => setInput(value),
-      onSubmit: () => {
-        void handleSubmit();
-      },
-      disabled,
-      placeholder,
-    });
-  }, [onBindInput, input, isLoading, isExecuting, wsStatus]);
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepthRef.current = 0;
+    setDropActive(false);
+    void applyDropPayload(event.dataTransfer);
+  };
 
   const renderChatContent = () => (
     <>
-      <div
-        ref={messagesContainerRef}
-        className="chat-panel__messages"
-        style={{ position: 'relative' }}
-      >
-        {shouldRenderComplexComponents ? (
-          messages.length > 0 ? (
-            FixedSizeList ? (
-              <FixedSizeList
-                ref={listRef}
-                height={containerHeight}
-                itemCount={messages.length + (isLoading ? 1 : 0)}
-                itemSize={estimatedItemHeight}
-                width="100%"
-                style={{ padding: '20px' }}
-              >
-                {({ index, style }: { index: number; style: CSSProperties }) => {
-                  if (index === messages.length) {
-                    return (
-                      <div style={style}>
-                        <div className="message message--assistant">
-                          <div className="message__content message__loading">
-                            <span>.</span><span>.</span><span>.</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  }
+      <div className="chat-panel__toolbar">
+        <div className="chat-panel__toolbar-left">
+          <span className="chat-panel__title">Conversation</span>
+          <span className={`chat-panel__ws-badge chat-panel__ws-badge--${connected ? (isWorking ? 'working' : 'ready') : 'offline'}`}>
+            {connected ? (isWorking ? 'Working' : 'Ready') : 'Offline'}
+          </span>
+        </div>
+        <div className="chat-panel__toolbar-right">
+          <button
+            type="button"
+            className="chat-panel__toolbar-btn"
+            onClick={clearMessages}
+            disabled={deferredMessages.length === 0}
+          >
+            Clear
+          </button>
+          {mode === 'full' && (
+            <button
+              type="button"
+              className="chat-panel__toolbar-btn chat-panel__toolbar-btn--danger"
+              onClick={onClose}
+            >
+              Close
+            </button>
+          )}
+        </div>
+      </div>
 
-                  const message = messages[index];
-                  return (
-                    <div style={{ ...style, paddingBottom: '16px' }}>
-                      <div
-                        key={message.id}
-                        className={`message message--${message.role}`}
-                      >
-                        <div className="message__content">
-                          {message.role === 'assistant' ? (
-                            <ReactMarkdown
-                              components={{
-                                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                code({ className, children, ...props }: any) {
-                                  const match = /language-(\w+)/.exec(className || '');
-                                  const isInline = !match;
-                                  return !isInline && match ? (
-                                    <SyntaxHighlighter
-                                      style={oneDark}
-                                      language={match[1]}
-                                      PreTag="div"
-                                      {...props}
-                                    >
-                                      {String(children).replace(/\n$/, '')}
-                                    </SyntaxHighlighter>
-                                  ) : (
-                                    <code className={className} {...props}>
-                                      {children}
-                                    </code>
-                                  );
-                                },
-                              }}
-                            >
-                              {message.content}
-                            </ReactMarkdown>
-                          ) : (
-                            message.content
-                          )}
-                        </div>
-                        <div className="message__timestamp">
-                          {new Date(message.timestamp).toLocaleTimeString()}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }}
-              </FixedSizeList>
-            ) : (
-              // Fallback: react-window 还未加载完成时，先用普通列表渲染，避免“有消息但不显示”
-              <div style={{ padding: '20px' }}>
-                {messages.map((message) => (
-                  <div key={message.id} style={{ paddingBottom: '16px' }}>
-                    <div className={`message message--${message.role}`}>
-                      <div className="message__content">
-                        {message.role === 'assistant' ? (
-                          <ReactMarkdown
-                            components={{
-                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                              code({ className, children, ...props }: any) {
-                                const match = /language-(\w+)/.exec(className || '');
-                                const isInline = !match;
-                                return !isInline && match ? (
-                                  <SyntaxHighlighter
-                                    style={oneDark}
-                                    language={match[1]}
-                                    PreTag="div"
-                                    {...props}
-                                  >
-                                    {String(children).replace(/\n$/, '')}
-                                  </SyntaxHighlighter>
-                                ) : (
-                                  <code className={className} {...props}>
-                                    {children}
-                                  </code>
-                                );
-                              },
-                            }}
-                          >
-                            {message.content}
-                          </ReactMarkdown>
-                        ) : (
-                          message.content
-                        )}
-                      </div>
-                      <div className="message__timestamp">
-                        {new Date(message.timestamp).toLocaleTimeString()}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {isLoading && (
-                  <div className="message message--assistant">
-                    <div className="message__content message__loading">
-                      <span>.</span><span>.</span><span>.</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          ) : isLoading ? (
-            <div className="message message--assistant">
-              <div className="message__content message__loading">
-                <span>.</span><span>.</span><span>.</span>
-              </div>
-            </div>
-          ) : (
-            <div className="chat-panel__messages-empty">
-              <p>Start conversation...</p>
-            </div>
-          )
-        ) : (
-          <div className="chat-panel__messages-placeholder">
-            <p>Window is in {windowState} mode</p>
-            <p>Double-click capsule to expand</p>
+      <div
+        className={`chat-panel__messages-shell ${isDropActive ? 'chat-panel__messages-shell--drop' : ''}`}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {dropHint && <div className="chat-panel__drop-hint">{dropHint}</div>}
+        {isDropActive && (
+          <div className="chat-panel__drop-mask">
+            <div>Drop files or text here</div>
+            <span>Text files will be attached with content preview.</span>
           </div>
         )}
+
+        <div
+          ref={messagesContainerRef}
+          className="chat-panel__messages"
+          onScroll={handleMessagesScroll}
+        >
+          {shouldRenderComplexComponents ? (
+            <>
+              {deferredMessages.length === 0 && !isLoading && (
+                <div className="chat-panel__messages-empty">
+                  <p>Start a task, then drag files or notes into the chat if needed.</p>
+                </div>
+              )}
+
+              {deferredMessages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`chat-message chat-message--${message.role} chat-message--${message.source}`}
+                >
+                  <div className="chat-message__content">
+                    {message.role === 'assistant' ? (
+                      <ReactMarkdown>{message.content}</ReactMarkdown>
+                    ) : (
+                      message.content
+                    )}
+                  </div>
+                  <div className="chat-message__meta">
+                    {new Date(message.timestamp).toLocaleTimeString()}
+                  </div>
+                </div>
+              ))}
+
+              {isLoading && (
+                <div className="chat-message chat-message--assistant">
+                  <div className="chat-message__content chat-message__loading">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="chat-panel__messages-placeholder">
+              <p>Window is in {windowState} mode.</p>
+              <p>Switch back to expanded mode to continue.</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {!hideInput && (
-        <div className="chat-panel__input-container">
-          {showVoicePanel && (
-            <div className="chat-panel__voice-container">
-              <VoicePanel
-                status={status}
-                voiceState={globalVoice.voiceState}
-                isRecording={globalVoice.isRecording}
-                isWakeWordListening={globalVoice.isWakeWordListening}
-                transcribedText={globalVoice.transcribedText}
-                agentResponse={globalVoice.agentResponse}
-                error={globalVoice.error}
-                onStartRecording={globalVoice.startRecording}
-                onStopRecording={globalVoice.stopRecording}
-              />
-            </div>
-          )}
-          <form className="chat-panel__input" onSubmit={handleSubmit}>
+        <div className="chat-panel__input-wrap">
+          <form
+            className="chat-panel__input"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitInput();
+            }}
+          >
             <input
               type="text"
               value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={wsStatus === 'connected' ? 'Type a message...' : 'Connecting...'}
-              disabled={isLoading || isExecuting || wsStatus !== 'connected'}
-              autoFocus
+              onChange={(event) => setInput(event.target.value)}
+              placeholder={wsStatus === 'connected' ? 'Type message, or drop files into chat area...' : 'Backend reconnecting...'}
+              disabled={isLoading || isExecuting}
             />
-            <button type="submit" disabled={!input.trim() || isLoading || isExecuting || wsStatus !== 'connected'}>
+            <button
+              type="submit"
+              disabled={!input.trim() || isLoading || isExecuting}
+            >
               Send
             </button>
           </form>
@@ -482,7 +521,6 @@ export function ChatPanel({
     </>
   );
 
-  // Render the active panel content
   const renderPanelContent = () => {
     if (mode === 'chat-only') {
       return renderChatContent();
@@ -499,10 +537,10 @@ export function ChatPanel({
         );
       case 'management':
         return <ManagementPanel onClose={() => setActivePanel('chat')} />;
-      case 'scheduler':
-        return <SchedulerPanel onClose={() => setActivePanel('chat')} />;
       case 'skills':
         return <SkillsPanel onClose={() => setActivePanel('chat')} />;
+      case 'scheduler':
+        return <SchedulerPanel onClose={() => setActivePanel('chat')} />;
       case 'settings':
         return <SettingsPanel />;
       case 'chat':
@@ -511,12 +549,10 @@ export function ChatPanel({
     }
   };
 
-  const rootClassName =
-    mode === 'full' ? 'chat-panel' : 'chat-panel chat-panel--embedded';
+  const rootClassName = mode === 'full' ? 'chat-panel' : 'chat-panel chat-panel--embedded';
 
   return (
     <div className={rootClassName}>
-      {/* Sidebar Navigation */}
       {mode === 'full' && (
         <Sidebar
           activePanel={activePanel}
@@ -526,35 +562,13 @@ export function ChatPanel({
         />
       )}
 
-      {/* Main Content */}
       <div className="chat-panel__content">
-        {/* Screenshot Preview */}
-        {showScreenshot && screenshotData && (
-          <div className="chat-panel__screenshot-preview">
-            <button
-              className="chat-panel__screenshot-close"
-              onClick={() => setShowScreenshot(false)}
-            >
-              ×
-            </button>
-            <img src={`data:image/png;base64,${screenshotData}`} alt="Screenshot" />
-          </div>
-        )}
-
-        {/* Panel Content */}
         <div className="chat-panel__body">
           <div className="chat-panel__main">
-            {shouldRenderComplexComponents ? (
-              renderPanelContent()
-            ) : (
-              <div className="chat-panel__messages-placeholder">
-                <p>Window minimized</p>
-              </div>
-            )}
+            {renderPanelContent()}
           </div>
         </div>
       </div>
     </div>
   );
 }
-

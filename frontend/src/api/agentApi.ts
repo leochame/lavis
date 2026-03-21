@@ -24,8 +24,8 @@ class AgentApi {
     // 这在 Electron 环境中可以防止 DNS 相关的崩溃
     this.client = axios.create({
       baseURL: `http://127.0.0.1:${this.backendPort}/api/agent`,
-      // 设置合理的默认超时时间：30秒
-      timeout: 30000,
+      // 使用无限超时，保持长连接请求不断开
+      timeout: 0,
       headers: {
         'Content-Type': 'application/json',
       },

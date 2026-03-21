@@ -56,28 +56,49 @@ export interface ScheduledTask {
   name: string;
   description: string | null;
   cronExpression: string;
+  scheduleMode: 'CRON' | 'LOOP';
+  intervalSeconds: number | null;
+  executionMode: 'COMMAND' | 'REQUEST';
   command: string;
+  requestContent: string | null;
+  requestUseOrchestrator: boolean;
+  sourceType: 'MANUAL' | 'FILE';
+  sourcePath: string | null;
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
   lastRunAt: string | null;
   nextRunAt: string | null;
   runCount: number;
-  lastStatus: string | null;
+  lastRunStatus: string | null;
+  lastRunResult: string | null;
+  penaltyPoints: number;
+  autoPaused: boolean;
 }
 
 export interface CreateTaskRequest {
   name: string;
   description?: string;
-  cronExpression: string;
-  command: string;
+  cronExpression?: string;
+  scheduleMode?: 'CRON' | 'LOOP';
+  intervalSeconds?: number;
+  executionMode?: 'COMMAND' | 'REQUEST';
+  command?: string;
+  requestContent?: string;
+  requestUseOrchestrator?: boolean;
+  enabled?: boolean;
 }
 
 export interface UpdateTaskRequest {
   name?: string;
   description?: string;
   cronExpression?: string;
+  scheduleMode?: 'CRON' | 'LOOP';
+  intervalSeconds?: number;
+  executionMode?: 'COMMAND' | 'REQUEST';
   command?: string;
+  requestContent?: string;
+  requestUseOrchestrator?: boolean;
   enabled?: boolean;
 }
 
@@ -87,7 +108,7 @@ export interface TaskRunLog {
   startTime: string;
   endTime: string | null;
   status: string;
-  output: string | null;
+  result: string | null;
   error: string | null;
   durationMs: number;
 }
@@ -193,7 +214,7 @@ class ManagementApi {
   }
 
   async runScheduledTaskNow(id: string): Promise<{ success: boolean; message: string }> {
-    const response = await this.client.post<{ success: boolean; message: string }>(`/scheduler/tasks/${id}/start`);
+    const response = await this.client.post<{ success: boolean; message: string }>(`/scheduler/tasks/${id}/run`);
     return response.data;
   }
 

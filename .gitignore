@@ -34,5 +34,8 @@ build/
 
 ### Application Config ###
 src/main/resources/application.properties
+.env
+.env.*
+!.env.example
 /frontend/jre/
 /frontend/dist-electron/

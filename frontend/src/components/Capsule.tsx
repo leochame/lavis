@@ -1,15 +1,9 @@
+/// <reference types="node" />
 import { useEffect, useCallback, useRef } from 'react';
 import type { AgentStatus } from '../types/agent';
 import type { VoiceState } from '../hooks/useGlobalVoice';
 import { useUIStore } from '../store/uiStore';
 import './Capsule.css';
-
-// Provide a minimal typing for process.env in the renderer to avoid TS errors
-declare const process: {
-  env?: {
-    NODE_ENV?: string;
-  };
-};
 
 /**
  * Capsule 显示状态

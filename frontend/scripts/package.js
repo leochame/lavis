@@ -367,12 +367,76 @@ function verifyPackagedResources() {
   removeQuarantineAttribute(appPath);
 }
 
+function prepareBuildIconAssets() {
+  const sourceIcon = path.join(projectRoot, 'docs', 'images', 'icon.png');
+  const buildDir = path.join(frontendDir, 'build');
+  const iconsetDir = path.join(buildDir, 'icon.iconset');
+  const targetPng = path.join(buildDir, 'icon.png');
+  const targetIcns = path.join(buildDir, 'icon.icns');
+
+  if (!fs.existsSync(sourceIcon)) {
+    throw new Error(`图标源文件不存在: ${sourceIcon}`);
+  }
+
+  fs.mkdirSync(buildDir, { recursive: true });
+  fs.copyFileSync(sourceIcon, targetPng);
+  console.log(`✅ 已复制图标: ${targetPng}`);
+
+  if (process.platform !== 'darwin') {
+    console.log('ℹ️ 非 macOS 环境，跳过 icon.icns 生成');
+    return;
+  }
+
+  fs.rmSync(iconsetDir, { recursive: true, force: true });
+  fs.mkdirSync(iconsetDir, { recursive: true });
+
+  const iconsetFiles = [
+    ['icon_16x16.png', 16],
+    ['icon_16x16@2x.png', 32],
+    ['icon_32x32.png', 32],
+    ['icon_32x32@2x.png', 64],
+    ['icon_128x128.png', 128],
+    ['icon_128x128@2x.png', 256],
+    ['icon_256x256.png', 256],
+    ['icon_256x256@2x.png', 512],
+    ['icon_512x512.png', 512],
+    ['icon_512x512@2x.png', 1024],
+  ];
+
+  try {
+    for (const [filename, size] of iconsetFiles) {
+      const output = path.join(iconsetDir, filename);
+      const result = spawnSync('sips', ['-z', String(size), String(size), sourceIcon, '--out', output], {
+        stdio: 'pipe',
+      });
+      if (result.status !== 0) {
+        throw new Error(`sips 生成失败: ${filename}`);
+      }
+    }
+    const iconResult = spawnSync('iconutil', ['-c', 'icns', iconsetDir, '-o', targetIcns], {
+      stdio: 'pipe',
+    });
+    if (iconResult.status !== 0) {
+      throw new Error('iconutil 执行失败');
+    }
+    if (!fs.existsSync(targetIcns)) {
+      throw new Error('icon.icns 未生成');
+    }
+    console.log(`✅ 已生成图标: ${targetIcns}`);
+  } catch (error) {
+    throw new Error(`生成 icon.icns 失败: ${error.message}`);
+  }
+}
+
 async function main() {
   console.log('🚀 开始一键打包 Lavis 应用...\n');
   
   try {
     // 1. 检查前置条件
     await checkPrerequisites();
+
+    // 1.5 准备图标资源（用于应用与打包图标）
+    prepareBuildIconAssets();
     
     // 2. 构建 Java 后端
     await buildBackend();
@@ -396,5 +460,3 @@ async function main() {
 }
 
 main();
-
-

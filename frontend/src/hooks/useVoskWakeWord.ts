@@ -353,6 +353,7 @@ interface VoskRecognizer {
 interface VoskResultMessage {
   event: 'partialresult' | 'result' | 'error';
   recognizerId: string;
+  text?: string;
   result?: {
     text?: string;
     partial?: string;
@@ -374,6 +375,48 @@ interface VoskModel {
 
 interface VoskModule {
   createModel: (modelPath: string, logLevel?: number) => Promise<VoskModel>;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null) return null;
+  return value as Record<string, unknown>;
+}
+
+function resolveVoskModule(value: unknown): VoskModule | null {
+  const moduleRecord = asRecord(value);
+  if (!moduleRecord) return null;
+
+  const candidate = moduleRecord.default ?? moduleRecord;
+  const candidateRecord = asRecord(candidate);
+  if (!candidateRecord) return null;
+
+  if (typeof candidateRecord.createModel === 'function') {
+    return candidateRecord as unknown as VoskModule;
+  }
+
+  return null;
+}
+
+function getVoskRecognizedText(message: VoskResultMessage): string | undefined {
+  if (typeof message.text === 'string') {
+    const direct = message.text.trim();
+    if (direct) return direct;
+  }
+
+  const nestedText = message.result?.text;
+  if (typeof nestedText === 'string') {
+    const nested = nestedText.trim();
+    if (nested) return nested;
+  }
+
+  const resultAsRecord = asRecord(message.result);
+  const rawText = resultAsRecord?.text;
+  if (typeof rawText === 'string') {
+    const text = rawText.trim();
+    if (text) return text;
+  }
+
+  return undefined;
 }
 
 /**
@@ -478,8 +521,7 @@ export function useVoskWakeWord({
     try {
       // 动态导入 vosk-browser
       const voskModule = await import('vosk-browser');
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      voskRef.current = (voskModule.default || voskModule) as any;
+      voskRef.current = resolveVoskModule(voskModule);
 
       // 加载模型
       if (!voskRef.current) {
@@ -495,7 +537,7 @@ export function useVoskWakeWord({
       // 设置日志级别（0=INFO, 1=WARN, 2=ERROR）
       try {
         model.setLogLevel(0);
-      } catch (e) {
+      } catch {
         // Ignore log level setting errors
       }
 
@@ -566,26 +608,7 @@ export function useVoskWakeWord({
       recognizer.on('result', (message: VoskResultMessage) => {
         // vosk-browser 0.0.8 的 result 事件回调直接传递结果对象
         // 结构可能是: { text: "...", result: [...] } 或 { result: { text: "...", ... } }
-        let text: string | undefined;
-        
-        // 尝试多种可能的结构
-        if (typeof message === 'object') {
-          // 情况1: message 直接包含 text (vosk-browser 常见格式)
-          if ('text' in message && typeof (message as any).text === 'string') {
-            text = (message as any).text.trim();
-          }
-          // 情况2: message.result.text
-          else if ('result' in message && typeof (message as any).result === 'object') {
-            const result = (message as any).result;
-            if (result && typeof result.text === 'string') {
-              text = result.text.trim();
-            }
-          }
-          // 情况3: message 本身可能就是结果对象
-          else if ((message as any).text) {
-            text = String((message as any).text).trim();
-          }
-        }
+        const text = getVoskRecognizedText(message);
 
         if (text) {
           // 输出识别到的文本（用于调试）
@@ -675,7 +698,7 @@ export function useVoskWakeWord({
       
       // 监听错误
       recognizer.on('error', (message: VoskResultMessage) => {
-        const errorMsg = (message as any).error || 'Unknown error';
+        const errorMsg = typeof message.error === 'string' ? message.error : 'Unknown error';
         console.error('[Vosk] Recognizer error:', errorMsg);
         setError(`Vosk 识别错误: ${errorMsg}`);
       });
@@ -757,7 +780,7 @@ export function useVoskWakeWord({
     if (recognizerRef.current) {
       try {
         recognizerRef.current.remove();
-      } catch (e) {
+      } catch {
         // Ignore removal errors
       }
       recognizerRef.current = null;

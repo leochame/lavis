@@ -7,7 +7,7 @@
 #
 # Usage Instructions:
 # 1. Copy this file to application.properties
-# 2. Set your Gemini API key (or configure via frontend Settings panel)
+# 2. Copy .env.example to .env and fill keys/base URL/model settings
 # 3. application.properties is in .gitignore and will not be committed
 #
 # ====================================
@@ -30,12 +30,13 @@ app.llm.default-tts-model=tts
 # ====================================
 # Using Google Gemini API directly
 # API Key can be set via:
-# 1. Environment variable: GEMINI_API_KEY
-# 2. Frontend Settings panel (recommended for hackathon)
-# 3. Directly in this file (not recommended)
+# 1. .env / Environment variable: GEMINI_API_KEY
+# 2. .env / Environment variable: GEMINI_BASE_URL (optional proxy/relay)
+# 3. .env / Environment variable: GEMINI_MODEL_NAME (optional model override)
 app.llm.models.gemini.provider=GEMINI
+app.llm.models.gemini.base-url=${GEMINI_BASE_URL:}
 app.llm.models.gemini.api-key=${GEMINI_API_KEY:}
-app.llm.models.gemini.model-name=gemini-2.5-flash-preview
+app.llm.models.gemini.model-name=${GEMINI_MODEL_NAME:gemini-2.5-flash-preview}
 app.llm.models.gemini.temperature=0.4
 app.llm.models.gemini.timeout-seconds=180
 app.llm.models.gemini.max-retries=3
@@ -46,8 +47,9 @@ app.llm.models.gemini.max-retries=3
 # Using Gemini generateContent API with audio input
 app.llm.models.whisper.type=STT
 app.llm.models.whisper.provider=GEMINI
+app.llm.models.whisper.base-url=${STT_BASE_URL:}
 app.llm.models.whisper.api-key=${GEMINI_API_KEY:}
-app.llm.models.whisper.model-name=gemini-2.5-flash-preview
+app.llm.models.whisper.model-name=${STT_MODEL_NAME:gemini-2.5-flash-preview}
 app.llm.models.whisper.timeout-seconds=120
 
 # ====================================
@@ -58,9 +60,10 @@ app.llm.models.whisper.timeout-seconds=120
 # See: https://ai.google.dev/gemini-api/docs/text-to-speech
 app.llm.models.tts.type=TTS
 app.llm.models.tts.provider=GEMINI
+app.llm.models.tts.base-url=${TTS_BASE_URL:}
 app.llm.models.tts.api-key=${GEMINI_API_KEY:}
-app.llm.models.tts.model-name=gemini-2.5-flash-preview-tts
-app.llm.models.tts.voice=Kore
+app.llm.models.tts.model-name=${TTS_MODEL_NAME:gemini-2.5-flash-preview-tts}
+app.llm.models.tts.voice=${TTS_VOICE:Kore}
 app.llm.models.tts.timeout-seconds=60
 
 # ====================================

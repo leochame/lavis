@@ -1,8 +1,8 @@
 package com.lavis;
 
-import com.lavis.service.llm.LlmFactory;
-import com.lavis.config.llm.LlmProperties;
-import com.lavis.service.llm.stt.SttModel;
+import com.lavis.infra.llm.LlmFactory;
+import com.lavis.entry.config.llm.LlmProperties;
+import com.lavis.infra.llm.stt.SttModel;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -61,8 +61,8 @@ public class SttTimeoutConfigTest {
         log.info("超时时间: {} 秒", whisperConfig.getTimeoutSeconds());
         log.info("最大重试次数: {}", whisperConfig.getMaxRetries());
         
-        assertEquals(com.lavis.config.llm.ModelConfig.ModelType.STT, whisperConfig.getType());
-        assertEquals(com.lavis.config.llm.ModelConfig.Provider.GEMINI, whisperConfig.getProvider());
+        assertEquals(com.lavis.entry.config.llm.ModelConfig.ModelType.STT, whisperConfig.getType());
+        assertEquals(com.lavis.entry.config.llm.ModelConfig.Provider.GEMINI, whisperConfig.getProvider());
     }
 }
 

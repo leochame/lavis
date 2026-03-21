@@ -10,8 +10,8 @@
   flex-direction: column;
   align-items: center;
   padding: 20px 0 16px;
-  background: radial-gradient(circle at top, rgba(251, 191, 36, 0.08), transparent 60%),
-    radial-gradient(circle at bottom, rgba(52, 211, 153, 0.08), transparent 55%),
+  background: radial-gradient(circle at top, rgba(182, 182, 182, 0.08), transparent 60%),
+    radial-gradient(circle at bottom, rgba(182, 182, 182, 0.06), transparent 55%),
     var(--surface-elevated);
   border-right: 1px solid var(--border-subtle);
   -webkit-app-region: drag;
@@ -32,9 +32,9 @@
   width: 12px;
   height: 12px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.4);
-  border: 1px solid rgba(248, 250, 252, 0.4);
-  box-shadow: 0 0 6px rgba(15, 23, 42, 0.9);
+  background: rgba(56, 56, 56, 0.4);
+  border: 1px solid rgba(236, 236, 236, 0.4);
+  box-shadow: 0 0 6px rgba(20, 22, 26, 0.9);
   transition: all 0.25s ease-out;
 }
 
@@ -99,7 +99,7 @@
 }
 
 .sidebar__nav-item--active {
-  background: rgba(248, 250, 252, 0.06);
+  background: rgba(245, 245, 245, 0.06);
   border-color: var(--border-default);
   color: var(--text-primary);
   box-shadow: none;

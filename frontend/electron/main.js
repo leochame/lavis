@@ -52,17 +52,34 @@ const preferTransparent = isMac && process.env.ELECTRON_OPAQUE !== '1';
 // ENV: ELECTRON_DEVTOOLS=1 to allow toggling DevTools (default off to avoid "像浏览器")
 // 开发模式下默认允许 DevTools
 const allowDevTools = isDev || process.env.ELECTRON_DEVTOOLS === '1';
+function resolveAppIconPath() {
+    const candidates = electron_1.app.isPackaged
+        ? [path.join(process.resourcesPath, 'icon.png')]
+        : [path.join(__dirname, '..', '..', 'docs', 'images', 'icon.png')];
+    for (const candidate of candidates) {
+        const image = electron_1.nativeImage.createFromPath(candidate);
+        if (!image.isEmpty()) {
+            return candidate;
+        }
+    }
+    return null;
+}
 // 统一窗口尺寸定义
 // - Idle: 隐藏或极小（80x80，与 capsule 相同）
 // - Listening: Mini 模式 (200x60px) - 语音唤醒/监听中
-// - Expanded: Full 模式 (800x600px) - 交互展开
+// - Expanded/Chat: 默认放大，提升信息密度与可读性
 const WINDOW_BOUNDS = {
     idle: { width: 80, height: 80 },
     listening: { width: 200, height: 60 },
-    expanded: { width: 800, height: 600 },
+    expanded: { width: 1080, height: 760 },
     // 兼容旧模式
     capsule: { width: 80, height: 80 },
-    chat: { width: 960, height: 640 },
+    chat: { width: 1200, height: 820 },
+};
+// 主界面允许继续缩放，但不低于该阈值
+const WINDOW_MIN_BOUNDS = {
+    expanded: { width: 860, height: 620 },
+    chat: { width: 960, height: 680 },
 };
 // 边缘吸附配置
 const SNAP_THRESHOLD = 30; // 吸附阈值 (px)
@@ -70,7 +87,6 @@ const SNAP_MAGNETIC_RANGE = 80; // 磁性吸附范围 (px)
 let currentMode = 'capsule';
 let isSnappedToEdge = false;
 let snapPosition = null;
-let isHalfHidden = false; // 是否处于半隐藏状态
 // 拖拽状态
 let isDragging = false;
 let dragStartPos = { x: 0, y: 0 };
@@ -130,6 +146,7 @@ function createWindow() {
         hasShadow: false, // 透明窗口禁用系统阴影，由 CSS 控制
         // macOS: 设置窗口级别为悬浮面板
         type: isMac ? 'panel' : undefined,
+        icon: resolveAppIconPath() ?? undefined,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
@@ -310,67 +327,6 @@ function calculateSnapPosition(x, y, width, height) {
     }
     return { x: newX, y: newY, snapped, edge };
 }
-/**
- * 半隐藏窗口 - 收缩到边缘只露出一小部分
- */
-function halfHideWindow() {
-    if (!mainWindow || !snapPosition)
-        return;
-    const [x, y] = mainWindow.getPosition();
-    const [width, height] = mainWindow.getSize();
-    const visiblePart = 16; // 露出 16px
-    let newX = x;
-    let newY = y;
-    switch (snapPosition) {
-        case 'left':
-            newX = -(width - visiblePart);
-            break;
-        case 'right':
-            const display = electron_1.screen.getDisplayNearestPoint({ x, y });
-            newX = display.workArea.x + display.workArea.width - visiblePart;
-            break;
-        case 'top':
-            newY = -(height - visiblePart);
-            break;
-        case 'bottom':
-            const displayB = electron_1.screen.getDisplayNearestPoint({ x, y });
-            newY = displayB.workArea.y + displayB.workArea.height - visiblePart;
-            break;
-    }
-    mainWindow.setPosition(newX, newY, true);
-    isHalfHidden = true;
-    console.log(`👻 Window half-hidden at ${snapPosition} edge`);
-}
-/**
- * 从半隐藏状态恢复完整显示
- */
-function showFullWindow() {
-    if (!mainWindow || !snapPosition)
-        return;
-    const [x, y] = mainWindow.getPosition();
-    const [width, height] = mainWindow.getSize();
-    const display = electron_1.screen.getDisplayNearestPoint({ x: x + width / 2, y: y + height / 2 });
-    const { workArea } = display;
-    let newX = x;
-    let newY = y;
-    switch (snapPosition) {
-        case 'left':
-            newX = workArea.x;
-            break;
-        case 'right':
-            newX = workArea.x + workArea.width - width;
-            break;
-        case 'top':
-            newY = workArea.y;
-            break;
-        case 'bottom':
-            newY = workArea.y + workArea.height - height;
-            break;
-    }
-    mainWindow.setPosition(newX, newY, true);
-    isHalfHidden = false;
-    console.log(`👁️ Window restored from half-hidden`);
-}
 // 记录胶囊位置，用于展开动画
 let lastCapsulePosition = null;
 function resizeWindowByMode(mode) {
@@ -390,11 +346,11 @@ function resizeWindowByMode(mode) {
     currentMode = mode; // 跟踪当前模式
     const bounds = WINDOW_BOUNDS[mode] || WINDOW_BOUNDS.capsule;
     // 根据模式设置对应的最小窗口尺寸
-    // 需求：主界面（聊天 / 设置）可以自由调整窗口大小，但不能小于当前默认尺寸
+    // 主界面（聊天 / 设置）可以自由调整窗口大小，但不能低于可用下限
     const minBounds = mode === 'chat'
-        ? WINDOW_BOUNDS.chat
+        ? WINDOW_MIN_BOUNDS.chat
         : mode === 'expanded'
-            ? WINDOW_BOUNDS.expanded
+            ? WINDOW_MIN_BOUNDS.expanded
             : WINDOW_BOUNDS.capsule;
     if (mode === 'chat' || mode === 'expanded') {
         // 从胶囊位置展开到聊天/展开模式
@@ -417,7 +373,6 @@ function resizeWindowByMode(mode) {
         mainWindow.setPosition(centerX, centerY, false);
         isSnappedToEdge = false;
         snapPosition = null;
-        isHalfHidden = false;
     }
     else {
         // 切换到胶囊/监听模式
@@ -599,10 +554,6 @@ electron_1.ipcMain.handle('platform:drag-start', (_event, { mouseX, mouseY }) =>
     dragStartPos = { x: mouseX, y: mouseY };
     const [winX, winY] = mainWindow.getPosition();
     windowStartPos = { x: winX, y: winY };
-    // 如果处于半隐藏状态，先恢复
-    if (isHalfHidden) {
-        showFullWindow();
-    }
     console.log('🖱️ Drag started');
 });
 // 拖拽移动
@@ -617,8 +568,8 @@ electron_1.ipcMain.handle('platform:drag-move', (_event, { mouseX, mouseY }) => 
     }
     const deltaX = mouseX - dragStartPos.x;
     const deltaY = mouseY - dragStartPos.y;
-    let newX = windowStartPos.x + deltaX;
-    let newY = windowStartPos.y + deltaY;
+    const newX = windowStartPos.x + deltaX;
+    const newY = windowStartPos.y + deltaY;
     // 直接设置位置，不使用动画以保证流畅
     mainWindow.setPosition(Math.round(newX), Math.round(newY), false);
 });
@@ -845,7 +796,7 @@ electron_1.app.whenReady().then(async () => {
     createTray();
 });
 // Clean up before quit
-electron_1.app.on('before-quit', (event) => {
+electron_1.app.on('before-quit', () => {
     // 标记应用正在退出，防止其他操作干扰
     isQuitting = true;
     console.log('🛑 Application is quitting...');
@@ -906,8 +857,11 @@ electron_1.app.on('will-quit', async (event) => {
     electron_1.app.exit(0);
 });
 function createTray() {
-    // Create a simple tray icon (in production, replace with actual icon file)
-    const icon = electron_1.nativeImage.createEmpty();
+    const iconPath = resolveAppIconPath();
+    const icon = iconPath ? electron_1.nativeImage.createFromPath(iconPath).resize({ width: 18, height: 18 }) : electron_1.nativeImage.createEmpty();
+    if (isMac && !icon.isEmpty()) {
+        icon.setTemplateImage(true);
+    }
     tray = new electron_1.Tray(icon);
     const contextMenu = electron_1.Menu.buildFromTemplate([
         {

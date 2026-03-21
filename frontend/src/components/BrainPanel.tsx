@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useMemo, useState } from 'react';
 import type { WorkflowState, PlanStepEvent } from '../hooks/useWebSocket';
 import type { ConnectionStatus } from '../hooks/useWebSocket';
 import './BrainPanel.css';
@@ -44,12 +44,12 @@ export function BrainPanel({
     }
   }, [workflow.logs]);
 
-  // Auto-expand active step
-  useEffect(() => {
-    if (workflow.currentStepId) {
-      setExpandedSteps(prev => new Set([...prev, workflow.currentStepId!]));
-    }
-  }, [workflow.currentStepId]);
+  const effectiveExpandedSteps = useMemo(() => {
+    if (!workflow.currentStepId) return expandedSteps;
+    const merged = new Set(expandedSteps);
+    merged.add(workflow.currentStepId);
+    return merged;
+  }, [expandedSteps, workflow.currentStepId]);
 
   const toggleStep = (stepId: number) => {
     setExpandedSteps(prev => {
@@ -210,7 +210,7 @@ export function BrainPanel({
                   step={step}
                   index={index}
                   isLast={index === workflow.steps.length - 1}
-                  isExpanded={expandedSteps.has(step.id)}
+                  isExpanded={effectiveExpandedSteps.has(step.id)}
                   onToggle={() => toggleStep(step.id)}
                   getStatusIcon={getStatusIcon}
                   getStatusLabel={getStatusLabel}

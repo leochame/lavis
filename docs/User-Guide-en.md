@@ -61,14 +61,12 @@ echo 'export GEMINI_API_KEY=your_gemini_api_key_here' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-#### Option 2: Frontend Settings Panel (Easiest for First-Time Users)
+#### Option 2: `.env` File (Recommended for local runs)
 
-1. Launch `Lavis AI.app`
-2. Open the Settings panel (via menu bar icon or `Cmd + K`)
-3. Enter your Gemini API key in the settings form
-4. Click "Save" - the key will be stored and used immediately
-
-> **Note**: The frontend settings panel provides the easiest way to configure your API key without editing files or environment variables.
+```bash
+cp .env.example .env
+# Edit .env and set app.llm.models.* keys/base-url/model-name
+```
 
 #### Option 3: Configuration File (For Advanced Users)
 
@@ -95,7 +93,7 @@ If you're running the backend manually (developer mode):
 3. Click "Create API Key"
 4. Copy the generated key
 
-> **Security Note**: API keys are stored locally only (in environment variables or local config files). They are never uploaded to third-party services or exposed to the frontend.
+> **Security Note**: API keys are stored locally only (`.env`, environment variables, or local config files). The frontend no longer uploads API keys.
 
 ### 3.2 Connectivity Check between Frontend & Backend
 
@@ -153,7 +151,7 @@ Check microphone permission, network connectivity, and backend voice service con
 ### Q4. How do I configure the API key?
 
 You have three options:
-1. **Frontend Settings Panel** (easiest): Launch the app, open Settings, enter your Gemini API key, and save.
+1. **`.env` file**: Copy `.env.example` to `.env` and fill `app.llm.models.*` keys.
 2. **Environment Variable**: Set `GEMINI_API_KEY` in your terminal before launching the app.
 3. **Configuration File**: Edit `application.properties` in the backend resources folder.
 
@@ -168,7 +166,5 @@ Visit [Google AI Studio](https://aistudio.google.com/app/apikey), sign in with y
 ## 7. Getting Support
 
 - If you encounter any issues:
-  - Refer to `README.md` and `docs/ARCHITECTURE.md` in the project root.
+  - Refer to `README.md` in the project root.
   - Open an Issue for the maintainers (if the project is public).
-
-

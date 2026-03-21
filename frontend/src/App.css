@@ -20,13 +20,11 @@
 }
 
 .app--web {
-  /* 与 AgentDashboard 保持一致的 Ember Garden 宇宙渐变背景（去除蓝紫色） */
+  /* 面板模式底色：深色灰阶，避免彩色背景干扰 */
   background:
-    radial-gradient(circle at 0% 0%, rgba(236, 72, 153, 0.16), transparent 55%),
-    radial-gradient(circle at 100% 0%, rgba(148, 163, 184, 0.22), transparent 55%),
-    radial-gradient(circle at 0% 100%, rgba(52, 211, 153, 0.14), transparent 55%),
-    radial-gradient(circle at 100% 100%, rgba(251, 191, 36, 0.16), transparent 55%),
-    linear-gradient(to bottom, #020617, #020617 40%, #020617);
+    radial-gradient(circle at 0% 0%, rgba(148, 155, 166, 0.08), transparent 52%),
+    radial-gradient(circle at 100% 100%, rgba(148, 155, 166, 0.06), transparent 58%),
+    linear-gradient(to bottom, #08090b, #08090b 40%, #08090b);
 }
 
 /* Subtle noise texture for depth */
@@ -56,7 +54,7 @@
   align-items: center;
   justify-content: center;
   /* 透明叠加在宇宙背景之上，稍微加深便于阅读 */
-  background: radial-gradient(circle at top, rgba(15, 23, 42, 0.96), rgba(2, 6, 23, 0.98));
+  background: radial-gradient(circle at top, rgba(24, 27, 34, 0.96), rgba(11, 13, 18, 0.98));
   position: fixed;
   top: 0;
   left: 0;
@@ -130,7 +128,7 @@
   width: 72px;
   height: 72px;
   border-radius: var(--radius-full);
-  background: radial-gradient(circle at 30% 20%, rgba(248, 250, 252, 0.2), transparent 60%),
+  background: radial-gradient(circle at 30% 20%, rgba(245, 245, 245, 0.2), transparent 60%),
     linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
   border: none;
   cursor: pointer;
@@ -333,10 +331,10 @@
   -webkit-app-region: no-drag;
   width: 100%;
   height: 100%;
-  padding: var(--space-4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  padding: 0;
+  display: block;
+  position: relative;
+  overflow: hidden;
 }
 
 body {
@@ -358,8 +356,8 @@ body {
   background: var(--surface-glass);
   box-shadow:
     0 40px 120px rgba(0, 0, 0, 0.96),
-    0 0 0 1px rgba(148, 163, 184, 0.25);
-  border: 1px solid rgba(148, 163, 184, 0.35);
+    0 0 0 1px rgba(182, 182, 182, 0.25);
+  border: 1px solid rgba(182, 182, 182, 0.35);
   overflow: hidden;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -382,9 +380,9 @@ body {
   padding: 10px 18px 8px;
   background: linear-gradient(
     to right,
-    rgba(15, 23, 42, 0.98),
-    rgba(15, 23, 42, 0.96),
-    rgba(15, 23, 42, 0.92)
+    rgba(28, 30, 34, 0.98),
+    rgba(28, 30, 34, 0.96),
+    rgba(28, 30, 34, 0.92)
   );
   border-bottom: 1px solid var(--border-subtle);
   -webkit-app-region: drag;
@@ -401,8 +399,8 @@ body {
   width: 22px;
   height: 22px;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.65);
-  background: radial-gradient(circle at 30% 20%, rgba(248, 250, 252, 0.12), transparent 60%);
+  border: 1px solid rgba(182, 182, 182, 0.65);
+  background: radial-gradient(circle at 30% 20%, rgba(245, 245, 245, 0.12), transparent 60%);
   cursor: pointer;
   position: relative;
   transition: background 120ms ease, border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
@@ -416,7 +414,7 @@ body {
   left: 11px;
   width: 1.1px;
   height: 12px;
-  background: rgba(148, 163, 184, 0.85);
+  background: rgba(182, 182, 182, 0.85);
 }
 
 .app-window__control::before {
@@ -428,9 +426,9 @@ body {
 }
 
 .app-window__control:hover {
-  background: linear-gradient(135deg, rgba(236, 72, 153, 0.2), rgba(251, 191, 36, 0.18));
-  border-color: rgba(248, 250, 252, 0.85);
-  box-shadow: 0 0 0 1px rgba(248, 250, 252, 0.3);
+  background: linear-gradient(135deg, rgba(182, 182, 182, 0.2), rgba(230, 230, 230, 0.16));
+  border-color: rgba(245, 245, 245, 0.85);
+  box-shadow: 0 0 0 1px rgba(245, 245, 245, 0.3);
 }
 
 .app-window__control:active {

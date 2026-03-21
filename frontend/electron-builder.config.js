@@ -39,6 +39,10 @@ module.exports = {
       from: '../target/lavis-0.0.1-SNAPSHOT.jar',
       to: 'backend/lavis.jar',
     },
+    {
+      from: '../docs/images/icon.png',
+      to: 'icon.png',
+    },
     // JRE 会根据目标架构自动选择
     // 打包时会复制整个 jre 目录
     {
