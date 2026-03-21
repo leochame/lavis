@@ -1,6 +1,7 @@
 import { startTransition, useCallback, useDeferredValue, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { agentApi } from '../api/agentApi';
+import { managementApi, type CreateTaskRequest, type TaskInterpretDraft } from '../api/managementApi';
 import { BrainPanel } from './BrainPanel';
 import { ManagementPanel } from './ManagementPanel';
 import { SkillsPanel } from './SkillsPanel';
@@ -34,7 +35,9 @@ interface ChatPanelProps {
   hideInput?: boolean;
 }
 
-const MESSAGE_CACHE_KEY = 'lavis_chat_messages_v3';
+const AGENT_MESSAGE_CACHE_KEY = 'lavis_chat_messages_agent_v1';
+const TASK_MESSAGE_CACHE_KEY = 'lavis_chat_messages_task_v1';
+const MAX_CACHED_MESSAGES = 120;
 const MAX_DROP_FILE_COUNT = 6;
 const MAX_DROP_TEXT_SIZE = 240_000;
 const MAX_DROP_PREVIEW_LENGTH = 12_000;
@@ -48,11 +51,16 @@ function createMessageId(prefix: ChatMessage['role'] | 'error'): string {
   return `${prefix}-${Date.now()}-${random}`;
 }
 
-function loadCachedMessages(): ChatMessage[] {
+function createTaskMemoryKey(): string {
+  const random = Math.random().toString(36).slice(2, 10);
+  return `task-flow-${Date.now()}-${random}`;
+}
+
+function loadCachedMessages(cacheKey: string): ChatMessage[] {
   if (typeof window === 'undefined') return [];
 
   try {
-    const raw = window.sessionStorage.getItem(MESSAGE_CACHE_KEY);
+    const raw = window.sessionStorage.getItem(cacheKey);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as ChatMessage[];
     if (!Array.isArray(parsed)) return [];
@@ -79,6 +87,39 @@ function truncateText(value: string, maxLength: number): string {
   return `${value.slice(0, maxLength)}\n\n...(truncated)`;
 }
 
+type ChatInputMode = 'chat' | 'task';
+type TaskMissingField = 'schedule' | 'requestContent';
+
+interface TaskDraft {
+  name?: string;
+  scheduleMode?: 'CRON' | 'LOOP';
+  cronExpression?: string;
+  intervalSeconds?: number;
+  requestContent?: string;
+  requestUseOrchestrator: boolean;
+  enabled: boolean;
+}
+
+function toTaskDraft(draft: TaskInterpretDraft | null | undefined): TaskDraft | null {
+  if (!draft) {
+    return null;
+  }
+  return {
+    name: draft.name,
+    scheduleMode: draft.scheduleMode,
+    cronExpression: draft.cronExpression,
+    intervalSeconds: draft.intervalSeconds,
+    requestContent: draft.requestContent,
+    requestUseOrchestrator: draft.requestUseOrchestrator ?? true,
+    enabled: draft.enabled ?? true,
+  };
+}
+
+function isTaskFlowCancel(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  return normalized === 'cancel' || normalized === 'exit task mode';
+}
+
 export function ChatPanel({
   onClose,
   status,
@@ -92,24 +133,29 @@ export function ChatPanel({
   onBindInput,
   hideInput = false,
 }: ChatPanelProps) {
-  const input = useChatStore((s) => s.input);
-  const setInput = useChatStore((s) => s.setInput);
-  const messages = useChatStore((s) => s.messages);
-  const setMessages = useChatStore((s) => s.setMessages);
-  const appendMessage = useChatStore((s) => s.appendMessage);
-  const appendMessagesBatch = useChatStore((s) => s.appendMessages);
+  const agentInput = useChatStore((s) => s.input);
+  const setAgentInput = useChatStore((s) => s.setInput);
+  const agentMessages = useChatStore((s) => s.messages);
+  const setAgentMessages = useChatStore((s) => s.setMessages);
+  const appendAgentMessage = useChatStore((s) => s.appendMessage);
+  const appendAgentMessagesBatch = useChatStore((s) => s.appendMessages);
   const clearChatStore = useChatStore((s) => s.clearMessages);
-  const isLoading = useChatStore((s) => s.isLoading);
-  const setLoading = useChatStore((s) => s.setLoading);
+  const agentLoading = useChatStore((s) => s.isLoading);
+  const setAgentLoading = useChatStore((s) => s.setLoading);
   const isDropActive = useChatStore((s) => s.isDropActive);
   const setDropActive = useChatStore((s) => s.setDropActive);
   const dropHint = useChatStore((s) => s.dropHint);
   const setDropHint = useChatStore((s) => s.setDropHint);
   const lastVoiceSignature = useChatStore((s) => s.lastVoiceSignature);
   const setLastVoiceSignature = useChatStore((s) => s.setLastVoiceSignature);
-  const deferredMessages = useDeferredValue(messages);
-
   const [activePanel, setActivePanel] = useState<PanelType>('chat');
+  const [inputMode, setInputMode] = useState<ChatInputMode>('chat');
+  const [taskInput, setTaskInput] = useState('');
+  const [taskMessages, setTaskMessages] = useState<ChatMessage[]>([]);
+  const [taskLoading, setTaskLoading] = useState(false);
+  const [pendingTaskDraft, setPendingTaskDraft] = useState<TaskDraft | null>(null);
+  const [taskMissingField, setTaskMissingField] = useState<TaskMissingField | null>(null);
+  const [taskMemoryKey, setTaskMemoryKey] = useState<string>(() => createTaskMemoryKey());
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const shouldStickToBottomRef = useRef(true);
   const dragDepthRef = useRef(0);
@@ -119,20 +165,33 @@ export function ChatPanel({
   const windowState = useUIStore((s) => s.windowState);
   const isEmbeddedMode = mode === 'chat-only';
   const shouldRenderComplexComponents = isEmbeddedMode || windowState === 'expanded';
+  const isTaskMode = inputMode === 'task';
   const isExecuting = workflow.status === 'executing' || Boolean(status?.orchestrator_state?.includes('EXECUTING'));
   const isPlanning = workflow.status === 'planning' || Boolean(status?.orchestrator_state?.includes('PLANNING'));
-  const isWorking = isExecuting || isPlanning || isLoading;
+  const currentInput = isTaskMode ? taskInput : agentInput;
+  const currentMessages = isTaskMode ? taskMessages : agentMessages;
+  const currentLoading = isTaskMode ? taskLoading : agentLoading;
+  const deferredMessages = useDeferredValue(currentMessages);
+  const isWorking = isExecuting || isPlanning || agentLoading || taskLoading;
+  const inputDisabled = currentLoading || (!isTaskMode && isExecuting);
+  const submitDisabled = !currentInput.trim() || inputDisabled;
 
   useEffect(() => {
     if (hasHydratedRef.current) return;
     hasHydratedRef.current = true;
-    if (messages.length > 0) return;
-
-    const cached = loadCachedMessages();
-    if (cached.length > 0) {
-      setMessages(cached);
+    if (agentMessages.length === 0) {
+      const cachedAgent = loadCachedMessages(AGENT_MESSAGE_CACHE_KEY);
+      if (cachedAgent.length > 0) {
+        setAgentMessages(cachedAgent);
+      }
     }
-  }, [messages.length, setMessages]);
+    if (taskMessages.length === 0) {
+      const cachedTask = loadCachedMessages(TASK_MESSAGE_CACHE_KEY);
+      if (cachedTask.length > 0) {
+        setTaskMessages(cachedTask);
+      }
+    }
+  }, [agentMessages.length, setAgentMessages, taskMessages.length]);
 
   const setTransientHint = useCallback((message: string) => {
     setDropHint(message);
@@ -149,9 +208,13 @@ export function ChatPanel({
   const appendMessages = useCallback((next: ChatMessage | ChatMessage[]) => {
     const incoming = Array.isArray(next) ? next : [next];
     startTransition(() => {
-      appendMessagesBatch(incoming);
+      appendAgentMessagesBatch(incoming);
     });
-  }, [appendMessagesBatch]);
+  }, [appendAgentMessagesBatch]);
+
+  const appendTaskMessage = useCallback((message: ChatMessage) => {
+    setTaskMessages((state) => [...state, message].slice(-MAX_CACHED_MESSAGES));
+  }, []);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const container = messagesContainerRef.current;
@@ -160,26 +223,62 @@ export function ChatPanel({
   }, []);
 
   const clearMessages = useCallback(() => {
-    clearChatStore();
-    if (typeof window !== 'undefined') {
-      window.sessionStorage.removeItem(MESSAGE_CACHE_KEY);
+    if (isTaskMode) {
+      setTaskInput('');
+      setTaskMessages([]);
+      setTaskLoading(false);
+      setPendingTaskDraft(null);
+      setTaskMissingField(null);
+      setTaskMemoryKey(createTaskMemoryKey());
+    } else {
+      clearChatStore();
     }
-  }, [clearChatStore]);
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem(isTaskMode ? TASK_MESSAGE_CACHE_KEY : AGENT_MESSAGE_CACHE_KEY);
+    }
+  }, [clearChatStore, isTaskMode]);
+
+  const switchInputMode = useCallback((nextMode: ChatInputMode) => {
+    if (nextMode === inputMode) return;
+    setInputMode(nextMode);
+    setPendingTaskDraft(null);
+    setTaskMissingField(null);
+    setTaskMemoryKey(createTaskMemoryKey());
+    const switchMessage: ChatMessage = {
+      id: createMessageId('assistant'),
+      role: 'assistant',
+      content: nextMode === 'task'
+        ? 'Switched to Task Mode. You can say "Remind me to write a daily report at 9:30 AM" or "Check service status every 30 minutes". I will ask follow-up questions if details are missing.'
+        : 'Switched back to Chat Mode.',
+      timestamp: Date.now(),
+      source: 'text',
+    };
+    if (nextMode === 'task') {
+      setTaskMessages((state) => [...state, switchMessage].slice(-MAX_CACHED_MESSAGES));
+    } else {
+      appendAgentMessage(switchMessage);
+    }
+  }, [appendAgentMessage, inputMode]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.sessionStorage.setItem(MESSAGE_CACHE_KEY, JSON.stringify(messages));
-  }, [messages]);
+    window.sessionStorage.setItem(AGENT_MESSAGE_CACHE_KEY, JSON.stringify(agentMessages));
+  }, [agentMessages]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.sessionStorage.setItem(TASK_MESSAGE_CACHE_KEY, JSON.stringify(taskMessages));
+  }, [taskMessages]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (!shouldStickToBottomRef.current) return;
 
     const rafId = window.requestAnimationFrame(() => {
-      scrollToBottom(isLoading ? 'auto' : 'smooth');
+      scrollToBottom(currentLoading ? 'auto' : 'smooth');
     });
     return () => window.cancelAnimationFrame(rafId);
-  }, [deferredMessages.length, isLoading, scrollToBottom]);
+  }, [deferredMessages.length, currentLoading, scrollToBottom]);
 
   useEffect(() => {
     return () => {
@@ -235,6 +334,7 @@ export function ChatPanel({
   useEffect(() => {
     if (mode !== 'full') return;
     if (activePanel !== 'chat') return;
+    if (inputMode !== 'chat') return;
     if (
       (workflow.status === 'executing' || workflow.status === 'planning') &&
       workflow.steps.length > 0
@@ -242,66 +342,163 @@ export function ChatPanel({
       const timer = window.setTimeout(() => setActivePanel('brain'), 900);
       return () => window.clearTimeout(timer);
     }
-  }, [activePanel, mode, workflow.status, workflow.steps.length]);
+  }, [activePanel, inputMode, mode, workflow.status, workflow.steps.length]);
 
   const submitInput = useCallback(async () => {
-    const messageText = input.trim();
-    if (!messageText || isLoading) return;
+    const messageText = currentInput.trim();
+    if (!messageText || currentLoading) return;
 
     const timestamp = Date.now();
-    appendMessage({
+    const userMessage: ChatMessage = {
       id: createMessageId('user'),
       role: 'user',
       content: messageText,
       timestamp,
       source: 'text',
-    });
-
-    setInput('');
-    setLoading(true);
-    resetWorkflow();
-
-    if (connected) {
-      sendMessage('subscribe', {});
-      sendMessage('ping', {});
+    };
+    if (isTaskMode) {
+      appendTaskMessage(userMessage);
+    } else {
+      appendAgentMessage(userMessage);
     }
 
+    if (isTaskMode) {
+      setTaskInput('');
+      setTaskLoading(true);
+    } else {
+      setAgentInput('');
+      setAgentLoading(true);
+    }
     try {
-      const response = await agentApi.chat({ message: messageText });
-      appendMessage({
-        id: createMessageId('assistant'),
-        role: 'assistant',
-        content: response.agent_text || response.response,
-        timestamp: timestamp + 1,
-        source: 'text',
-      });
+      if (inputMode === 'task') {
+        if (isTaskFlowCancel(messageText)) {
+          setPendingTaskDraft(null);
+          setTaskMissingField(null);
+          setTaskMemoryKey(createTaskMemoryKey());
+          appendTaskMessage({
+            id: createMessageId('assistant'),
+            role: 'assistant',
+            content: 'Current task creation flow canceled. You can describe a new scheduled task.',
+            timestamp: timestamp + 1,
+            source: 'text',
+          });
+          return;
+        }
+
+        let payload: CreateTaskRequest | null = null;
+
+        const interpreted = await managementApi.interpretScheduledTask({
+          text: messageText,
+          draft: pendingTaskDraft ?? undefined,
+          memoryKey: taskMemoryKey,
+        });
+
+        setPendingTaskDraft(toTaskDraft(interpreted.draft));
+        setTaskMissingField(interpreted.missingField);
+
+        if (!interpreted.ready || !interpreted.task) {
+          appendTaskMessage({
+            id: createMessageId('assistant'),
+            role: 'assistant',
+            content: interpreted.message || 'Task details are incomplete. Please provide the missing information.',
+            timestamp: timestamp + 1,
+            source: 'text',
+          });
+          return;
+        }
+
+        payload = interpreted.task;
+
+        const created = await managementApi.createScheduledTask(payload);
+        setPendingTaskDraft(null);
+        setTaskMissingField(null);
+        setTaskMemoryKey(createTaskMemoryKey());
+        appendTaskMessage({
+          id: createMessageId('assistant'),
+          role: 'assistant',
+          content: [
+            `Task created successfully: **${created.name}**`,
+            `- Schedule: ${created.scheduleMode === 'LOOP' ? `every ${created.intervalSeconds}s` : created.cronExpression}`,
+            `- Content: ${created.requestContent ?? '(empty)'}`,
+            `- Status: ${created.enabled ? 'enabled' : 'disabled'}`,
+          ].join('\n'),
+          timestamp: timestamp + 1,
+          source: 'text',
+        });
+      } else {
+        resetWorkflow();
+        if (connected) {
+          sendMessage('subscribe', {});
+          sendMessage('ping', {});
+        }
+
+        const response = await agentApi.chat({ message: messageText });
+        appendAgentMessage({
+          id: createMessageId('assistant'),
+          role: 'assistant',
+          content: response.agent_text || response.response,
+          timestamp: timestamp + 1,
+          source: 'text',
+        });
+      }
     } catch (error) {
-      appendMessage({
+      const errorMessage: ChatMessage = {
         id: createMessageId('error'),
         role: 'assistant',
         content: `Error: ${(error as Error).message}`,
         timestamp: Date.now(),
         source: 'error',
-      });
+      };
+      if (isTaskMode) {
+        setTaskMessages((state) => [...state, errorMessage].slice(-MAX_CACHED_MESSAGES));
+      } else {
+        appendAgentMessage(errorMessage);
+      }
     } finally {
-      setLoading(false);
+      if (isTaskMode) {
+        setTaskLoading(false);
+      } else {
+        setAgentLoading(false);
+      }
     }
-  }, [appendMessage, connected, input, isLoading, resetWorkflow, sendMessage, setInput, setLoading]);
+  }, [
+    appendTaskMessage,
+    appendAgentMessage,
+    connected,
+    currentInput,
+    currentLoading,
+    inputMode,
+    isTaskMode,
+    pendingTaskDraft,
+    taskMemoryKey,
+    resetWorkflow,
+    sendMessage,
+    setAgentInput,
+    setAgentLoading,
+  ]);
 
   useEffect(() => {
     if (!onBindInput) return;
     onBindInput({
-      value: input,
-      onChange: (value: string) => setInput(value),
+      value: currentInput,
+      onChange: (value: string) => {
+        if (isTaskMode) {
+          setTaskInput(value);
+        } else {
+          setAgentInput(value);
+        }
+      },
       onSubmit: () => {
         void submitInput();
       },
-      disabled: isLoading || isExecuting,
-      placeholder: wsStatus === 'connected'
-        ? 'Type a message or drag files here...'
-        : 'Backend reconnecting...',
+      disabled: inputDisabled,
+      placeholder: wsStatus !== 'connected'
+        ? 'Backend reconnecting...'
+        : inputMode === 'task'
+          ? 'Task mode: e.g. "Remind me to write a daily report at 9:30 AM"'
+          : 'Type a message, or drop files here...',
     });
-  }, [onBindInput, input, isLoading, isExecuting, setInput, submitInput, wsStatus]);
+  }, [onBindInput, currentInput, inputMode, inputDisabled, isTaskMode, setAgentInput, submitInput, wsStatus]);
 
   const handleEmergencyStop = async () => {
     try {
@@ -342,13 +539,18 @@ export function ChatPanel({
     }
 
     if (sections.length === 0) {
-      setTransientHint('Drop payload is empty.');
+      setTransientHint('No usable dropped content detected.');
       return;
     }
 
-    const payload = `Please use this dropped context:\n\n${sections.join('\n\n')}`;
-    const currentInput = useChatStore.getState().input;
-    setInput(currentInput ? `${currentInput}\n\n${payload}` : payload);
+    const payload = `Please use the following dropped context:\n\n${sections.join('\n\n')}`;
+    const existingInput = isTaskMode ? taskInput : useChatStore.getState().input;
+    const nextInput = existingInput ? `${existingInput}\n\n${payload}` : payload;
+    if (isTaskMode) {
+      setTaskInput(nextInput);
+    } else {
+      setAgentInput(nextInput);
+    }
 
     if (files.length > 0 && droppedText) {
       setTransientHint(`Attached ${files.length} file(s) and text snippet.`);
@@ -359,7 +561,7 @@ export function ChatPanel({
       return;
     }
     setTransientHint('Attached dropped text into input.');
-  }, [setInput, setTransientHint]);
+  }, [isTaskMode, setAgentInput, setTransientHint, taskInput]);
 
   const handleMessagesScroll = () => {
     const container = messagesContainerRef.current;
@@ -406,6 +608,29 @@ export function ChatPanel({
           <span className={`chat-panel__ws-badge chat-panel__ws-badge--${connected ? (isWorking ? 'working' : 'ready') : 'offline'}`}>
             {connected ? (isWorking ? 'Working' : 'Ready') : 'Offline'}
           </span>
+          <div className="chat-panel__mode-switch" role="tablist" aria-label="Input mode">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={inputMode === 'chat'}
+              className={`chat-panel__mode-tab ${inputMode === 'chat' ? 'chat-panel__mode-tab--active' : ''}`}
+              onClick={() => switchInputMode('chat')}
+            >
+              Chat Mode
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={inputMode === 'task'}
+              className={`chat-panel__mode-tab ${inputMode === 'task' ? 'chat-panel__mode-tab--active' : ''}`}
+              onClick={() => switchInputMode('task')}
+            >
+              Task Mode
+            </button>
+          </div>
+          <span className={`chat-panel__mode-hint ${inputMode === 'task' ? 'chat-panel__mode-hint--task' : 'chat-panel__mode-hint--chat'}`}>
+            {inputMode === 'task' ? 'Plan and schedule automations' : 'Fast conversation and Q&A'}
+          </span>
         </div>
         <div className="chat-panel__toolbar-right">
           <button
@@ -439,7 +664,7 @@ export function ChatPanel({
         {isDropActive && (
           <div className="chat-panel__drop-mask">
             <div>Drop files or text here</div>
-            <span>Text files will be attached with content preview.</span>
+            <span>Text files will be attached with a content preview.</span>
           </div>
         )}
 
@@ -450,9 +675,16 @@ export function ChatPanel({
         >
           {shouldRenderComplexComponents ? (
             <>
-              {deferredMessages.length === 0 && !isLoading && (
+              {deferredMessages.length === 0 && !currentLoading && (
                 <div className="chat-panel__messages-empty">
-                  <p>Start a task, then drag files or notes into the chat if needed.</p>
+                  {inputMode === 'task' ? (
+                    <>
+                      <p>Task Mode is on. Describe your scheduling goal and I will fill missing fields.</p>
+                      <p>Example: "Remind me to write a daily report at 9:30 AM".</p>
+                    </>
+                  ) : (
+                    <p>Start a conversation, then drag files or notes into the chat if needed.</p>
+                  )}
                 </div>
               )}
 
@@ -474,7 +706,7 @@ export function ChatPanel({
                 </div>
               ))}
 
-              {isLoading && (
+              {currentLoading && (
                 <div className="chat-message chat-message--assistant">
                   <div className="chat-message__content chat-message__loading">
                     <span />
@@ -486,7 +718,7 @@ export function ChatPanel({
             </>
           ) : (
             <div className="chat-panel__messages-placeholder">
-              <p>Window is in {windowState} mode.</p>
+              <p>Window is currently in {windowState} mode.</p>
               <p>Switch back to expanded mode to continue.</p>
             </div>
           )}
@@ -504,14 +736,30 @@ export function ChatPanel({
           >
             <input
               type="text"
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              placeholder={wsStatus === 'connected' ? 'Type message, or drop files into chat area...' : 'Backend reconnecting...'}
-              disabled={isLoading || isExecuting}
+              value={currentInput}
+              onChange={(event) => {
+                if (isTaskMode) {
+                  setTaskInput(event.target.value);
+                } else {
+                  setAgentInput(event.target.value);
+                }
+              }}
+              placeholder={
+                wsStatus !== 'connected'
+                  ? 'Backend reconnecting...'
+                  : inputMode === 'task'
+                    ? taskMissingField === 'schedule'
+                      ? 'Please provide a schedule, e.g. "Every day at 9:30 AM"'
+                      : taskMissingField === 'requestContent'
+                        ? 'Please provide task content, e.g. "Remind me to write a daily report"'
+                        : 'Task mode: e.g. "Remind me to write a daily report at 9:30 AM"'
+                    : 'Type a message, or drop files into the chat area...'
+              }
+              disabled={inputDisabled}
             />
             <button
               type="submit"
-              disabled={!input.trim() || isLoading || isExecuting}
+              disabled={submitDisabled}
             >
               Send
             </button>

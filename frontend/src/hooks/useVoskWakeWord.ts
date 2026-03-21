@@ -547,12 +547,12 @@ export function useVoskWakeWord({
     } catch (err) {
       console.error('[Vosk] Failed to load:', err);
 
-      let errorMessage = 'Vosk 加载失败';
+      let errorMessage = 'Failed to load Vosk';
       if (err instanceof Error) {
         if (err.message.includes('404') || err.message.includes('not found')) {
-          errorMessage = `模型文件未找到，请确保 ${modelPath} 目录存在`;
+          errorMessage = `Model files not found. Please ensure ${modelPath} exists.`;
         } else if (err.message.includes('wasm')) {
-          errorMessage = 'WASM 文件加载失败，请检查 public/lib/vosk/ 目录';
+          errorMessage = 'Failed to load WASM files. Please check public/lib/vosk/.';
         } else {
           errorMessage = err.message;
         }
@@ -700,7 +700,7 @@ export function useVoskWakeWord({
       recognizer.on('error', (message: VoskResultMessage) => {
         const errorMsg = typeof message.error === 'string' ? message.error : 'Unknown error';
         console.error('[Vosk] Recognizer error:', errorMsg);
-        setError(`Vosk 识别错误: ${errorMsg}`);
+        setError(`Vosk recognition error: ${errorMsg}`);
       });
 
       // 创建音频处理节点
@@ -736,12 +736,12 @@ export function useVoskWakeWord({
     } catch (err) {
       console.error('[Vosk] Failed to initialize recognizer:', err);
 
-      let errorMessage = '语音识别初始化失败';
+      let errorMessage = 'Failed to initialize speech recognition';
       if (err instanceof Error) {
         if (err.message.includes('Permission') || err.message.includes('NotAllowed')) {
-          errorMessage = '麦克风权限被拒绝，请授予权限后重试';
+          errorMessage = 'Microphone permission denied. Please grant permission and retry.';
         } else if (err.message.includes('NotFound')) {
-          errorMessage = '未找到麦克风设备';
+          errorMessage = 'No microphone device found';
         } else {
           errorMessage = err.message;
         }
@@ -812,7 +812,7 @@ export function useVoskWakeWord({
     } catch (err) {
       console.error('[Vosk] Failed to start listening:', err);
       const errorMsg = err instanceof Error ? err.message : String(err);
-      setError(`启动监听失败: ${errorMsg}`);
+      setError(`Failed to start listening: ${errorMsg}`);
       setIsListening(false);
     }
   }, [isListening, loadVosk, initRecognizer, wakeWord]);
@@ -827,7 +827,7 @@ export function useVoskWakeWord({
       startListening().catch((err) => {
         console.error('[Vosk] Failed to start listening:', err);
         const errorMsg = err instanceof Error ? err.message : String(err);
-        setError(`启动失败: ${errorMsg}`);
+        setError(`Start failed: ${errorMsg}`);
       });
     } else if (!enabled && isListening) {
       console.log('[Vosk] ⏸️ Pausing wake word detection (enabled=false)');

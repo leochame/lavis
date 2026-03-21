@@ -122,6 +122,75 @@
   background: rgba(239, 68, 68, 0.16);
 }
 
+.chat-panel__toolbar-btn--mode {
+  letter-spacing: 0.06em;
+}
+
+.chat-panel__toolbar-btn--mode-active {
+  border-color: rgba(34, 197, 94, 0.5);
+  background: rgba(34, 197, 94, 0.18);
+  color: rgba(220, 252, 231, 0.98);
+}
+
+.chat-panel__mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 155, 166, 0.28);
+  background:
+    linear-gradient(180deg, rgba(30, 34, 42, 0.9), rgba(15, 17, 21, 0.9));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 8px 20px rgba(0, 0, 0, 0.22);
+}
+
+.chat-panel__mode-tab {
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(186, 193, 204, 0.96);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 6px 11px;
+  min-width: 96px;
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+
+.chat-panel__mode-tab:hover {
+  color: rgba(241, 245, 249, 0.98);
+  background: rgba(148, 155, 166, 0.16);
+}
+
+.chat-panel__mode-tab--active {
+  color: rgba(249, 250, 251, 0.99);
+  border: 1px solid rgba(245, 158, 11, 0.55);
+  background:
+    linear-gradient(135deg, rgba(245, 158, 11, 0.28), rgba(56, 189, 248, 0.24));
+  box-shadow:
+    0 0 0 1px rgba(15, 17, 21, 0.52),
+    0 8px 18px rgba(15, 23, 42, 0.34);
+}
+
+.chat-panel__mode-hint {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.chat-panel__mode-hint--chat {
+  color: rgba(125, 211, 252, 0.95);
+}
+
+.chat-panel__mode-hint--task {
+  color: rgba(253, 224, 71, 0.95);
+}
+
 .chat-panel__messages-shell {
   position: relative;
   flex: 1;
@@ -360,6 +429,19 @@
 }
 
 @media (max-width: 860px) {
+  .chat-panel__toolbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .chat-panel__toolbar-left {
+    flex-wrap: wrap;
+  }
+
+  .chat-panel__mode-hint {
+    white-space: normal;
+  }
+
   .chat-panel--embedded {
     margin: 0;
     width: 100%;

@@ -56,6 +56,94 @@ interface AudioQueueItem {
   isLast: boolean;
 }
 
+function inferExtensionFromMimeType(mimeType: string): string {
+  const normalized = (mimeType || '').toLowerCase();
+  if (normalized.includes('wav')) return 'wav';
+  if (normalized.includes('mpeg') || normalized.includes('mp3')) return 'mp3';
+  if (normalized.includes('ogg')) return 'ogg';
+  if (normalized.includes('aac')) return 'aac';
+  if (normalized.includes('mp4') || normalized.includes('m4a')) return 'm4a';
+  if (normalized.includes('webm')) return 'webm';
+  return 'bin';
+}
+
+function encodeMonoPcm16Wav(monoSamples: Float32Array, sampleRate: number): Blob {
+  const bytesPerSample = 2;
+  const dataSize = monoSamples.length * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  const writeString = (offset: number, value: string) => {
+    for (let i = 0; i < value.length; i++) {
+      view.setUint8(offset + i, value.charCodeAt(i));
+    }
+  };
+
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true); // PCM chunk size
+  view.setUint16(20, 1, true); // PCM format
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * bytesPerSample, true); // byte rate
+  view.setUint16(32, bytesPerSample, true); // block align
+  view.setUint16(34, 16, true); // bits per sample
+  writeString(36, 'data');
+  view.setUint32(40, dataSize, true);
+
+  let offset = 44;
+  for (let i = 0; i < monoSamples.length; i++) {
+    const clamped = Math.max(-1, Math.min(1, monoSamples[i]));
+    const value = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
+    view.setInt16(offset, value, true);
+    offset += 2;
+  }
+
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+async function convertBlobToWav(blob: Blob): Promise<Blob> {
+  const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  const decodeContext = new AudioContextClass();
+  try {
+    const sourceBuffer = await blob.arrayBuffer();
+    const audioBuffer = await decodeContext.decodeAudioData(sourceBuffer.slice(0));
+    const frames = audioBuffer.length;
+    const channels = audioBuffer.numberOfChannels;
+    const mono = new Float32Array(frames);
+
+    // Mix all channels down to mono to avoid provider-specific channel quirks.
+    for (let c = 0; c < channels; c++) {
+      const channelData = audioBuffer.getChannelData(c);
+      for (let i = 0; i < frames; i++) {
+        mono[i] += channelData[i] / channels;
+      }
+    }
+
+    return encodeMonoPcm16Wav(mono, audioBuffer.sampleRate);
+  } finally {
+    decodeContext.close().catch(() => undefined);
+  }
+}
+
+async function buildVoiceUploadFile(blob: Blob): Promise<File> {
+  const originalType = (blob.type || '').toLowerCase();
+  if (originalType.includes('wav')) {
+    return new File([blob], 'recording.wav', { type: 'audio/wav' });
+  }
+
+  try {
+    const wavBlob = await convertBlobToWav(blob);
+    return new File([wavBlob], 'recording.wav', { type: 'audio/wav' });
+  } catch (error) {
+    console.warn('[VoiceChat] WAV conversion failed, fallback to original blob:', error);
+    const ext = inferExtensionFromMimeType(blob.type);
+    return new File([blob], `recording.${ext}`, { type: blob.type || 'application/octet-stream' });
+  }
+}
+
 /**
  * 全局 AudioContext 单例
  * 在用户点击开始时创建，复用用于所有音频播放
@@ -386,7 +474,7 @@ export function useGlobalVoice(isAppStarted: boolean): UseGlobalVoiceReturn {
     }
 
     console.error(`[TTS] Error: ${event.error}`);
-    setError(`TTS 生成失败: ${event.error}`);
+    setError(`TTS generation failed: ${event.error}`);
     if (voiceState === 'awaiting_audio') {
       updateState('idle');
     }
@@ -424,7 +512,7 @@ export function useGlobalVoice(isAppStarted: boolean): UseGlobalVoiceReturn {
     receivedLastRef.current = false;
 
     try {
-      const file = new File([blob], "recording.webm", { type: blob.type });
+      const file = await buildVoiceUploadFile(blob);
       const response = await agentApi.voiceChat(file);
 
       // 发送成功后立即清理 Blob（消费即焚）
@@ -456,7 +544,7 @@ export function useGlobalVoice(isAppStarted: boolean): UseGlobalVoiceReturn {
       // 即使失败也要清理 Blob
       clearAudioBlob();
       setError(err instanceof Error ? err.message : 'Unknown error');
-      setAgentResponse('抱歉，处理您的语音请求时出错了。');
+      setAgentResponse('Sorry, there was an error processing your voice request.');
       updateState('error');
 
       // 3秒后恢复空闲状态（确保唤醒词监听能恢复）
@@ -628,4 +716,3 @@ export function useGlobalVoice(isAppStarted: boolean): UseGlobalVoiceReturn {
     ttsCallbacks,
   };
 }
-

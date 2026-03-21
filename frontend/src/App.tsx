@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Capsule } from './components/Capsule';
 import { AgentDashboard } from './components/dashboard/AgentDashboard';
 import { agentApi } from './api/agentApi';
@@ -25,6 +25,9 @@ export default function App() {
   const setWindowState = useUIStore((s) => s.setWindowState);
   const checkStatus = useSettingsStore((s) => s.checkStatus);
   const [status, setStatus] = useState<AgentStatus | null>(null);
+  const prevViewModeRef = useRef(viewMode);
+  const prevWindowStateRef = useRef(useUIStore.getState().windowState);
+  const prevVoiceStateRef = useRef<'idle' | 'listening' | 'processing' | 'speaking' | 'awaiting_audio' | 'error'>('idle');
   // Electron 模式下自动启动，Web 模式需要用户点击
   const [isStarted, setIsStarted] = useState(false);
 
@@ -52,6 +55,7 @@ export default function App() {
 
   // 初始化全局语音（先不传 sessionId，稍后通过 effect 更新）
   const globalVoice = useGlobalVoice(isStarted);
+  const windowState = useUIStore((s) => s.windowState);
 
   // 初始化 WebSocket，传入 TTS 回调
   // 由 App 统一管理 WebSocket 连接，并将状态下发给子组件，避免重复连接
@@ -62,7 +66,10 @@ export default function App() {
     isTtsGenerating,
     resetWorkflow: wsResetWorkflow,
     sendMessage: wsSendMessage,
-  } = useWebSocket(wsUrl, globalVoice.ttsCallbacks);
+  } = useWebSocket(wsUrl, globalVoice.ttsCallbacks, {
+    infiniteReconnect: viewMode === 'capsule',
+    trackTransitions: true,
+  });
 
 
   // Start heartbeat on mount
@@ -99,10 +106,10 @@ export default function App() {
 
   // Handle wake word detection - set window state to Listening
   useEffect(() => {
-    if (globalVoice.wakeWordDetected) {
+    if (globalVoice.wakeWordDetected && viewMode === 'capsule') {
       setWindowState('listening');
     }
-  }, [globalVoice.wakeWordDetected, setWindowState]);
+  }, [globalVoice.wakeWordDetected, setWindowState, viewMode]);
 
   // 移除可能导致状态冲突的自动折叠逻辑
 
@@ -117,8 +124,39 @@ export default function App() {
 
   useAutoRecordListener({
     setViewMode,
+    setWindowState,
     startRecording: globalVoice.startRecording,
   });
+
+  useEffect(() => {
+    if (prevViewModeRef.current !== viewMode) {
+      console.debug(`[App][Transition] viewMode ${prevViewModeRef.current} -> ${viewMode}`);
+      prevViewModeRef.current = viewMode;
+    }
+  }, [viewMode]);
+
+  useEffect(() => {
+    if (prevWindowStateRef.current !== windowState) {
+      console.debug(`[App][Transition] windowState ${prevWindowStateRef.current} -> ${windowState}`);
+      prevWindowStateRef.current = windowState;
+    }
+  }, [windowState]);
+
+  useEffect(() => {
+    if (prevVoiceStateRef.current !== globalVoice.voiceState) {
+      console.debug(`[App][Transition] voiceState ${prevVoiceStateRef.current} -> ${globalVoice.voiceState}`);
+      prevVoiceStateRef.current = globalVoice.voiceState;
+    }
+  }, [globalVoice.voiceState]);
+
+  useEffect(() => {
+    if (viewMode === 'chat' && windowState !== 'expanded') {
+      console.warn(`[App][Transition] inconsistent state: viewMode=chat with windowState=${windowState}`);
+    }
+    if (viewMode === 'capsule' && windowState === 'expanded') {
+      console.warn('[App][Transition] inconsistent state: viewMode=capsule with windowState=expanded');
+    }
+  }, [viewMode, windowState]);
 
   const isWorking = useAppWorkingState({
     workflow: wsWorkflow,

@@ -280,7 +280,7 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     } catch (err: unknown) {
       console.error('Failed to start recording:', err);
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      setError('无法访问麦克风: ' + errorMessage);
+      setError('Unable to access microphone: ' + errorMessage);
     }
   }, [checkSilence]);
 

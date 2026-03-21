@@ -71,6 +71,11 @@ export interface TtsEventCallbacks {
   onTtsError?: (event: TtsErrorEvent) => void;
 }
 
+export interface UseWebSocketOptions {
+  infiniteReconnect?: boolean;
+  trackTransitions?: boolean;
+}
+
 const INITIAL_STATE: WorkflowState = {
   planId: null,
   userGoal: null,
@@ -81,7 +86,7 @@ const INITIAL_STATE: WorkflowState = {
   logs: [],
 };
 
-export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
+export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks, options?: UseWebSocketOptions) {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [workflow, setWorkflow] = useState<WorkflowState>(INITIAL_STATE);
   const [lastEvent, setLastEvent] = useState<WorkflowEvent | null>(null);
@@ -94,6 +99,11 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
   const retryCountRef = useRef(0);
   const isUnmountedRef = useRef(false);
   const ttsCallbacksRef = useRef(ttsCallbacks);
+  const transitionSourceRef = useRef<string>('init');
+  const previousConnectionRef = useRef<ConnectionStatus>('disconnected');
+  const previousWorkflowRef = useRef<WorkflowState['status']>('idle');
+  const infiniteReconnect = options?.infiniteReconnect ?? false;
+  const trackTransitions = options?.trackTransitions ?? true;
 
   // 更新回调引用：保持 connect / handleMessage 稳定，同时总是使用最新回调
   useEffect(() => {
@@ -159,6 +169,7 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
   // 消息处理逻辑
   const handleMessage = useCallback((message: WorkflowEvent) => {
     const { type, data } = message;
+    transitionSourceRef.current = type;
 
     switch (type) {
       case 'connected': {
@@ -167,7 +178,7 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
         if (sessionIdValue) {
           setSessionId(sessionIdValue);
         } else {
-          console.warn('⚠️ [WS] connected 消息中未找到 sessionId');
+          console.warn('⚠️ [WS] sessionId not found in connected message');
         }
         break;
       }
@@ -269,7 +280,7 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
         // 如果有错误信息，记录到日志
         const failedData = data as { reason?: string } | undefined;
         if (failedData?.reason) {
-          console.error('[WS] 计划失败:', failedData.reason);
+          console.error('[WS] Plan failed:', failedData.reason);
         }
         break;
       }
@@ -289,7 +300,7 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
         const errorMessage = errorData.errorMessage ?? '';
         const errorType = errorData.errorType ?? '';
 
-        console.error('[WS] 执行错误:', errorType, errorMessage);
+        console.error('[WS] Execution error:', errorType, errorMessage);
 
         // 更新工作流状态为失败
         setWorkflow((prev) => ({
@@ -300,7 +311,7 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
             ...prev.logs.slice(-49),
             {
               level: 'error',
-              message: `执行错误 [${errorType}]: ${errorMessage}`,
+              message: `Execution error [${errorType}]: ${errorMessage}`,
               timestamp: errorData.timestamp || Date.now(),
             },
           ],
@@ -416,6 +427,7 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
     if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) return;
     if (isUnmountedRef.current) return;
 
+    transitionSourceRef.current = 'connect()';
     setStatus('connecting');
 
     try {
@@ -427,6 +439,7 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
             ws.close();
             return;
         }
+        transitionSourceRef.current = 'onopen';
         setStatus('connected');
         retryCountRef.current = 0; // 重置重试计数
         // Subscribe to workflow updates
@@ -437,18 +450,19 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
       ws.onclose = () => {
         if (isUnmountedRef.current) return;
 
+        transitionSourceRef.current = 'onclose';
         setStatus('disconnected');
 
-        // 限制最大重试次数为20次，避免无限重连
-        const MAX_RETRY_COUNT = 20;
-        if (retryCountRef.current >= MAX_RETRY_COUNT) {
-          console.log('[WS] 达到最大重试次数，停止重连');
+        // 胶囊模式可无限重连；聊天模式保持上限以避免异常场景持续消耗资源
+        const maxRetryCount = infiniteReconnect ? Number.POSITIVE_INFINITY : 20;
+        if (Number.isFinite(maxRetryCount) && retryCountRef.current >= maxRetryCount) {
+          console.log('[WS] Maximum retry attempts reached, stopping reconnect');
           return;
         }
 
-        // 增强交互：指数退避重连算法
-        // 延时: 1s, 2s, 4s, 8s, 16s, max 30s
-        const backoffDelay = Math.min(1000 * Math.pow(2, retryCountRef.current), 30000);
+        // 指数退避重连: 1s, 2s, 4s... 最大 30s
+        const backoffExponent = Math.min(retryCountRef.current, 10);
+        const backoffDelay = Math.min(1000 * Math.pow(2, backoffExponent), 30000);
         retryCountRef.current++;
 
         reconnectTimeoutRef.current = window.setTimeout(() => {
@@ -457,7 +471,7 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
       };
 
       ws.onerror = (error) => {
-        console.error('[WS] WebSocket 错误:', error);
+        console.error('[WS] WebSocket error:', error);
         // onerror 之后通常会触发 onclose，所以重连逻辑放在 onclose
       };
 
@@ -469,7 +483,7 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
           setLastEvent(message);
           handleMessage(message);
         } catch (e) {
-          console.error('[WS] 解析消息失败:', e);
+          console.error('[WS] Failed to parse message:', e);
         }
       };
     } catch (e) {
@@ -503,6 +517,60 @@ export function useWebSocket(url: string, ttsCallbacks?: TtsEventCallbacks) {
       }
     };
   }, [connect]);
+
+  useEffect(() => {
+    if (!trackTransitions) {
+      previousConnectionRef.current = status;
+      return;
+    }
+    const previous = previousConnectionRef.current;
+    const current = status;
+    if (previous === current) {
+      return;
+    }
+
+    const allowedTransitions: Record<ConnectionStatus, ConnectionStatus[]> = {
+      disconnected: ['connecting'],
+      connecting: ['connected', 'disconnected'],
+      connected: ['disconnected'],
+    };
+    const isAllowed = allowedTransitions[previous].includes(current);
+    const source = transitionSourceRef.current;
+    if (!isAllowed) {
+      console.warn(`[WS][Transition] connection ${previous} -> ${current} via ${source} (unexpected)`);
+    } else {
+      console.debug(`[WS][Transition] connection ${previous} -> ${current} via ${source}`);
+    }
+    previousConnectionRef.current = current;
+  }, [status, trackTransitions]);
+
+  useEffect(() => {
+    if (!trackTransitions) {
+      previousWorkflowRef.current = workflow.status;
+      return;
+    }
+    const previous = previousWorkflowRef.current;
+    const current = workflow.status;
+    if (previous === current) {
+      return;
+    }
+
+    const allowedTransitions: Record<WorkflowState['status'], WorkflowState['status'][]> = {
+      idle: ['planning', 'executing', 'failed', 'completed'],
+      planning: ['planning', 'executing', 'failed', 'completed', 'idle'],
+      executing: ['executing', 'planning', 'completed', 'failed', 'idle'],
+      completed: ['planning', 'executing', 'idle'],
+      failed: ['planning', 'executing', 'idle'],
+    };
+    const isAllowed = allowedTransitions[previous].includes(current);
+    const source = transitionSourceRef.current;
+    if (!isAllowed) {
+      console.warn(`[WS][Transition] workflow ${previous} -> ${current} via ${source} (unexpected)`);
+    } else {
+      console.debug(`[WS][Transition] workflow ${previous} -> ${current} via ${source}`);
+    }
+    previousWorkflowRef.current = current;
+  }, [workflow.status, trackTransitions]);
 
   return {
     connected: status === 'connected',

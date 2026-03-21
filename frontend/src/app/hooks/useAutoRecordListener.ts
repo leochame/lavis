@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 
 interface UseAutoRecordListenerParams {
   setViewMode: (mode: 'capsule' | 'chat') => void;
+  setWindowState: (state: 'idle' | 'listening' | 'expanded') => void;
   startRecording?: () => void;
 }
 
@@ -10,11 +11,13 @@ interface UseAutoRecordListenerParams {
  */
 export function useAutoRecordListener({
   setViewMode,
+  setWindowState,
   startRecording,
 }: UseAutoRecordListenerParams) {
   useEffect(() => {
     const handleAutoRecord = () => {
       setViewMode('chat');
+      setWindowState('expanded');
       setTimeout(() => {
         startRecording?.();
       }, 500);
@@ -24,5 +27,5 @@ export function useAutoRecordListener({
     return () => {
       window.removeEventListener('lavis-auto-record', handleAutoRecord);
     };
-  }, [setViewMode, startRecording]);
+  }, [setViewMode, setWindowState, startRecording]);
 }

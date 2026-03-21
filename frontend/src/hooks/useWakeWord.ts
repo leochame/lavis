@@ -141,7 +141,7 @@ export function useWakeWord({
     // 如果没有 Access Key，报错并停止
     if (!accessKey) {
       console.error('[Porcupine] Missing VITE_PICOVOICE_KEY');
-      setError('未配置 Picovoice Access Key');
+      setError('Picovoice Access Key is not configured');
       setIsListening(false);
       return;
     }
@@ -150,7 +150,7 @@ export function useWakeWord({
     const trimmedKey = accessKey.trim();
     if (trimmedKey.length < 20) {
       console.error('[Porcupine] Access Key format invalid');
-      setError('Access Key 格式不正确');
+      setError('Access Key format is invalid');
       setIsListening(false);
       return;
     }
@@ -158,7 +158,7 @@ export function useWakeWord({
     // 检查是否包含明显的无效字符
     if (trimmedKey.includes('your_access_key') || trimmedKey.includes('YOUR_ACCESS_KEY')) {
       console.error('[Porcupine] Placeholder Access Key detected');
-      setError('请配置真实的 Access Key');
+      setError('Please configure a real Access Key');
       setIsListening(false);
       return;
     }
@@ -206,7 +206,7 @@ export function useWakeWord({
         }];
       } else {
         // 使用内置关键词（fallback）
-        wakeWordLabel = '"Porcupine" (内置)';
+        wakeWordLabel = '"Porcupine" (built-in)';
         keywords = [{
           builtin: 'Porcupine' as const,
           sensitivity: 0.5,
@@ -259,44 +259,44 @@ export function useWakeWord({
           errorMessage.includes('Initialization failed') ||
           errorString.includes('Activation')
         ) {
-          errorMessage = 'Porcupine 激活失败';
+          errorMessage = 'Porcupine activation failed';
           errorDetails = `
-激活错误通常由以下原因引起：
-1. Access Key 无效或已过期
-2. Access Key 未授权用于 Web/WASM 平台
-3. 网络连接问题，无法连接到 Picovoice 服务器
-4. Access Key 已达到使用限制
+Activation errors are usually caused by:
+1. Invalid or expired Access Key
+2. Access Key not authorized for Web/WASM platform
+3. Network issues reaching Picovoice servers
+4. Access Key usage limit reached
 
-请检查：
-- 访问 https://console.picovoice.ai/ 确认 Access Key 状态
-- 确保 Access Key 已启用 Web 平台权限
-- 检查网络连接是否正常
-- 如果使用免费版，确认未超过使用限制
+Please check:
+- Visit https://console.picovoice.ai/ to verify Access Key status
+- Ensure Web platform permission is enabled for the key
+- Confirm your network connection is healthy
+- If using the free tier, verify usage limits are not exceeded
 
-当前 Access Key: ${accessKey ? accessKey.slice(0, 15) + '...' : '未配置'}
+Current Access Key: ${accessKey ? accessKey.slice(0, 15) + '...' : 'not configured'}
           `.trim();
           console.error('[Porcupine] Activation error:', errorDetails);
         } else if (errorMessage.includes('Invalid AccessKey') || errorMessage.includes('Invalid access key')) {
-          errorMessage = 'Picovoice Access Key 无效';
-          errorDetails = '请检查 .env.local 文件中的 VITE_PICOVOICE_KEY 配置是否正确';
+          errorMessage = 'Picovoice Access Key is invalid';
+          errorDetails = 'Please check VITE_PICOVOICE_KEY in your .env.local file.';
         } else if (errorMessage.includes('microphone') || errorMessage.includes('Microphone')) {
-          errorMessage = '无法访问麦克风';
-          errorDetails = '请授予麦克风权限并刷新页面';
+          errorMessage = 'Unable to access microphone';
+          errorDetails = 'Please grant microphone permission and refresh the page.';
         } else if (errorMessage.includes('model') || errorMessage.includes('Model')) {
-          errorMessage = 'Porcupine 模型加载失败';
-          errorDetails = '请检查 /public/porcupine_params.pv 文件是否存在且可访问';
+          errorMessage = 'Failed to load Porcupine model';
+          errorDetails = 'Please verify /public/porcupine_params.pv exists and is accessible.';
         } else if (errorMessage.includes('platform') || errorMessage.includes('format') || errorMessage.includes('Platform')) {
-          errorMessage = '唤醒词模型格式错误';
-          errorDetails = '请确保使用 Web (WASM) 平台的 .ppn 文件，而不是其他平台的版本';
+          errorMessage = 'Wake word model format is invalid';
+          errorDetails = 'Please use a .ppn file built for the Web (WASM) platform.';
         } else if (errorMessage.includes('File not found') || errorMessage.includes('Network error') || errorMessage.includes('404')) {
-          errorMessage = '模型文件加载失败';
-          errorDetails = `路径解析问题：
-- 模型路径: ${porcupineModelUrl}
-- 唤醒词路径: ${hiLavisKeywordUrl}
-请确保文件存在于 public 目录，且 Vite 构建配置正确`;
+          errorMessage = 'Failed to load model file';
+          errorDetails = `Path resolution issue:
+- Model path: ${porcupineModelUrl}
+- Wake word path: ${hiLavisKeywordUrl}
+Please ensure files exist under public/ and Vite build config is correct.`;
         } else if (errorMessage.includes('network') || errorMessage.includes('Network') || errorMessage.includes('fetch')) {
-          errorMessage = '网络连接失败';
-          errorDetails = '无法连接到 Picovoice 服务器，请检查网络连接';
+          errorMessage = 'Network connection failed';
+          errorDetails = 'Unable to reach Picovoice servers. Please check your network.';
         }
       }
 
@@ -362,4 +362,3 @@ export function useWakeWord({
     stopListening 
   };
 }
-
