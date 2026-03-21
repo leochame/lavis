@@ -1,18 +1,44 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+type RendererCallback = (...args: unknown[]) => void;
+type WrappedCallback = (_event: unknown, ...args: unknown[]) => void;
+
+const listenerMap = new Map<string, WeakMap<RendererCallback, WrappedCallback>>();
+
+function getChannelListeners(channel: string): WeakMap<RendererCallback, WrappedCallback> {
+  let channelListeners = listenerMap.get(channel);
+  if (!channelListeners) {
+    channelListeners = new WeakMap<RendererCallback, WrappedCallback>();
+    listenerMap.set(channel, channelListeners);
+  }
+  return channelListeners;
+}
+
 contextBridge.exposeInMainWorld('electron', {
   ipcRenderer: {
     sendMessage: (channel: string, data: unknown) => {
       ipcRenderer.send(channel, data);
     },
-    on: (channel: string, callback: (...args: unknown[]) => void) => {
-      ipcRenderer.on(channel, (_event, ...args) => callback(...args));
+    on: (channel: string, callback: RendererCallback) => {
+      const wrapped: WrappedCallback = (_event, ...args) => callback(...args);
+      getChannelListeners(channel).set(callback, wrapped);
+      ipcRenderer.on(channel, wrapped);
     },
-    once: (channel: string, callback: (...args: unknown[]) => void) => {
+    once: (channel: string, callback: RendererCallback) => {
       ipcRenderer.once(channel, (_event, ...args) => callback(...args));
+    },
+    removeListener: (channel: string, callback: RendererCallback) => {
+      const channelListeners = listenerMap.get(channel);
+      const wrapped = channelListeners?.get(callback);
+      if (!wrapped) {
+        return;
+      }
+      ipcRenderer.removeListener(channel, wrapped);
+      channelListeners?.delete(callback);
     },
     removeAllListeners: (channel: string) => {
       ipcRenderer.removeAllListeners(channel);
+      listenerMap.delete(channel);
     },
   },
   platform: {
@@ -51,6 +77,7 @@ declare global {
         sendMessage: (channel: string, data: unknown) => void;
         on: (channel: string, callback: (...args: unknown[]) => void) => void;
         once: (channel: string, callback: (...args: unknown[]) => void) => void;
+        removeListener: (channel: string, callback: (...args: unknown[]) => void) => void;
         removeAllListeners: (channel: string) => void;
       };
       platform: {

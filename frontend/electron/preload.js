@@ -1,19 +1,40 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const electron_1 = require("electron");
+const listenerMap = new Map();
+function getChannelListeners(channel) {
+    let channelListeners = listenerMap.get(channel);
+    if (!channelListeners) {
+        channelListeners = new WeakMap();
+        listenerMap.set(channel, channelListeners);
+    }
+    return channelListeners;
+}
 electron_1.contextBridge.exposeInMainWorld('electron', {
     ipcRenderer: {
         sendMessage: (channel, data) => {
             electron_1.ipcRenderer.send(channel, data);
         },
         on: (channel, callback) => {
-            electron_1.ipcRenderer.on(channel, (_event, ...args) => callback(...args));
+            const wrapped = (_event, ...args) => callback(...args);
+            getChannelListeners(channel).set(callback, wrapped);
+            electron_1.ipcRenderer.on(channel, wrapped);
         },
         once: (channel, callback) => {
             electron_1.ipcRenderer.once(channel, (_event, ...args) => callback(...args));
         },
+        removeListener: (channel, callback) => {
+            const channelListeners = listenerMap.get(channel);
+            const wrapped = channelListeners === null || channelListeners === void 0 ? void 0 : channelListeners.get(callback);
+            if (!wrapped) {
+                return;
+            }
+            electron_1.ipcRenderer.removeListener(channel, wrapped);
+            channelListeners === null || channelListeners === void 0 ? void 0 : channelListeners.delete(callback);
+        },
         removeAllListeners: (channel) => {
             electron_1.ipcRenderer.removeAllListeners(channel);
+            listenerMap.delete(channel);
         },
     },
     platform: {
