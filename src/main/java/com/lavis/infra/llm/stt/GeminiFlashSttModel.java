@@ -103,17 +103,12 @@ public class GeminiFlashSttModel implements SttModel {
                     apiUrl = baseUrl + "/v1beta" + String.format(GEMINI_API_PATH, config.getModelName());
                 }
             }
-            log.info("🔗 Gemini STT API URL: {}", apiUrl);
-            log.info("🔑 Using API Key prefix: {}...",
-                    config.getApiKey() != null && config.getApiKey().length() > 10
-                            ? config.getApiKey().substring(0, 10) : "null");
-
             // 2. 将音频文件转换为 Base64
             long encodeStartTime = System.currentTimeMillis();
             byte[] audioBytes = audioFile.getBytes();
             String audioBase64 = Base64.getEncoder().encodeToString(audioBytes);
             long encodeDuration = System.currentTimeMillis() - encodeStartTime;
-            String mimeType = getAudioMimeType(audioFile.getOriginalFilename());
+            String mimeType = getAudioMimeType(audioFile);
             
             // 计算 Base64 编码后的数据大小（用于诊断）
             int base64Size = audioBase64.length();
@@ -389,6 +384,16 @@ public class GeminiFlashSttModel implements SttModel {
      */
     private String parseErrorMessage(String responseBody, int statusCode) {
         try {
+            if (responseBody != null) {
+                String lowered = responseBody.toLowerCase();
+                // Cloudflare/edge HTML 5xx page
+                if (lowered.contains("gateway time-out")
+                        || lowered.contains("error code 504")
+                        || lowered.contains("cloudflare")
+                        || lowered.contains("<!doctype html")) {
+                    return "上游网关超时（Cloudflare 504），请稍后重试或切换 STT 备选模型";
+                }
+            }
             if (responseBody != null && !responseBody.isBlank()) {
                 JsonNode root = objectMapper.readTree(responseBody);
                 if (root.has("error")) {
@@ -422,7 +427,21 @@ public class GeminiFlashSttModel implements SttModel {
      * 
      * 参考: https://ai.google.dev/gemini-api/docs/audio#supported-audio-formats
      */
-    private String getAudioMimeType(String filename) {
+    private String getAudioMimeType(MultipartFile audioFile) {
+        String contentType = audioFile != null ? audioFile.getContentType() : null;
+        if (contentType != null && !contentType.isBlank()) {
+            String normalized = contentType.toLowerCase().trim();
+            if (normalized.startsWith("audio/wav") || normalized.startsWith("audio/x-wav")) return "audio/wav";
+            if (normalized.startsWith("audio/mp3") || normalized.startsWith("audio/mpeg")) return "audio/mp3";
+            if (normalized.startsWith("audio/aiff")) return "audio/aiff";
+            if (normalized.startsWith("audio/aac")) return "audio/aac";
+            if (normalized.startsWith("audio/ogg")) return "audio/ogg";
+            if (normalized.startsWith("audio/flac")) return "audio/flac";
+            if (normalized.startsWith("audio/webm")) return "audio/webm";
+            if (normalized.startsWith("audio/mp4") || normalized.startsWith("audio/m4a")) return "audio/mp4";
+        }
+
+        String filename = audioFile != null ? audioFile.getOriginalFilename() : null;
         if (filename == null) {
             return "audio/wav"; // 默认格式（官方文档推荐）
         }
@@ -449,4 +468,3 @@ public class GeminiFlashSttModel implements SttModel {
         return config.getApiKey() != null && !config.getApiKey().isBlank();
     }
 }
-

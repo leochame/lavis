@@ -9,9 +9,9 @@ import java.util.Map;
 
 /**
  * LLM 配置属性类
- * 
+ *
  * 读取 application.yml 中的 app.llm.models 配置
- * 
+ *
  * 配置示例:
  * <pre>
  * app:
@@ -19,7 +19,7 @@ import java.util.Map;
  *     models:
  *       fast-model:
  *         provider: OPENAI
- *         base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+ *         base-url: <a href="https://dashscope.aliyuncs.com/compatible-mode/v1">...</a>
  *         api-key: ${ALIYUN_KEY}
  *         model-name: qwen-max
  * </pre>
@@ -51,7 +51,7 @@ public class LlmProperties {
      * 默认 TTS 模型别名
      */
     private String defaultTtsModel = "tts";
-    
+
     /**
      * 获取指定别名的模型配置
      * 
@@ -69,4 +69,3 @@ public class LlmProperties {
         return models.containsKey(alias);
     }
 }
-

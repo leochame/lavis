@@ -4,6 +4,9 @@ import com.lavis.infra.persistence.entity.ScheduledTaskEntity;
 import com.lavis.infra.persistence.entity.TaskRunLogEntity;
 import com.lavis.feature.scheduler.ScheduledTaskService;
 import com.lavis.feature.scheduler.SchedulerStatus;
+import com.lavis.feature.scheduler.TaskInterpretRequest;
+import com.lavis.feature.scheduler.TaskInterpretResult;
+import com.lavis.feature.scheduler.TaskInterpretService;
 import com.lavis.feature.scheduler.TaskRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,9 +25,12 @@ public class SchedulerController {
     private static final Logger logger = LoggerFactory.getLogger(SchedulerController.class);
 
     private final ScheduledTaskService scheduledTaskService;
+    private final TaskInterpretService taskInterpretService;
 
-    public SchedulerController(ScheduledTaskService scheduledTaskService) {
+    public SchedulerController(ScheduledTaskService scheduledTaskService,
+                               TaskInterpretService taskInterpretService) {
         this.scheduledTaskService = scheduledTaskService;
+        this.taskInterpretService = taskInterpretService;
     }
 
     @PostMapping("/tasks")
@@ -40,6 +46,14 @@ public class SchedulerController {
         return handleRead("get tasks", () -> {
             List<ScheduledTaskEntity> tasks = scheduledTaskService.getAllTasks();
             return successBody("tasks", tasks);
+        });
+    }
+
+    @PostMapping("/tasks/interpret")
+    public ResponseEntity<Map<String, Object>> interpretTask(@RequestBody TaskInterpretRequest request) {
+        return handleCommand("interpret task", () -> {
+            TaskInterpretResult result = taskInterpretService.interpret(request);
+            return successBody("result", result);
         });
     }
 

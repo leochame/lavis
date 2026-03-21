@@ -25,12 +25,12 @@ electron_1.contextBridge.exposeInMainWorld('electron', {
         },
         removeListener: (channel, callback) => {
             const channelListeners = listenerMap.get(channel);
-            const wrapped = channelListeners === null || channelListeners === void 0 ? void 0 : channelListeners.get(callback);
+            const wrapped = channelListeners?.get(callback);
             if (!wrapped) {
                 return;
             }
             electron_1.ipcRenderer.removeListener(channel, wrapped);
-            channelListeners === null || channelListeners === void 0 ? void 0 : channelListeners.delete(callback);
+            channelListeners?.delete(callback);
         },
         removeAllListeners: (channel) => {
             electron_1.ipcRenderer.removeAllListeners(channel);

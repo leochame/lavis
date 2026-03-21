@@ -233,6 +233,11 @@ public class UnifiedChatService {
             if (errorMessage != null) {
                 if (errorMessage.contains("500") || errorMessage.contains("服务器错误")) {
                     errorMessage = "语音识别服务暂时不可用，请稍后重试";
+                } else if (errorMessage.contains("504")
+                        || errorMessage.contains("gateway time-out")
+                        || errorMessage.contains("网关超时")
+                        || errorMessage.contains("cloudflare")) {
+                    errorMessage = "语音识别上游网关超时（504），请稍后重试或切换 STT 备选模型";
                 } else if (errorMessage.contains("429")) {
                     errorMessage = "请求过于频繁，请稍后再试";
                 } else if (errorMessage.contains("401") || errorMessage.contains("403")) {
@@ -251,4 +256,3 @@ public class UnifiedChatService {
         }
     }
 }
-

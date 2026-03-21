@@ -113,6 +113,31 @@ export interface TaskRunLog {
   durationMs: number;
 }
 
+export interface TaskInterpretDraft {
+  name?: string;
+  scheduleMode?: 'CRON' | 'LOOP';
+  cronExpression?: string;
+  intervalSeconds?: number;
+  requestContent?: string;
+  requestUseOrchestrator?: boolean;
+  enabled?: boolean;
+}
+
+export interface TaskInterpretRequest {
+  text: string;
+  draft?: TaskInterpretDraft;
+  memoryKey?: string;
+  clearMemory?: boolean;
+}
+
+export interface TaskInterpretResult {
+  ready: boolean;
+  missingField: 'schedule' | 'requestContent' | null;
+  message: string;
+  draft: TaskInterpretDraft;
+  task: CreateTaskRequest | null;
+}
+
 class ManagementApi {
   private client: AxiosInstance;
   private backendPort: number = 18765;
@@ -197,6 +222,14 @@ class ManagementApi {
   async getScheduledTask(id: string): Promise<ScheduledTask> {
     const response = await this.client.get<{ success: boolean; task: ScheduledTask }>(`/scheduler/tasks/${id}`);
     return response.data.task;
+  }
+
+  async interpretScheduledTask(request: TaskInterpretRequest): Promise<TaskInterpretResult> {
+    const response = await this.client.post<{ success: boolean; result: TaskInterpretResult }>(
+      '/scheduler/tasks/interpret',
+      request
+    );
+    return response.data.result;
   }
 
   async createScheduledTask(request: CreateTaskRequest): Promise<ScheduledTask> {
