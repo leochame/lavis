@@ -29,7 +29,7 @@ public class ParsedSkill {
     private String author;
     private String command;
 
-    /** The markdown body content (excluding frontmatter) - 包含 Best Practices 等知识 */
+    /** The markdown body content (excluding frontmatter) - 包含 Best Practices etc知识 */
     private String content;
 
     /** Source file path */

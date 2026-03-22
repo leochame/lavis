@@ -47,7 +47,7 @@ public class DashScopeTtsModel implements TtsModel {
     private static final int FRAME_SIZE = 2;
     private static final boolean BIG_ENDIAN = false;
     
-    // DashScope TTS API 最大输入长度限制（字节数）
+    // DashScope TTS API 最大输入长度限制（characters节数）
     private static final int MAX_TEXT_BYTES = 600;
 
     public DashScopeTtsModel(ModelConfig config) {
@@ -83,9 +83,9 @@ public class DashScopeTtsModel implements TtsModel {
                 throw new RuntimeException("No audio data received from TTS API");
             }
             
-            log.info("✅ TTS audio generated successfully, PCM size: {} bytes", pcmData.length);
+            log.info(" TTS audio generated successfully, PCM size: {} bytes", pcmData.length);
             
-            // 根据配置的输出格式处理音频
+            // 根据configuration的输出格式处理音频
             String format = config.getFormat() != null ? config.getFormat().toLowerCase() : "mp3";
             byte[] outputData;
             
@@ -96,29 +96,29 @@ public class DashScopeTtsModel implements TtsModel {
                 // 转换为 WAV 格式
                 outputData = pcmToWav(pcmData);
             } else {
-                // 默认返回 PCM (前端可以直接播放 PCM)
-                // 注意: 如果需要 MP3 格式，需要额外的编码库
+                // 默认返回 PCM (前端can 直接播放 PCM)
+                // 注意: ifneed MP3 格式，need额外的编码库
                 outputData = pcmData;
-                log.warn("⚠️ MP3 encoding not supported in SDK mode, returning PCM data");
+                log.warn(" MP3 encoding not supported in SDK mode, returning PCM data");
             }
             
             return Base64.getEncoder().encodeToString(outputData);
 
         } catch (Exception e) {
-            log.error("❌ TTS generation failed", e);
+            log.error(" TTS generation failed", e);
             throw new RuntimeException("Failed to generate speech: " + e.getMessage(), e);
         }
     }
 
     /**
-     * 使用 DashScope SDK 进行流式 TTS 调用
+     * 使用 DashScope SDK 进lines流式 TTS 调用
      */
     private void streamCall(String text, ByteArrayOutputStream audioBuffer) 
             throws ApiException, NoApiKeyException, UploadFileException {
         
         MultiModalConversation conv = new MultiModalConversation();
         
-        // 解析音色配置
+        // 解析音色configuration
         AudioParameters.Voice voice = parseVoice(config.getVoice());
         
         // 检测语言类型 (简单检测)
@@ -153,7 +153,7 @@ public class DashScopeTtsModel implements TtsModel {
     }
 
     /**
-     * 解析音色配置字符串为 SDK 枚举
+     * 解析音色configurationcharacters符串为 SDK 枚举
      */
     private AudioParameters.Voice parseVoice(String voiceName) {
         if (voiceName == null || voiceName.isBlank()) {
@@ -173,8 +173,8 @@ public class DashScopeTtsModel implements TtsModel {
     }
 
     /**
-     * 截断文本以确保不超过 API 的字节长度限制
-     * 使用 UTF-8 编码计算字节数，从末尾逐个字符减少，确保不会损坏字符
+     * 截断文本以确保不超过 API 的characters节长度限制
+     * 使用 UTF-8 编码计算characters节数，从末尾逐itemscharacters符减少，确保不会损坏characters符
      */
     private String truncateTextIfNeeded(String text) {
         if (text == null) {
@@ -187,19 +187,19 @@ public class DashScopeTtsModel implements TtsModel {
             return text;
         }
         
-        // 需要截断：从末尾逐个字符减少，直到字节数符合要求
+        // need截断：从末尾逐itemscharacters符减少，直到characters节数符合要求
         String truncated = text;
         int originalChars = text.length();
         int originalBytes = textBytes.length;
         
-        // 从末尾逐个字符减少
+        // 从末尾逐itemscharacters符减少
         while (truncated.getBytes(StandardCharsets.UTF_8).length > MAX_TEXT_BYTES && truncated.length() > 0) {
             truncated = truncated.substring(0, truncated.length() - 1);
         }
         
-        // 如果截断后为空，至少保留一些内容（使用字节截断作为后备）
+        // if截断后为空，至少保留一些内容（使用characters节截断作为后备）
         if (truncated.isEmpty() && text.length() > 0) {
-            // 使用字节截断，但确保在字符边界
+            // 使用characters节截断，但确保在characters符边界
             int truncatePos = MAX_TEXT_BYTES;
             while (truncatePos > 0 && (textBytes[truncatePos] & 0xC0) == 0x80) {
                 truncatePos--;
@@ -207,7 +207,7 @@ public class DashScopeTtsModel implements TtsModel {
             if (truncatePos > 0) {
                 truncated = new String(textBytes, 0, truncatePos, StandardCharsets.UTF_8);
             } else {
-                // 最后的后备：至少保留前 MAX_TEXT_BYTES 个字节
+                // 最后的后备：至少保留前 MAX_TEXT_BYTES itemscharacters节
                 truncated = new String(textBytes, 0, Math.min(MAX_TEXT_BYTES, textBytes.length), StandardCharsets.UTF_8);
             }
         }
@@ -215,7 +215,7 @@ public class DashScopeTtsModel implements TtsModel {
         int truncatedChars = truncated.length();
         int truncatedBytes = truncated.getBytes(StandardCharsets.UTF_8).length;
         
-        log.warn("⚠️ Text truncated due to API limit ({} bytes max): {} chars ({} bytes) -> {} chars ({} bytes)", 
+        log.warn(" Text truncated due to API limit ({} bytes max): {} chars ({} bytes) -> {} chars ({} bytes)", 
             MAX_TEXT_BYTES, originalChars, originalBytes, truncatedChars, truncatedBytes);
         
         return truncated;
@@ -230,7 +230,7 @@ public class DashScopeTtsModel implements TtsModel {
             return "Chinese";
         }
         
-        // 简单检测：如果包含中文字符则认为是中文
+        // 简单检测：if包含中文characters符则认为是中文
         for (char c : text.toCharArray()) {
             if (Character.UnicodeScript.of(c) == Character.UnicodeScript.HAN) {
                 return "Chinese";
@@ -241,7 +241,7 @@ public class DashScopeTtsModel implements TtsModel {
     }
 
     /**
-     * 将 PCM 数据转换为 WAV 格式
+     * will  PCM 数据转换为 WAV 格式
      */
     private byte[] pcmToWav(byte[] pcmData) {
         try {

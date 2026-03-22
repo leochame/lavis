@@ -39,3 +39,4 @@ src/main/resources/application.properties
 !.env.example
 /frontend/jre/
 /frontend/dist-electron/
+.lavis/logs/

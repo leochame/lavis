@@ -118,7 +118,7 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
      *
      * @param sessionId WebSocket Session ID
      * @param message 消息内容
-     * @return true 如果发送成功，false 如果 session 不存在或已关闭
+     * @return true 如果发送成功，false 如果 session 不存在或已经关闭
      */
     public boolean sendToSessionById(String sessionId, Map<String, Object> message) {
         WebSocketSession session = sessions.get(sessionId);

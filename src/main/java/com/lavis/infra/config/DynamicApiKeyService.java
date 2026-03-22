@@ -9,12 +9,12 @@ import org.springframework.stereotype.Service;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * 动态 API 配置管理服务
+ * 动态 API configuration管理服务
  *
- * 管理运行时 API Key 和 Base URL：
- * - 优先使用用户设置的配置
- * - 回退到环境变量/配置文件中的配置
- * - 提供配置变更时清除模型缓存的功能
+ * 管理运lines时 API Key 和 Base URL：
+ * - 优先使用用户设置的configuration
+ * - 回退到环境变量/configuration文件中的configuration
+ * - 提供configuration变更时清除模型缓存的功能
  *
  * 支持两种模式：
  * 1. Gemini 官方 - 不设置 baseUrl，使用官方 API
@@ -27,13 +27,13 @@ public class DynamicApiKeyService {
     private final AtomicReference<String> dynamicApiKey = new AtomicReference<>(null);
     private final AtomicReference<String> dynamicBaseUrl = new AtomicReference<>(null);
     /**
-     * 运行时模型名称配置
+     * 运lines时模型名称configuration
      * 目前按模型类型区分：
-     * - CHAT:   主对话模型（对应 fast-model 等 alias）
-     * - STT:    语音转文字模型（对应 whisper alias）
-     * - TTS:    文字转语音模型（对应 tts alias）
+     * - CHAT:   主对话模型（对应 fast-model etc alias）
+     * - STT:    语音转文characters模型（对应 whisper alias）
+     * - TTS:    文characters转语音模型（对应 tts alias）
      *
-     * 注意：这里只存“模型名称”，具体 alias 仍由配置文件中的 app.llm.models.* 控制
+     * 注意：这里只存“模型名称”，具体 alias 仍由configuration文件中的 app.llm.models.* 控制
      */
     private final AtomicReference<String> dynamicChatModelName = new AtomicReference<>(null);
     private final AtomicReference<String> dynamicSttModelName = new AtomicReference<>(null);
@@ -57,18 +57,18 @@ public class DynamicApiKeyService {
         String oldKey = dynamicApiKey.get();
         dynamicApiKey.set(apiKey);
 
-        // 如果 API Key 发生变化，清除模型缓存
+        // if API Key 发生变化，清除模型缓存
         if (oldKey == null || !oldKey.equals(apiKey)) {
             log.info("🔑 API Key updated, clearing model cache");
             llmFactory.clearCache();
         }
 
-        log.info("✅ Dynamic API Key set successfully (prefix: {}...)",
+        log.info(" Dynamic API Key set successfully (prefix: {}...)",
                 apiKey.length() > 10 ? apiKey.substring(0, 10) : apiKey);
     }
 
     /**
-     * 设置运行时 Chat 模型名称（如 gemini-2.0-flash、qwen-max 等）
+     * 设置运lines时 Chat 模型名称（如 gemini-2.0-flash、qwen-max etc）
      */
     public void setChatModelName(String modelName) {
         String trimmed = modelName != null ? modelName.trim() : null;
@@ -82,7 +82,7 @@ public class DynamicApiKeyService {
     }
 
     /**
-     * 设置运行时 STT 模型名称（对应 whisper 等语音识别模型）
+     * 设置运lines时 STT 模型名称（对应 whisper etc语音识别模型）
      */
     public void setSttModelName(String modelName) {
         String trimmed = modelName != null ? modelName.trim() : null;
@@ -96,7 +96,7 @@ public class DynamicApiKeyService {
     }
 
     /**
-     * 设置运行时 TTS 模型名称（对应 tts 等语音合成模型）
+     * 设置运lines时 TTS 模型名称（对应 tts etc语音合成模型）
      */
     public void setTtsModelName(String modelName) {
         String trimmed = modelName != null ? modelName.trim() : null;
@@ -121,7 +121,7 @@ public class DynamicApiKeyService {
         String newUrl = (baseUrl == null || baseUrl.isBlank()) ? null : baseUrl.trim();
         dynamicBaseUrl.set(newUrl);
 
-        // 如果 Base URL 发生变化，清除模型缓存
+        // if Base URL 发生变化，清除模型缓存
         boolean changed = (oldUrl == null && newUrl != null) ||
                          (oldUrl != null && !oldUrl.equals(newUrl));
         if (changed) {
@@ -130,25 +130,25 @@ public class DynamicApiKeyService {
         }
 
         if (newUrl != null) {
-            log.info("✅ Dynamic Base URL set: {}", newUrl);
+            log.info(" Dynamic Base URL set: {}", newUrl);
         } else {
-            log.info("✅ Using Gemini official API (no custom base URL)");
+            log.info(" Using Gemini official API (no custom base URL)");
         }
     }
 
     /**
-     * 获取当前动态 API Key
+     * 获取when前动态 API Key
      *
-     * @return 用户设置的 API Key，如果未设置则返回 null
+     * @return 用户设置的 API Key，ifnot 设置则返回 null
      */
     public String getApiKey() {
         return dynamicApiKey.get();
     }
 
     /**
-     * 获取当前动态 Base URL
+     * 获取when前动态 Base URL
      *
-     * @return 用户设置的 Base URL，如果未设置则返回 null（表示使用 Gemini 官方）
+     * @return 用户设置的 Base URL，ifnot 设置则返回 null（表示使用 Gemini 官方）
      */
     public String getBaseUrl() {
         return dynamicBaseUrl.get();
@@ -168,8 +168,8 @@ public class DynamicApiKeyService {
 
     /**
      * 获取有效的模型名称
-     * - 如果用户通过设置面板配置了对应类型的模型名称，则优先使用运行时配置
-     * - 否则回退到配置文件中的 model-name
+     * - if用户通过设置面板configuration了对应类型的模型名称，则优先使用运lines时configuration
+     * - else回退到configuration文件中的 model-name
      */
     public String getEffectiveModelName(String configModelName, ModelConfig.ModelType type) {
         String override = switch (type) {
@@ -185,9 +185,9 @@ public class DynamicApiKeyService {
 
     /**
      * 获取有效的 API Key
-     * 优先返回动态设置的 Key，如果没有则返回配置文件中的 Key
+     * 优先返回动态设置的 Key，if没有则返回configuration文件中的 Key
      *
-     * @param configApiKey 配置文件中的 API Key
+     * @param configApiKey configuration文件中的 API Key
      * @return 有效的 API Key
      */
     public String getEffectiveApiKey(String configApiKey) {
@@ -200,26 +200,26 @@ public class DynamicApiKeyService {
 
     /**
      * 获取有效的 Base URL
-     * 优先返回动态设置的 URL，如果没有则返回配置文件中的 URL
-     * 如果都没有，返回 null（表示使用 Gemini 官方 API）
+     * 优先返回动态设置的 URL，if没有则返回configuration文件中的 URL
+     * if都没有，返回 null（表示使用 Gemini 官方 API）
      *
-     * @param configBaseUrl 配置文件中的 Base URL
+     * @param configBaseUrl configuration文件中的 Base URL
      * @return 有效的 Base URL，null 表示使用 Gemini 官方
      */
     public String getEffectiveBaseUrl(String configBaseUrl) {
         String dynamicUrl = dynamicBaseUrl.get();
         // 动态设置优先（包括显式设置为空的情况）
-        // 如果用户设置了动态配置（API Key 或 Base URL），则使用用户设置的 Base URL
+        // if用户设置了动态configuration（API Key 或 Base URL），则使用用户设置的 Base URL
         if (dynamicApiKey.get() != null || dynamicUrl != null) {
-            // 如果用户设置了 API Key，则使用用户设置的 Base URL（可能为 null）
+            // if用户设置了 API Key，则使用用户设置的 Base URL（may为 null）
             return dynamicUrl;
         }
-        // 否则使用配置文件中的 Base URL
+        // else使用configuration文件中的 Base URL
         return configBaseUrl;
     }
 
     /**
-     * 清除动态配置（API Key 和 Base URL）
+     * 清除动态configuration（API Key 和 Base URL）
      */
     public void clearConfig() {
         String oldKey = dynamicApiKey.get();
@@ -239,7 +239,7 @@ public class DynamicApiKeyService {
             llmFactory.clearCache();
         }
 
-        log.info("✅ Dynamic config cleared");
+        log.info(" Dynamic config cleared");
     }
 
     /**
@@ -250,7 +250,7 @@ public class DynamicApiKeyService {
     }
 
     /**
-     * 检查是否已配置动态 API Key
+     * 检查是否has been configuration动态 API Key
      */
     public boolean isConfigured() {
         String key = dynamicApiKey.get();

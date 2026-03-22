@@ -99,9 +99,6 @@ public class SessionStore {
         session.setMessageCount(session.getMessageCount() + 1);
         session.setTotalTokens(session.getTotalTokens() + tokenCount);
         sessionRepository.save(session);
-
-        log.debug("Saved message to session {}: type={}, tokens={}, turnId={}",
-                sessionKey, messageEntity.getMessageType(), tokenCount, turnId);
     }
 
     /**

@@ -8,37 +8,37 @@ import java.util.*;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
 /**
- * 任务执行上下文 - 解决 Agent "失忆"问题
+ * 任务执lines上下文 - 解决 Agent "失忆"问题
  * 
  * 核心功能：
- * 1. 记录操作历史轨迹，避免重复执行相同操作
- * 2. 跟踪执行状态和偏差，支持反思修正
- * 3. 检测死循环和无效操作堆积
+ * 1. 记录操作历史轨迹，避免重复执lines相同操作
+ * 2. 跟踪执lines状态和偏差，支持反思修正
+ * 3. 检测死循环和invalid操作堆积
  * 4. 提供上下文摘要供 LLM 参考
  */
 @Slf4j
 public class TaskContext {
     
-    // 任务基本信息
+    // 任务基本info
     private final String taskId;
     private final String taskDescription;
     private final Instant startTime;
     
-    // 操作历史记录（最近 N 条）
+    // 操作历史记录（最近 N records）
     private static final int MAX_HISTORY_SIZE = 20;
     private final Deque<ActionRecord> actionHistory = new ConcurrentLinkedDeque<>();
     
     // 重复操作检测
-    private static final int REPEAT_THRESHOLD = 3;  // 连续重复 N 次视为死循环
+    private static final int REPEAT_THRESHOLD = 3;  // 连续重复 N times视为死循环
     private final Map<String, Integer> recentActionCounts = new LinkedHashMap<>();
     
-    // 执行统计
+    // 执lines统计
     private int totalActions = 0;
     private int successfulActions = 0;
     private int failedActions = 0;
     private int repeatedActions = 0;
     
-    // 当前状态
+    // when前状态
     private TaskState state = TaskState.RUNNING;
     private String lastError = null;
     
@@ -50,7 +50,7 @@ public class TaskContext {
     }
     
     /**
-     * 记录一次操作及其结果
+     * 记录一times操作及其结果
      */
     public ActionResult recordAction(String actionName, Map<String, Object> params, 
                                      boolean success, String result, ExecutionDetails details) {
@@ -72,8 +72,8 @@ public class TaskContext {
         
         if (repeatCount >= REPEAT_THRESHOLD) {
             repeatedActions++;
-            record.setWarning(String.format("⚠️ 检测到重复操作！相同操作已执行 %d 次", repeatCount));
-            log.warn("🔄 死循环警告 [{}]: {} 已重复 {} 次", taskId, actionSignature, repeatCount);
+            record.setWarning(String.format(" 检测到重复操作！相同操作has been 执lines %d times", repeatCount));
+            log.warn(" 死循环warning [{}]: {} has been 重复 {} times", taskId, actionSignature, repeatCount);
         }
         
         // 更新统计
@@ -93,9 +93,9 @@ public class TaskContext {
         // 清理旧的操作计数
         cleanupOldActionCounts();
         
-        log.debug("📝 记录操作 [{}]: {} -> {}", taskId, actionName, success ? "成功" : "失败");
+        log.debug("📝 记录操作 [{}]: {} -> {}", taskId, actionName, success ? "success" : "failed");
         
-        // 返回带有上下文信息的结果
+        // 返回带有上下文info的结果
         return new ActionResult(record, generateContextSummary());
     }
     
@@ -136,22 +136,22 @@ public class TaskContext {
      */
     public String generateContextSummary() {
         StringBuilder sb = new StringBuilder();
-        sb.append("\n## 📊 执行上下文摘要\n");
+        sb.append("\n##  执lines上下文摘要\n");
         sb.append(String.format("- 任务: %s\n", taskDescription));
-        sb.append(String.format("- 已执行操作: %d 次 (成功: %d, 失败: %d)\n", 
+        sb.append(String.format("- has been 执lines操作: %d times (success: %d, failed: %d)\n", 
                 totalActions, successfulActions, failedActions));
         
         if (repeatedActions > 0) {
-            sb.append(String.format("- ⚠️ 检测到 %d 次重复操作，可能陷入死循环！\n", repeatedActions));
+            sb.append(String.format("-  检测到 %d times重复操作，may陷入死循环！\n", repeatedActions));
         }
         
-        // 最近 5 条操作历史
+        // 最近 5 records操作历史
         sb.append("\n### 最近操作历史:\n");
         List<ActionRecord> recent = new ArrayList<>(actionHistory);
         int start = Math.max(0, recent.size() - 5);
         for (int i = start; i < recent.size(); i++) {
             ActionRecord r = recent.get(i);
-            String status = r.isSuccess() ? "✅" : "❌";
+            String status = r.isSuccess() ? "" : "";
             sb.append(String.format("%d. %s %s", i + 1, status, r.getActionName()));
             if (r.getParams() != null && r.getParams().containsKey("x")) {
                 sb.append(String.format("(%s,%s)", r.getParams().get("x"), r.getParams().get("y")));
@@ -160,29 +160,29 @@ public class TaskContext {
                 sb.append(String.format(" [偏差: %s]", r.getDetails().getDeviation()));
             }
             if (r.getRepeatCount() > 1) {
-                sb.append(String.format(" ⚠️重复%d次", r.getRepeatCount()));
+                sb.append(String.format(" 重复%dtimes", r.getRepeatCount()));
             }
             sb.append("\n");
         }
         
-        // 如果有重复操作，给出建议
+        // if有重复操作，给出建议
         if (repeatedActions > 0) {
             sb.append("\n### 💡 建议:\n");
-            sb.append("- 相同操作多次执行未见效果，请尝试不同策略\n");
-            sb.append("- 可能原因: 坐标偏差、元素不可点击、需要等待加载\n");
-            sb.append("- 建议: 1)调整坐标 2)尝试双击 3)先等待再操作 4)检查元素状态\n");
+            sb.append("- 相同操作多times执linesnot 见效果，请尝试不同策略\n");
+            sb.append("- may原因: 坐标偏差、元素不可点击、needetc待加载\n");
+            sb.append("- 建议: 1)调整坐标 2)尝试双击 3)先etc待再操作 4)检查元素状态\n");
         }
         
         return sb.toString();
     }
     
     /**
-     * 检查是否应该停止执行（死循环保护）
+     * 检查是否should停止执lines（死循环保护）
      */
     public boolean shouldStop() {
-        // 连续失败过多
+        // 连续failed过多
         if (failedActions > 5 && failedActions > successfulActions) {
-            log.warn("🛑 任务停止: 失败率过高");
+            log.warn("🛑 任务停止: failed率过高");
             state = TaskState.FAILED;
             return true;
         }
@@ -196,7 +196,7 @@ public class TaskContext {
     }
     
     /**
-     * 获取最后一次操作的详情
+     * 获取最后一times操作的详情
      */
     public Optional<ActionRecord> getLastAction() {
         return Optional.ofNullable(actionHistory.peekLast());
@@ -218,19 +218,19 @@ public class TaskContext {
     }
     
     /**
-     * 标记任务完成
+     * 标记任务completed
      */
     public void markCompleted() {
         this.state = TaskState.COMPLETED;
-        log.info("✅ 任务完成 [{}]: {} (共 {} 次操作)", taskId, taskDescription, totalActions);
+        log.info(" 任务completed [{}]: {} (共 {} times操作)", taskId, taskDescription, totalActions);
     }
     
     /**
-     * 重置重复计数（当界面发生变化时调用）
+     * 重置重复计数（when界面发生变化时调用）
      */
     public void resetRepeatCounts() {
         recentActionCounts.clear();
-        log.debug("🔄 重置重复计数");
+        log.debug(" 重置重复计数");
     }
     
     // Getters
@@ -244,9 +244,9 @@ public class TaskContext {
      * 任务状态枚举
      */
     public enum TaskState {
-        RUNNING,    // 执行中
-        COMPLETED,  // 已完成
-        FAILED,     // 失败
+        RUNNING,    // 执lines中
+        COMPLETED,  // has been completed
+        FAILED,     // failed
         STUCK       // 卡住（死循环）
     }
     
@@ -266,14 +266,14 @@ public class TaskContext {
     }
     
     /**
-     * 执行详情（包含偏差等信息）
+     * 执lines详情（包含偏差etcinfo）
      */
     @Data
     public static class ExecutionDetails {
         private String deviation;      // 坐标偏差
         private boolean targetHit;     // 是否命中目标
         private String uiChange;       // UI 变化描述
-        private long executionTimeMs;  // 执行耗时
+        private long executionTimeMs;  // 执lines耗时
     }
     
     /**
@@ -296,15 +296,15 @@ public class TaskContext {
             StringBuilder sb = new StringBuilder();
             
             // 操作结果
-            sb.append(record.isSuccess() ? "✅ " : "❌ ");
+            sb.append(record.isSuccess() ? " " : " ");
             sb.append(record.getResult());
             
-            // 偏差信息
+            // 偏差info
             if (record.getDetails() != null && record.getDetails().getDeviation() != null) {
-                sb.append("\n⚠️ 执行偏差: ").append(record.getDetails().getDeviation());
+                sb.append("\n 执lines偏差: ").append(record.getDetails().getDeviation());
             }
             
-            // 警告信息
+            // warninginfo
             if (record.getWarning() != null) {
                 sb.append("\n").append(record.getWarning());
             }

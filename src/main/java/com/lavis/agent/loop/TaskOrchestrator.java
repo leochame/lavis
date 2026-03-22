@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
  *
  * v1 版本承载完整 ReAct 决策循环（Perceive → Decide → Execute），
  * 但在统一到 `AgentService` + AgentTools 之后，该类只保留：
- * - 调度器状态枚举（用于 /status 等接口展示）
+ * - 调度器状态枚举（用于 /status etc接口展示）
  * - 中断控制（用于 /stop 触发紧急中止）
  *
  * 原先的 ReAct 相关实现（DecisionBundle / ReactTaskContext / LocalExecutor 等）
@@ -31,10 +31,10 @@ public class TaskOrchestrator {
     }
 
     /**
-     * 初始化（保持向后兼容）
+     * initialize（保持向后兼容）
      */
     public void initialize(ChatLanguageModel defaultModel) {
-        log.info("✅ TaskOrchestrator 初始化完成（ReAct 调度已停用，仅保留状态/中断管理）");
+        log.info(" TaskOrchestrator initializecompleted（ReAct 调度has been 停用，仅保留状态/中断管理）");
         this.state = OrchestratorState.IDLE;
     }
 
@@ -63,7 +63,7 @@ public class TaskOrchestrator {
     }
 
     /**
-     * 获取当前状态
+     * 获取when前状态
      */
     public OrchestratorState getState() {
         return state;
@@ -75,7 +75,7 @@ public class TaskOrchestrator {
     public void reset() {
         state = OrchestratorState.IDLE;
         clearInterruptFlag();
-        log.info("🔄 调度器已重置");
+        log.info(" 调度器has been 重置");
     }
 
     /**
@@ -83,13 +83,13 @@ public class TaskOrchestrator {
      */
     public enum OrchestratorState {
         IDLE,       // 空闲
-        EXECUTING,  // 执行中
-        COMPLETED,  // 完成
-        FAILED      // 失败
+        EXECUTING,  // 执lines中
+        COMPLETED,  // completed
+        FAILED      // failed
     }
 
     /**
-     * 调度器执行结果
+     * 调度器执lines结果
      */
     @Data
     public static class OrchestratorResult {
@@ -117,7 +117,7 @@ public class TaskOrchestrator {
 
         @Override
         public String toString() {
-            String icon = success ? "✅" : (partial ? "⚠️" : "❌");
+            String icon = success ? "" : (partial ? "" : "");
             return icon + " " + message;
         }
     }

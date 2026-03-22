@@ -116,7 +116,7 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       return () => ({ avgAudioEnergy: 0, samplesCount: 0 });
     }
 
-    const silenceThreshold = 0.02; // 静音阈值
+    const silenceThreshold = 0.015; // 静音阈值（降低以减少误判）
     const initialTimeout = 5000; // 初始超时时间（5秒）
     const extensionTime = 2500; // 每次语音输入延长时间（2.5秒）
     const maxRecordingTime = 60000; // 最大录音时长（60秒）
@@ -138,6 +138,16 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       samplesCount++;
 
       const isSilence = level < silenceThreshold;
+
+      // 每秒输出一次音频能量信息（用于调试）
+      if (samplesCount % 10 === 0) {
+        console.log('[VoiceRecorder] Audio level:', {
+          current: level.toFixed(4),
+          avg: (totalAudioEnergy / samplesCount).toFixed(4),
+          threshold: silenceThreshold,
+          isSilence
+        });
+      }
 
       // 最大录音时长检查
       if (recordingDuration >= maxRecordingTime) {
@@ -262,7 +272,15 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
         const energyInfo: EnergyInfo = cleanupDetection ? cleanupDetection() as EnergyInfo : { avgAudioEnergy: 0, samplesCount: 0 };
 
         // 检查是否全程静音（平均能量 < 阈值）
-        if (energyInfo.avgAudioEnergy < 0.01 && energyInfo.samplesCount > 10) {
+        // 降低阈值到 0.001，避免误判正常语音为静音
+        // 同时增加日志输出，方便调试
+        console.log('[VoiceRecorder] Audio energy check:', {
+          avgEnergy: energyInfo.avgAudioEnergy,
+          samples: energyInfo.samplesCount,
+          threshold: 0.001
+        });
+
+        if (energyInfo.avgAudioEnergy < 0.001 && energyInfo.samplesCount > 10) {
           console.warn('⚠️ Full silence detected, discarding');
           setIsTooShort(true);
           setAudioBlob(null);

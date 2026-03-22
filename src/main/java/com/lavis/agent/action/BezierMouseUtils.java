@@ -12,13 +12,13 @@ import java.util.Random;
  * 1. 贝塞尔曲线轨迹 - 模拟人手的弧形运动
  * 2. 速度曲线 (Easing) - 起始加速，接近目标减速
  * 3. 微抖动 (Jitter) - 模拟手部细微颤抖
- * 4. 随机延迟配置 - 规避反脚本检测
+ * 4. 随机延迟configuration - 规避反脚本检测
  */
 public class BezierMouseUtils {
 
     private static final Random random = new Random();
     
-    // 抖动配置
+    // 抖动configuration
     private static final double JITTER_AMPLITUDE = 1.5;  // 抖动幅度（像素）
     private static final double JITTER_FREQUENCY = 0.3;  // 抖动频率
     
@@ -37,21 +37,21 @@ public class BezierMouseUtils {
      * @param start 起点
      * @param end   终点
      * @param steps 步数（越多越平滑，但越慢）
-     * @return 路径点列表
+     * @return 路径点columns表
      */
     public static List<Point> generatePath(Point start, Point end, int steps) {
         return generatePath(start, end, steps, EasingType.HUMAN_LIKE, true);
     }
     
     /**
-     * 生成可配置的鼠标移动路径
+     * 生成可configuration的鼠标移动路径
      * 
      * @param start      起点
      * @param end        终点
      * @param steps      步数
      * @param easing     速度曲线类型
      * @param addJitter  是否添加微抖动
-     * @return 路径点列表
+     * @return 路径点columns表
      */
     public static List<Point> generatePath(Point start, Point end, int steps, 
                                            EasingType easing, boolean addJitter) {
@@ -97,7 +97,7 @@ public class BezierMouseUtils {
             }
         }
 
-        // 确保最后一个点精确到达终点
+        // 确保最后一items点精确到达终点
         if (!path.get(path.size() - 1).equals(end)) {
             path.add(end);
         }
@@ -111,7 +111,7 @@ public class BezierMouseUtils {
      * @param start 起点
      * @param end   终点
      * @param steps 步数
-     * @return 路径点列表
+     * @return 路径点columns表
      */
     public static List<Point> generateDragPath(Point start, Point end, int steps) {
         // 拖拽时使用更平滑的曲线，减少抖动
@@ -122,7 +122,7 @@ public class BezierMouseUtils {
             return path;
         }
         
-        // 拖拽需要更多步数，更平滑
+        // 拖拽need更多步数，更平滑
         steps = Math.max(steps, 20);
         
         // 拖拽使用更温和的控制点
@@ -203,7 +203,7 @@ public class BezierMouseUtils {
     }
 
     /**
-     * 三次贝塞尔曲线计算
+     * 三times贝塞尔曲线计算
      */
     private static double cubicBezier(double p0, double p1, double p2, double p3, double t) {
         double u = 1 - t;
@@ -309,24 +309,24 @@ public class BezierMouseUtils {
     }
     
     /**
-     * 生成随机延迟（毫秒），用于每步之间的等待
+     * 生成随机延迟（毫seconds），用于每步之间的etc待
      * 模拟人类鼠标移动的速度变化
      * 
-     * @param stepIndex    当前步索引
+     * @param stepIndex    when前步索引
      * @param totalSteps   总步数
-     * @param baseDelayMs  基础延迟（毫秒）
+     * @param baseDelayMs  基础延迟（毫seconds）
      * @return 建议的延迟时间
      */
     public static int generateStepDelay(int stepIndex, int totalSteps, int baseDelayMs) {
         double progress = (double) stepIndex / totalSteps;
         
-        // 起始和结束时稍慢，中间较快
+        // 起始和end时稍慢，中间较快
         double speedFactor;
         if (progress < 0.2) {
             // 起始加速阶段
             speedFactor = 0.5 + progress * 2.5;
         } else if (progress > 0.8) {
-            // 结束减速阶段
+            // end减速阶段
             speedFactor = 0.5 + (1 - progress) * 2.5;
         } else {
             // 中间匀速阶段

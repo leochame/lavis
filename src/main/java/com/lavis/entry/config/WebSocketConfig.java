@@ -8,7 +8,7 @@ import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
 
 /**
- * WebSocket 配置
+ * WebSocket configuration
  * 用于前后端实时通信，流式传输工作流状态
  */
 @Configuration

@@ -32,7 +32,7 @@ public class DashScopeSttModel implements SttModel {
     private final OkHttpClient httpClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    // 多模态生成 API (asr-flash, qwen-audio 系列)
+    // 多模态生成 API (qwen3-asr-flash, qwen-audio 系列)
     private static final String MULTIMODAL_API_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
     // 同步语音识别 API (sensevoice, paraformer-realtime)
     private static final String SYNC_RECOGNITION_URL = "https://dashscope.aliyuncs.com/api/v1/services/audio/asr/recognition";
@@ -73,7 +73,7 @@ public class DashScopeSttModel implements SttModel {
                 return transcribeWithMultimodalApi(audioFile, modelName);
             } else if (isAsyncModel(modelName)) {
                 throw new UnsupportedOperationException(
-                    "异步模型 " + modelName + " 需要文件 URL，请使用 sensevoice-v1 或 asr-flash 模型");
+                    "异步模型 " + modelName + " 需要文件 URL，请使用 sensevoice-v1 或 qwen3-asr-flash 模型");
             } else {
                 return transcribeWithRecognitionApi(audioFile, modelName);
             }
@@ -85,9 +85,9 @@ public class DashScopeSttModel implements SttModel {
     }
 
     /**
-     * 使用多模态生成 API 进行转写 (asr-flash, qwen-audio-turbo 等)
+     * 使用多模态生成 API 进行转写 (qwen3-asr-flash, qwen-audio-turbo 等)
      * 参考官方文档: https://bailian.console.aliyun.com/cn-beijing/#/doc/?type=model&url=2979031
-     * 
+     *
      * 重要：ASR 专用模型只需要包含音频，不需要文字提示！
      */
     private String transcribeWithMultimodalApi(MultipartFile audioFile, String modelName) throws IOException {
@@ -171,9 +171,9 @@ public class DashScopeSttModel implements SttModel {
             String responseBody = response.body() != null ? response.body().string() : "";
 
             if (!response.isSuccessful()) {
-                log.error("❌ DashScope Multimodal API failed: {} - URL: {} (took {}ms)", 
+                log.error(" DashScope Multimodal API failed: {} - URL: {} (took {}ms)", 
                         response.code(), apiUrl, requestDuration);
-                log.error("❌ Error response body: {}", responseBody);
+                log.error(" Error response body: {}", responseBody);
                 throw new IOException("ASR transcription failed: " + response.code() + " - " + responseBody);
             }
 
@@ -229,9 +229,9 @@ public class DashScopeSttModel implements SttModel {
             String responseBody = response.body() != null ? response.body().string() : "";
 
             if (!response.isSuccessful()) {
-                log.error("❌ DashScope Recognition API failed: {} - URL: {} (took {}ms)", 
+                log.error(" DashScope Recognition API failed: {} - URL: {} (took {}ms)", 
                         response.code(), apiUrl, requestDuration);
-                log.error("❌ Error response body: {}", responseBody);
+                log.error(" Error response body: {}", responseBody);
                 throw new IOException("ASR transcription failed: " + response.code() + " - " + responseBody);
             }
 
@@ -279,7 +279,7 @@ public class DashScopeSttModel implements SttModel {
         try {
             JsonNode root = objectMapper.readTree(responseBody);
 
-            // 检查是否有错误
+            // 检查是否有error
             if (root.has("code") && !root.get("code").asText().isEmpty()) {
                 String errorCode = root.get("code").asText();
                 String errorMessage = root.has("message") ? root.get("message").asText() : "Unknown error";
@@ -305,11 +305,11 @@ public class DashScopeSttModel implements SttModel {
                                     }
                                 }
                                 String text = result.toString().trim();
-                                log.info("✅ Transcription successful: {} chars", text.length());
+                                log.info(" Transcription successful: {} chars", text.length());
                                 return text;
                             } else if (content.isTextual()) {
                                 String text = content.asText().trim();
-                                log.info("✅ Transcription successful: {} chars", text.length());
+                                log.info(" Transcription successful: {} chars", text.length());
                                 return text;
                             }
                         }
@@ -317,7 +317,7 @@ public class DashScopeSttModel implements SttModel {
                 }
             }
 
-            log.warn("⚠️ Could not parse multimodal result, returning raw response");
+            log.warn(" Could not parse multimodal result, returning raw response");
             return responseBody;
 
         } catch (IOException e) {
@@ -342,7 +342,7 @@ public class DashScopeSttModel implements SttModel {
         try {
             JsonNode root = objectMapper.readTree(responseBody);
 
-            // 检查是否有错误
+            // 检查是否有error
             if (root.has("code") && !root.get("code").asText().isEmpty()) {
                 String errorCode = root.get("code").asText();
                 String errorMessage = root.has("message") ? root.get("message").asText() : "Unknown error";
@@ -355,15 +355,15 @@ public class DashScopeSttModel implements SttModel {
                 // 尝试多种可能的字段名
                 if (output.has("text")) {
                     String text = output.get("text").asText();
-                    log.info("✅ Transcription successful: {} chars", text.length());
+                    log.info(" Transcription successful: {} chars", text.length());
                     return text;
                 }
                 if (output.has("sentence") && output.get("sentence").has("text")) {
                     String text = output.get("sentence").get("text").asText();
-                    log.info("✅ Transcription successful: {} chars", text.length());
+                    log.info(" Transcription successful: {} chars", text.length());
                     return text;
                 }
-                // 某些 ASR 模型可能直接返回 sentences 数组
+                // 某些 ASR 模型（如 qwen3-asr-flash）可能直接返回 sentences 数组
                 if (output.has("sentences") && output.get("sentences").isArray()) {
                     StringBuilder fullText = new StringBuilder();
                     for (JsonNode sentence : output.get("sentences")) {
@@ -372,13 +372,13 @@ public class DashScopeSttModel implements SttModel {
                         }
                     }
                     String text = fullText.toString();
-                    log.info("✅ Transcription successful: {} chars", text.length());
+                    log.info(" Transcription successful: {} chars", text.length());
                     return text;
                 }
             }
 
             // 如果无法解析，返回原始响应
-            log.warn("⚠️ Could not parse transcription result, returning raw response");
+            log.warn(" Could not parse transcription result, returning raw response");
             return responseBody;
 
         } catch (IOException e) {

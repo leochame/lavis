@@ -20,7 +20,7 @@ public class WorkflowEventService {
     private final AgentWebSocketHandler webSocketHandler;
 
     /**
-     * 发送思考/分析事件 (AI 正在分析屏幕)
+     * 发送思考/分析事件 (AI is 分析屏幕)
      */
     public void onThinking(String context) {
         broadcast("thinking", Map.of(
@@ -30,7 +30,7 @@ public class WorkflowEventService {
     }
 
     /**
-     * 发送动作执行事件
+     * 发送动作执lines事件
      */
     public void onActionExecuted(String actionType, String description, boolean success) {
         broadcast("action_executed", Map.of(
@@ -42,7 +42,7 @@ public class WorkflowEventService {
     }
 
     /**
-     * 发送任务开始事件
+     * 发送任务start事件
      */
     public void onTaskStarted(String taskId, String goal) {
         broadcast("task_started", Map.of(
@@ -53,7 +53,7 @@ public class WorkflowEventService {
     }
 
     /**
-     * 发送任务完成事件
+     * 发送任务completed事件
      */
     public void onTaskCompleted(String taskId, String summary) {
         broadcast("task_completed", Map.of(
@@ -64,7 +64,7 @@ public class WorkflowEventService {
     }
 
     /**
-     * 发送任务失败事件
+     * 发送任务failed事件
      */
     public void onTaskFailed(String taskId, String reason) {
         broadcast("task_failed", Map.of(
@@ -130,7 +130,7 @@ public class WorkflowEventService {
     }
 
     /**
-     * 发送执行错误事件
+     * 发送执lineserror事件
      */
     public void onExecutionError(String errorMessage, String errorType, String taskId) {
         Map<String, Object> data = new HashMap<>();
@@ -140,11 +140,11 @@ public class WorkflowEventService {
         data.put("timestamp", Instant.now().toEpochMilli());
 
         broadcast("execution_error", data);
-        log.error("❌ 发送执行错误事件: {}", errorMessage);
+        log.error(" 发送执lineserror事件: {}", errorMessage);
     }
 
     /**
-     * 发送任务执行异常事件
+     * 发送任务执linesexception事件
      */
     public void onTaskExecutionException(String errorMessage, String taskId) {
         Map<String, Object> data = new HashMap<>();
@@ -154,7 +154,7 @@ public class WorkflowEventService {
         data.put("timestamp", Instant.now().toEpochMilli());
 
         broadcast("execution_error", data);
-        log.error("❌ 发送任务执行异常事件: {}", errorMessage);
+        log.error(" 发送任务执linesexception事件: {}", errorMessage);
     }
 
     /**

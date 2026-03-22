@@ -14,14 +14,14 @@ import org.springframework.web.filter.CorsFilter;
 import java.util.Arrays;
 
 /**
- * 应用配置类
+ * 应用configuration类
  */
 @Configuration
 @ConfigurationPropertiesScan("com.lavis.entry.config.llm")
 public class AppConfig {
 
     /**
-     * 配置 CORS 跨域访问
+     * configuration CORS 跨域访问
      */
     @Bean
     public CorsFilter corsFilter() {

@@ -67,7 +67,7 @@ public class LavisApplication {
         log.info("");
 
         if (!agentService.isAvailable()) {
-            log.warn("⚠️  Agent 未可用！请检查配置");
+            log.warn("  Agent 不可用！请检查配置");
             log.warn("    检查 application.properties 中的 app.llm.models.* 配置");
         }
     }

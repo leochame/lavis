@@ -4,13 +4,13 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 统一的聊天响应模型
+ * 统一的聊days响应模型
  *
  * 统一了 /chat 和 /voice-chat 的响应格式
  */
 public record ChatResponse(
     /**
-     * 是否成功
+     * 是否success
      */
     boolean success,
 
@@ -30,12 +30,12 @@ public record ChatResponse(
     String requestId,
 
     /**
-     * 总耗时（毫秒）
+     * 总耗时（毫seconds）
      */
     long durationMs,
 
     /**
-     * TTS 音频是否正在异步推送中
+     * TTS 音频是否is 异步推送中
      */
     boolean audioPending,
 
@@ -50,7 +50,7 @@ public record ChatResponse(
     public Map<String, Object> toResponseMap(boolean includeLegacyFields) {
         Map<String, Object> response = new HashMap<>();
 
-        // 核心字段
+        // 核心characters段
         response.put("success", success);
         response.put("user_text", userText);
         response.put("agent_text", agentText);
@@ -63,7 +63,7 @@ public record ChatResponse(
             response.put("response", agentText);
         }
 
-        // TaskOrchestrator 相关字段（可选）
+        // TaskOrchestrator 相关characters段（可选）
         if (orchestratorState != null) {
             response.put("orchestrator_state", orchestratorState);
         }
@@ -72,7 +72,7 @@ public record ChatResponse(
     }
 
     /**
-     * 默认转换（包含向后兼容字段）
+     * 默认转换（包含向后兼容characters段）
      */
     public Map<String, Object> toResponseMap() {
         return toResponseMap(true);
@@ -116,7 +116,7 @@ public record ChatResponse(
     }
 
     /**
-     * 创建错误响应
+     * 创建error响应
      */
     public static ChatResponse error(String userText, String errorMessage, String requestId, long durationMs) {
         return new ChatResponse(

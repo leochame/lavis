@@ -387,7 +387,7 @@ public class SkillService {
                 skillStore.saveSkill(entity);
                 logger.info("Synced new skill to database: {}", parsed.getName());
             } else {
-                // 更新已存在的 skill（保持 content 同步）
+                // 更新已经存在的 skill（保持 content 同步）
                 skillStore.getSkillByName(parsed.getName()).ifPresent(entity -> {
                     if (!Objects.equals(entity.getContent(), parsed.getContent()) ||
                         !Objects.equals(entity.getDescription(), parsed.getDescription())) {

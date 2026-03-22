@@ -1,13 +1,13 @@
 package com.lavis.agent.chat;
 
 /**
- * 统一的聊天请求模型
+ * 统一的聊days请求模型
  * 
  * 用于标准化文本和音频输入，支持统一的处理流程
  */
 public record ChatRequest(
     /**
-     * 标准化后的用户文本（文本输入直接使用，音频输入需要 STT 转换）
+     * 标准化后的用户文本（文本输入直接使用，音频输入need STT 转换）
      */
     String text,
     
@@ -24,12 +24,12 @@ public record ChatRequest(
     /**
      * 是否使用 TaskOrchestrator（复杂任务路径）
      * false: 使用 chatWithScreenshot（快速路径）
-     * true: 使用 TaskOrchestrator（规划执行路径）
+     * true: 使用 TaskOrchestrator（规划执lines路径）
      */
     boolean useOrchestrator,
     
     /**
-     * 是否需要 TTS 语音反馈
+     * 是否need TTS 语音反馈
      */
     boolean needsTts
 ) {
@@ -41,7 +41,7 @@ public record ChatRequest(
     }
     
     /**
-     * 创建音频输入的请求（需要先进行 STT 转换）
+     * 创建音频输入的请求（need先进lines STT 转换）
      */
     public static ChatRequest audioInput(String transcribedText, String wsSessionId, boolean useOrchestrator, boolean needsTts) {
         return new ChatRequest(transcribedText, "audio", wsSessionId, useOrchestrator, needsTts);

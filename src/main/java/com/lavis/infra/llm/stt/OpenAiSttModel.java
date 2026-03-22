@@ -18,7 +18,7 @@ public class OpenAiSttModel implements SttModel {
     private final OkHttpClient httpClient;
     
     // OpenAI 官方地址: https://api.openai.com/v1
-    // 如果配置文件中没有指定 base-url，则使用官方地址
+    // ifconfiguration文件中没有指定 base-url，则使用官方地址
     private static final String DEFAULT_BASE_URL = "https://api.openai.com/v1";
     private static final String WHISPER_API_ENDPOINT = "/audio/transcriptions";
 
@@ -82,8 +82,8 @@ public class OpenAiSttModel implements SttModel {
             try (Response response = httpClient.newCall(request).execute()) {
                 if (!response.isSuccessful()) {
                     String errorBody = response.body() != null ? response.body().string() : "No error body";
-                    log.error("❌ Whisper API failed: {} - URL: {}", response.code(), apiUrl);
-                    log.error("❌ Error response body: {}", errorBody);
+                    log.error(" Whisper API failed: {} - URL: {}", response.code(), apiUrl);
+                    log.error(" Error response body: {}", errorBody);
                     throw new IOException("Whisper transcription failed: " + response.code() + " - " + errorBody);
                 }
 

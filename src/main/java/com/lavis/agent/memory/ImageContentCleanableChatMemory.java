@@ -14,18 +14,18 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * 【Context Engineering 改造】
  * 原 ImageContentCleanableChatMemory 基于消息计数清理，缺乏对任务时序的理解。
  * 新版本支持：
- * - Turn 感知：识别当前 Turn 和历史 Turn
- * - 锚点保留：保留每个 Turn 的首尾图片
+ * - Turn 感知：识别when前 Turn 和历史 Turn
+ * - 锚点保留：保留每items Turn 的首尾图片
  * - 占位符替换：中间图片替换为占位符，极致压缩 Token
  *
  * 【内存安全策略】
- * - 当前 Turn：全量保留所有 ImageContent
+ * - when前 Turn：全量保留所有 ImageContent
  * - 历史 Turn：仅保留首尾锚点图片，中间替换为占位符
  * - 可节省 95%+ 的历史视觉开销
  *
- * 【轮次定义】
- * - 一轮 (Turn) = 从用户请求到最终回复的完整交互周期
- * - 通过 TurnContext.currentTurnId() 识别当前 Turn
+ * 【轮times定义】
+ * - 一轮 (Turn) = 从用户请求到最终回复的完整交互weeks期
+ * - 通过 TurnContext.currentTurnId() 识别when前 Turn
  *
  * 实现方式：
  * - 内部使用 LinkedList 存储消息，支持修改
@@ -36,16 +36,16 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class ImageContentCleanableChatMemory implements ChatMemory {
 
     private static final String PLACEHOLDER_FORMAT = "[Visual_Placeholder: %s]";
-    private static final String LEGACY_PLACEHOLDER = "[历史截图已清理以节省内存]";
+    private static final String LEGACY_PLACEHOLDER = "[历史截图has been 清理以节省内存]";
 
     private final LinkedList<ChatMessage> messages;
     private final int maxMessages;
-    private final int keepRecentRounds; // 保留最近 N 轮（每轮 = 一个 UserMessage）
+    private final int keepRecentRounds; // 保留最近 N 轮（每轮 = 一items UserMessage）
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
-    // Turn 追踪：记录每个消息所属的 Turn
+    // Turn 追踪：记录每items消息所属的 Turn
     private final Map<Integer, String> messageTurnMap = new HashMap<>();
-    // Turn 内图片追踪：记录每个 Turn 的图片位置
+    // Turn 内图片追踪：记录每items Turn 的图片位置
     private final Map<String, List<Integer>> turnImagePositions = new HashMap<>();
 
     /**
@@ -62,7 +62,7 @@ public class ImageContentCleanableChatMemory implements ChatMemory {
 
     /**
      * 创建默认实例（保留最近 4 轮）
-     * 4 轮可以保留足够的视觉上下文用于反思和对比
+     * 4 轮can 保留足够的视觉上下文用于反思和对比
      */
     public static ImageContentCleanableChatMemory withMaxMessages(int maxMessages) {
         return new ImageContentCleanableChatMemory(maxMessages, 4);
@@ -85,7 +85,7 @@ public class ImageContentCleanableChatMemory implements ChatMemory {
             if (currentTurnId != null) {
                 messageTurnMap.put(position, currentTurnId);
 
-                // 如果是包含图片的消息，记录位置
+                // if是包含图片的消息，记录位置
                 if (hasImageContent(message)) {
                     turnImagePositions
                             .computeIfAbsent(currentTurnId, k -> new ArrayList<>())
@@ -93,7 +93,7 @@ public class ImageContentCleanableChatMemory implements ChatMemory {
                 }
             }
 
-            // 如果超过最大消息数，移除最旧的消息
+            // if超过最大消息数，移除最旧的消息
             while (messages.size() > maxMessages) {
                 messages.removeFirst();
                 // 更新索引映射（所有索引减 1）
@@ -134,10 +134,10 @@ public class ImageContentCleanableChatMemory implements ChatMemory {
      * 【Context Engineering】时序感知的图片清理
      *
      * 策略：
-     * 1. 当前 Turn 的所有图片：全量保留
+     * 1. when前 Turn 的所有图片：全量保留
      * 2. 历史 Turn 的图片：
-     *    - 首张图片（Anchor）：保留
-     *    - 末张图片（Result）：保留
+     *    - 首sheets图片（Anchor）：保留
+     *    - 末sheets图片（Result）：保留
      *    - 中间图片（Process）：替换为占位符
      */
     private void cleanupOldImageContents() {
@@ -148,12 +148,12 @@ public class ImageContentCleanableChatMemory implements ChatMemory {
             String turnId = entry.getKey();
             List<Integer> imagePositions = entry.getValue();
 
-            // 跳过当前 Turn
+            // 跳过when前 Turn
             if (turnId.equals(currentTurnId)) {
                 continue;
             }
 
-            // 如果该 Turn 只有 1-2 张图片，全部保留
+            // if该 Turn 只有 1-2 sheets图片，全部保留
             if (imagePositions.size() <= 2) {
                 continue;
             }
@@ -171,20 +171,20 @@ public class ImageContentCleanableChatMemory implements ChatMemory {
             }
         }
 
-        // 兼容旧逻辑：基于 UserMessage 计数的清理（用于没有 Turn 信息的消息）
+        // 兼容旧逻辑：基于 UserMessage 计数的清理（用于没有 Turn info的消息）
         cleanupLegacyImageContents();
     }
 
     /**
      * 兼容旧逻辑：基于 UserMessage 计数的清理
-     * 用于处理没有 Turn 信息的历史消息
+     * 用于处理没有 Turn info的历史消息
      */
     private void cleanupLegacyImageContents() {
         // 从后往前收集所有 UserMessage 的索引
         List<Integer> userMessageIndices = new ArrayList<>();
         for (int i = messages.size() - 1; i >= 0; i--) {
             if (messages.get(i) instanceof UserMessage) {
-                // 只处理没有 Turn 信息的消息
+                // 只处理没有 Turn info的消息
                 if (!messageTurnMap.containsKey
 
 
@@ -195,12 +195,12 @@ public class ImageContentCleanableChatMemory implements ChatMemory {
             }
         }
 
-        // 如果 UserMessage 数量不超过保留轮次，不需要清理
+        // if UserMessage 数量不超过保留轮times，不need清理
         if (userMessageIndices.size() <= keepRecentRounds) {
             return;
         }
 
-        // 找到需要保留的最早 UserMessage 的索引
+        // 找到need保留的最早 UserMessage 的索引
         int keepFromIndex = userMessageIndices.get(keepRecentRounds - 1);
 
         // 清理 keepFromIndex 之前的所有 UserMessage 中的 ImageContent
@@ -209,7 +209,7 @@ public class ImageContentCleanableChatMemory implements ChatMemory {
             ChatMessage message = messages.get(i);
 
             if (message instanceof UserMessage userMsg && hasImageContent(userMsg)) {
-                // 跳过有 Turn 信息的消息（由 Turn 感知逻辑处理）
+                // 跳过有 Turn info的消息（由 Turn 感知逻辑处理）
                 if (messageTurnMap.containsKey(i)) {
                     continue;
                 }
@@ -227,7 +227,7 @@ public class ImageContentCleanableChatMemory implements ChatMemory {
     }
 
     /**
-     * 压缩 UserMessage，将 ImageContent 替换为占位符
+     * 压缩 UserMessage，will  ImageContent 替换为占位符
      */
     private UserMessage compactUserMessage(UserMessage userMsg, String imageId) {
         StringBuilder textBuilder = new StringBuilder();
@@ -297,7 +297,7 @@ public class ImageContentCleanableChatMemory implements ChatMemory {
     }
 
     /**
-     * 获取当前消息数量
+     * 获取when前消息数量
      */
     public int size() {
         lock.readLock().lock();
@@ -309,7 +309,7 @@ public class ImageContentCleanableChatMemory implements ChatMemory {
     }
 
     /**
-     * 获取 Turn 统计信息
+     * 获取 Turn 统计info
      */
     public TurnStats getTurnStats() {
         lock.readLock().lock();
@@ -325,7 +325,7 @@ public class ImageContentCleanableChatMemory implements ChatMemory {
     }
 
     /**
-     * Turn 统计信息
+     * Turn 统计info
      */
     public record TurnStats(
             int totalTurns,

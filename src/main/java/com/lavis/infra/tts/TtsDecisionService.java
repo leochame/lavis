@@ -23,13 +23,13 @@ public class TtsDecisionService {
 
     // Silent commands - user confirmations that don't need voice feedback
     private static final Pattern SILENT_CONFIRMATION_PATTERN = Pattern.compile(
-        "^(好的?|行|可以|确认|是的?|对|嗯|ok|yes|sure|confirm|got it|okay)$",
+        "^(好的?|lines|can |确认|是的?|对|嗯|ok|yes|sure|confirm|got it|okay)$",
         Pattern.CASE_INSENSITIVE
     );
 
     // Text-only request indicators - user explicitly wants text/code output
     private static final Set<String> TEXT_ONLY_INDICATORS = Set.of(
-        "不用说", "不用读", "不要语音", "静音", "文字就行", "不用播报",
+        "不用说", "不用读", "不要语音", "静音", "文characters就lines", "不用播报",
         "no voice", "no audio", "don't speak", "text only", "silent", "mute"
     );
 

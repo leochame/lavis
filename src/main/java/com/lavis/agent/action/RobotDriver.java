@@ -10,15 +10,15 @@ import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 
 /**
- * M3 执行模块 - 机器人驱动器
+ * M3 执lines模块 - 机器人驱动器
  * 封装 mouseMove, click, type 操作
  * 关键点：实现逻辑坐标与物理坐标的换算
  * 
  * 【重要改进】所有操作返回 ExecutionResult，包含：
- * - 是否成功
- * - 实际执行位置
- * - 偏差信息
- * - 详细诊断信息
+ * - 是否success
+ * - 实际执lines位置
+ * - 偏差info
+ * - 详细诊断info
  */
 @Slf4j
 @Component
@@ -27,9 +27,9 @@ public class RobotDriver {
     private final Robot robot;
     private final ScreenCapturer screenCapturer;
 
-    // 默认操作延迟 (毫秒)
+    // 默认操作延迟 (毫seconds)
     private static final int DEFAULT_DELAY = 50;
-    private static final int TYPE_DELAY = 0;  // 删除打字延迟
+    private static final int TYPE_DELAY = 0;  // 删除打characters延迟
 
     // 允许的最大偏差（像素）
     private static final int MAX_ALLOWED_DEVIATION = 10;
@@ -41,37 +41,37 @@ public class RobotDriver {
     // 【优化】大幅提高速度，减少拖沓感
     private double mouseSpeedFactor = 10.0;
     
-    // 基础步间延迟 (毫秒) - 【优化】大幅减少步间延迟
+    // 基础步间延迟 (毫seconds) - 【优化】大幅减少步间延迟
     private static final int BASE_STEP_DELAY_MS = 1;
     
     // 拖拽操作的额外延迟 - 【优化】减少拖拽延迟
     private static final int DRAG_STEP_DELAY_MS = 1;
     
-    // 鼠标移动后的稳定等待时间（毫秒）
-    // 【重要】确保系统有时间处理事件队列并更新鼠标位置
-    // 快速移动后需要更长时间让系统同步状态
+    // 鼠标移动后的稳定etc待时间（毫seconds）
+    // 【重要】确保系统有时间处理事件队columns并更新鼠标位置
+    // 快速移动后need更长时间让系统同步状态
     private static final int STABILIZATION_DELAY_MS = 30;
     
-    // 强制修正后的额外等待时间（毫秒）
-    // 确保强制修正指令被系统处理完成
+    // 强制修正后的额外etc待时间（毫seconds）
+    // 确保强制修正指令被系统处理completed
     private static final int FORCE_CORRECTION_DELAY_MS = 15;
 
     public RobotDriver(ScreenCapturer screenCapturer) throws AWTException {
         this.robot = new Robot();
         this.screenCapturer = screenCapturer;
         this.robot.setAutoDelay(DEFAULT_DELAY);
-        log.info("RobotDriver 初始化完成");
+        log.info("RobotDriver initializecompleted");
     }
 
     /**
-     * 将坐标转换为逻辑屏幕坐标（仅边界检查，无安全区域限制）
+     * will 坐标转换为逻辑屏幕坐标（仅边界检查，无安全区域限制）
      * 
      * 【坐标系统说明】
-     * - 逻辑坐标：macOS 屏幕逻辑坐标（如 1440x900），AI 直接使用这个坐标
+     * - 逻辑坐标：macOS 屏幕逻辑坐标（如 1440x900），AI 直接使用这items坐标
      * - 物理坐标：Retina 屏幕实际像素（如 2880x1800），仅截图内部使用
      * 
-     * 【等比例缩放】实现无疑问的等比例缩放：
-     * - Gemini 坐标 (0-999) 等比例映射到整个屏幕 (0 到 width-1, 0 到 height-1)
+     * 【etc比例缩放】实现无疑问的etc比例缩放：
+     * - Gemini 坐标 (0-999) etc比例映射到整items屏幕 (0 到 width-1, 0 到 height-1)
      * - 仅做边界检查，确保坐标在屏幕范围内，不应用任何安全区域限制
      * 
      * @param x 逻辑屏幕坐标 X
@@ -82,11 +82,11 @@ public class RobotDriver {
         Dimension screenSize = screenCapturer.getScreenSize();
         
         // 仅做边界检查，确保坐标在屏幕范围内 [0, width-1] 和 [0, height-1]
-        // 不应用任何安全区域限制，实现等比例缩放
+        // 不应用任何安全区域限制，实现etc比例缩放
         int safeX = Math.max(0, Math.min(x, screenSize.width - 1));
         int safeY = Math.max(0, Math.min(y, screenSize.height - 1));
         
-        // 如果发生修正（超出屏幕边界），记录日志
+        // if发生修正（超出屏幕边界），记录日志
         if (safeX != x || safeY != y) {
             log.warn("🛡️ 坐标边界修正: ({},{}) -> ({},{}) [屏幕范围: 0-{}, 0-{}]",
                     x, y, safeX, safeY, screenSize.width - 1, screenSize.height - 1);
@@ -96,11 +96,11 @@ public class RobotDriver {
     }
     
     /**
-     * 使用自定义安全配置转换坐标（保留此方法以兼容旧代码，但建议使用无参数版本）
+     * 使用自定义安全configuration转换坐标（保留此方法以兼容旧代码，但建议使用无参数版本）
      */
     public Point convertToRobotCoordinates(int x, int y, 
                                            ScreenCapturer.SafeZone safeZone) {
-        // 为了保持等比例缩放，忽略安全区域配置，仅做边界检查
+        // 为了保持etc比例缩放，忽略安全区域configuration，仅做边界检查
         return convertToRobotCoordinates(x, y);
     }
     
@@ -124,7 +124,7 @@ public class RobotDriver {
      * 
      * @param x 逻辑屏幕坐标 X
      * @param y 逻辑屏幕坐标 Y
-     * @return 执行结果，包含是否成功和偏差信息
+     * @return 执lines结果，包含是否success和偏差info
      */
     public ExecutionResult moveTo(int x, int y) {
         long startTime = System.currentTimeMillis();
@@ -135,12 +135,12 @@ public class RobotDriver {
         // 转换为安全坐标（边界检查）
         Point targetPos = convertToRobotCoordinates(x, y);
         
-        // 计算移动距离（用于动态调整等待时间）
+        // 计算移动距离（用于动态调整etc待时间）
         double distance = beforePos.distance(targetPos);
 
         if (humanLikeMode) {
             // 【增强】拟人化移动 - 使用增强的贝塞尔曲线
-            // 如果距离很长，减少步数或延迟，避免移动耗时过长
+            // if距离很长，减少步数或延迟，避免移动耗时过长
             double dynamicSpeedFactor = distance > 500 ? mouseSpeedFactor * 1.5 : mouseSpeedFactor;
 
             int steps = BezierMouseUtils.calculateRecommendedSteps(distance, dynamicSpeedFactor);
@@ -161,22 +161,22 @@ public class RobotDriver {
             
             // 确保最后精准落在目标点
             robot.mouseMove(targetPos.x, targetPos.y);
-            // 【重要】强制修正后等待系统处理完成
-            // 快速移动可能导致事件队列积压，需要足够时间让系统同步
+            // 【重要】强制修正后etc待系统处理completed
+            // 快速移动may导致事件队columns积压，need足够时间让系统同步
             robot.delay(FORCE_CORRECTION_DELAY_MS);
         } else {
             // 机械瞬间移动
             robot.mouseMove(targetPos.x, targetPos.y);
         }
 
-        // 【重要】稳定等待时间 - 确保系统完成所有事件处理并更新鼠标位置
-        // 根据移动距离动态调整：距离越长，需要更多时间让系统同步
+        // 【重要】稳定etc待时间 - 确保系统completed所有事件处理并更新鼠标位置
+        // 根据移动距离动态调整：距离越长，need更多时间让系统同步
         int stabilizationDelay = humanLikeMode ? 
             (int) Math.max(STABILIZATION_DELAY_MS, distance * 0.05) : 
             STABILIZATION_DELAY_MS;
         delay(stabilizationDelay);
 
-        // 验证移动是否成功
+        // 验证移动是否success
         Point afterPos = getMouseLocation();
         int deltaX = afterPos.x - targetPos.x;
         int deltaY = afterPos.y - targetPos.y;
@@ -196,12 +196,12 @@ public class RobotDriver {
 
         if (absDeltaX > MAX_ALLOWED_DEVIATION || absDeltaY > MAX_ALLOWED_DEVIATION) {
             result.setSuccess(false);
-            result.setMessage(String.format("❌ 鼠标移动失败！目标:(%d,%d) 实际:(%d,%d) 偏差:(%d,%d)",
+            result.setMessage(String.format(" 鼠标移动failed！目标:(%d,%d) 实际:(%d,%d) 偏差:(%d,%d)",
                     targetPos.x, targetPos.y, afterPos.x, afterPos.y, deltaX, deltaY));
             log.error(result.getMessage());
         } else {
             result.setSuccess(true);
-            result.setMessage(String.format("✅ 移动成功: 目标(%d,%d)->实际(%d,%d)",
+            result.setMessage(String.format(" 移动success: 目标(%d,%d)->实际(%d,%d)",
                     x, y, afterPos.x, afterPos.y));
             log.info(result.getMessage());
         }
@@ -233,19 +233,19 @@ public class RobotDriver {
      * 
      * @param x 逻辑屏幕坐标 X
      * @param y 逻辑屏幕坐标 Y
-     * @return 执行结果，包含是否成功和偏差信息
+     * @return 执lines结果，包含是否success和偏差info
      */
     public ExecutionResult clickAt(int x, int y) {
-        log.info("🖱️ 准备点击: 坐标({},{})", x, y);
+        log.info(" 准备点击: 坐标({},{})", x, y);
 
         // 先移动
         ExecutionResult moveResult = moveTo(x, y);
         if (!moveResult.isSuccess()) {
-            // 移动失败，记录但继续尝试点击
-            log.warn("⚠️ 移动有偏差，但仍尝试点击");
+            // 移动failed，记录但继续尝试点击
+            log.warn(" 移动有偏差，但仍尝试点击");
         }
 
-        delay(10); // 【优化】从 20ms 减少到 10ms（移动后已等待稳定，这里可以减少等待）
+        delay(10); // 【优化】从 20ms 减少到 10ms（移动后has been etc待稳定，这里can 减少etc待）
         click();
 
         // 获取点击后的实际位置
@@ -263,22 +263,22 @@ public class RobotDriver {
         result.setSuccess(moveResult.isSuccess());
 
         if (moveResult.isSuccess()) {
-            result.setMessage(String.format("✅ 点击成功: 目标(%d,%d)->实际(%d,%d)",
+            result.setMessage(String.format(" 点击success: 目标(%d,%d)->实际(%d,%d)",
                     x, y, actualPos.x, actualPos.y));
         } else {
-            result.setMessage(String.format("⚠️ 点击完成但有偏差: 目标(%d,%d) 实际(%d,%d) 偏差(%d,%d)",
+            result.setMessage(String.format(" 点击completed但有偏差: 目标(%d,%d) 实际(%d,%d) 偏差(%d,%d)",
                     x, y,
                     actualPos.x, actualPos.y,
                     moveResult.getDeviationX(), moveResult.getDeviationY()));
         }
 
-        log.info("🖱️ {}", result.getMessage());
+        log.info(" {}", result.getMessage());
         return result;
     }
 
     /**
      * 双击鼠标左键
-     * 【优化】减少两次点击之间的延迟
+     * 【优化】减少两times点击之间的延迟
      */
     public void doubleClick() {
         click();
@@ -321,24 +321,24 @@ public class RobotDriver {
      * 
      * 【M3-1 增强】使用基于轨迹的平滑拖拽，解决断触问题：
      * 1. 先移动到起点并稳定
-     * 2. 按下鼠标后等待系统响应
+     * 2. 按下鼠标后etc待系统响应
      * 3. 使用专门的拖拽路径（更稳定、更慢）
      * 4. 确保每一步都发送事件，避免断触
      * 5. 到达终点后再释放
      * 
-     * @return 执行结果
+     * @return 执lines结果
      */
     public ExecutionResult drag(int fromX, int fromY, int toX, int toY) {
         long startTime = System.currentTimeMillis();
-        log.info("🎯 开始拖拽: ({},{}) -> ({},{})", fromX, fromY, toX, toY);
+        log.info(" start拖拽: ({},{}) -> ({},{})", fromX, fromY, toX, toY);
         
         // 1. 先移动到起点
         ExecutionResult moveResult = moveTo(fromX, fromY);
         if (!moveResult.isSuccess()) {
-            log.warn("⚠️ 移动到拖拽起点有偏差，继续尝试拖拽");
+            log.warn(" 移动到拖拽起点有偏差，继续尝试拖拽");
         }
         
-        // 稳定等待
+        // 稳定etc待
         delay(30);
 
         // 获取安全坐标
@@ -348,14 +348,14 @@ public class RobotDriver {
         // 2. 按下鼠标
         robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
 
-        // 【关键】按下后等待系统响应，避免拖拽失效
+        // 【关键】按下后etc待系统响应，避免拖拽失效
         delay(20);
         
         try {
             if (humanLikeMode) {
                 // 3. 【增强】使用专门的拖拽路径
                 double distance = startPos.distance(targetPos);
-                int steps = Math.max(30, (int) (distance / 3));  // 拖拽需要更多步数
+                int steps = Math.max(30, (int) (distance / 3));  // 拖拽need更多步数
                 
                 java.util.List<Point> path = BezierMouseUtils.generateDragPath(startPos, targetPos, steps);
                 
@@ -382,7 +382,7 @@ public class RobotDriver {
                 }
             }
             
-            // 到达终点后稳定等待
+            // 到达终点后稳定etc待
             delay(20);
             
         } finally {
@@ -406,14 +406,14 @@ public class RobotDriver {
         int absDev = Math.abs(result.getDeviationX()) + Math.abs(result.getDeviationY());
         if (absDev > MAX_ALLOWED_DEVIATION * 2) {
             result.setSuccess(false);
-            result.setMessage(String.format("⚠️ 拖拽完成但有较大偏差: 从(%d,%d)到(%d,%d) 偏差:(%d,%d)",
+            result.setMessage(String.format(" 拖拽completed但有较大偏差: 从(%d,%d)到(%d,%d) 偏差:(%d,%d)",
                     fromX, fromY, toX, toY, result.getDeviationX(), result.getDeviationY()));
         } else {
             result.setSuccess(true);
-            result.setMessage(String.format("✅ 拖拽成功: 从(%d,%d)到(%d,%d)", fromX, fromY, toX, toY));
+            result.setMessage(String.format(" 拖拽success: 从(%d,%d)到(%d,%d)", fromX, fromY, toX, toY));
         }
         
-        log.info("🎯 {}", result.getMessage());
+        log.info(" {}", result.getMessage());
         return result;
     }
     /**
@@ -421,11 +421,11 @@ public class RobotDriver {
      */
     public void setHumanLikeMode(boolean enabled) {
         this.humanLikeMode = enabled;
-        log.info("🖱️ 拟人化模式: {}", enabled ? "开启" : "关闭");
+        log.info(" 拟人化模式: {}", enabled ? "开启" : "关闭");
     }
     
     /**
-     * 获取当前是否为拟人化模式
+     * 获取when前是否为拟人化模式
      */
     public boolean isHumanLikeMode() {
         return humanLikeMode;
@@ -448,14 +448,14 @@ public class RobotDriver {
     public void type(String text) {
         log.info("输入文本: {}", text);
         
-        // 【优化】检查是否为纯 ASCII 文本（不含特殊字符和中文）
+        // 【优化】检查是否为纯 ASCII 文本（不含特殊characters符和中文）
         if (isPureAsciiText(text)) {
-            // 使用剪贴板批量输入，比逐字符输入快得多
+            // 使用剪贴板批量输入，比逐characters符输入快得多
             typeViaClipboard(text);
             return;
         }
         
-        // 对于包含特殊字符或中文的文本，逐字符输入
+        // 对于包含特殊characters符或中文的文本，逐characters符输入
         for (char c : text.toCharArray()) {
             typeChar(c);
             delay(TYPE_DELAY);
@@ -463,8 +463,8 @@ public class RobotDriver {
     }
     
     /**
-     * 判断文本是否为纯 ASCII 文本（不含需要特殊处理的字符）
-     * 【优化】用于决定是否可以使用剪贴板批量输入
+     * 判断文本是否为纯 ASCII 文本（不含need特殊处理的characters符）
+     * 【优化】用于决定是否can 使用剪贴板批量输入
      */
     private boolean isPureAsciiText(String text) {
         if (text == null || text.isEmpty()) {
@@ -472,21 +472,21 @@ public class RobotDriver {
         }
         
         for (char c : text.toCharArray()) {
-            // 检查是否为 ASCII 可打印字符（32-126）
-            // 排除需要 Shift 键的特殊字符，因为剪贴板输入更可靠
+            // 检查是否为 ASCII 可打印characters符（32-126）
+            // 排除need Shift 键的特殊characters符，because剪贴板输入更可靠
             if (c < 32 || c > 126) {
-                return false; // 包含非 ASCII 字符（如中文）
+                return false; // 包含非 ASCII characters符（如中文）
             }
         }
         
-        return true; // 纯 ASCII 文本，可以使用剪贴板批量输入
+        return true; // 纯 ASCII 文本，can 使用剪贴板批量输入
     }
 
     /**
-     * 输入单个字符
+     * 输入单itemscharacters符
      */
     private void typeChar(char c) {
-        // 对于 ASCII 可打印字符，尝试直接输入
+        // 对于 ASCII 可打印characters符，尝试直接输入
         if (c >= 32 && c <= 126) {
             int keyCode = KeyEvent.getExtendedKeyCodeForChar(c);
             if (keyCode != KeyEvent.VK_UNDEFINED) {
@@ -503,12 +503,12 @@ public class RobotDriver {
             }
         }
 
-        // 对于非 ASCII 字符 (如中文)，使用剪贴板
+        // 对于非 ASCII characters符 (如中文)，使用剪贴板
         typeViaClipboard(String.valueOf(c));
     }
 
     /**
-     * 判断字符是否需要 Shift 键
+     * 判断characters符是否need Shift 键
      */
     private boolean isShiftRequired(char c) {
         return "~!@#$%^&*()_+{}|:\"<>?".indexOf(c) >= 0;
@@ -547,7 +547,7 @@ public class RobotDriver {
     }
 
     /**
-     * 按下单个键
+     * 按下单items键
      */
     public void pressKey(int keyCode) {
         robot.keyPress(keyCode);
@@ -559,7 +559,7 @@ public class RobotDriver {
      */
     public void copy() {
         pressKeys(KeyEvent.VK_META, KeyEvent.VK_C);
-        log.info("执行复制 (Command+C)");
+        log.info("执lines复制 (Command+C)");
     }
 
     /**
@@ -567,7 +567,7 @@ public class RobotDriver {
      */
     public void paste() {
         pressKeys(KeyEvent.VK_META, KeyEvent.VK_V);
-        log.info("执行粘贴 (Command+V)");
+        log.info("执lines粘贴 (Command+V)");
     }
 
     /**
@@ -575,7 +575,7 @@ public class RobotDriver {
      */
     public void selectAll() {
         pressKeys(KeyEvent.VK_META, KeyEvent.VK_A);
-        log.info("执行全选 (Command+A)");
+        log.info("执lines全选 (Command+A)");
     }
 
     /**
@@ -583,7 +583,7 @@ public class RobotDriver {
      */
     public void save() {
         pressKeys(KeyEvent.VK_META, KeyEvent.VK_S);
-        log.info("执行保存 (Command+S)");
+        log.info("执lines保存 (Command+S)");
     }
 
     /**
@@ -591,7 +591,7 @@ public class RobotDriver {
      */
     public void undo() {
         pressKeys(KeyEvent.VK_META, KeyEvent.VK_Z);
-        log.info("执行撤销 (Command+Z)");
+        log.info("执lines撤销 (Command+Z)");
     }
 
     /**
@@ -627,34 +627,34 @@ public class RobotDriver {
     }
 
     /**
-     * 延迟执行
+     * 延迟执lines
      */
     public void delay(int ms) {
         robot.delay(ms);
     }
 
     /**
-     * 获取当前鼠标位置
+     * 获取when前鼠标位置
      */
     public Point getMouseLocation() {
         return MouseInfo.getPointerInfo().getLocation();
     }
 
     /**
-     * 执行结果 - 包含详细的执行状态和偏差信息
+     * 执lines结果 - 包含详细的执lines状态和偏差info
      * 用于支持 Agent 的反思和修正
      */
     @Data
     public static class ExecutionResult {
-        private String actionType; // 操作类型: moveTo, click, doubleClick 等
-        private boolean success; // 是否成功
+        private String actionType; // 操作类型: moveTo, click, doubleClick etc
+        private boolean success; // 是否success
         private String message; // 详细消息
         private Point requestedAiCoord; // 请求的 AI 坐标
         private Point targetLogicalCoord; // 目标逻辑坐标
         private Point actualLogicalCoord; // 实际逻辑坐标
         private int deviationX; // X 偏差（像素）
         private int deviationY; // Y 偏差（像素）
-        private long executionTimeMs; // 执行耗时
+        private long executionTimeMs; // 执lines耗时
 
         /**
          * 获取偏差描述
@@ -676,14 +676,14 @@ public class RobotDriver {
         }
 
         /**
-         * 生成给 LLM 的反馈信息
+         * 生成给 LLM 的反馈info
          */
         public String toFeedback() {
             StringBuilder sb = new StringBuilder();
-            sb.append(success ? "✅ " : "❌ ").append(message);
+            sb.append(success ? " " : " ").append(message);
 
             if (!success || (Math.abs(deviationX) > 5 || Math.abs(deviationY) > 5)) {
-                sb.append("\n📍 偏差信息: ").append(getDeviationDescription());
+                sb.append("\n📍 偏差info: ").append(getDeviationDescription());
                 sb.append("\n💡 建议: ");
                 if (deviationX > 0)
                     sb.append("减小X坐标 ");

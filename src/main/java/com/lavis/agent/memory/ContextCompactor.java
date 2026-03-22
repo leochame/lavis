@@ -1,6 +1,5 @@
 package com.lavis.agent.memory;
 
-import com.lavis.agent.message.ToolCallResultMessage;
 import com.lavis.infra.llm.LlmFactory;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.input.Prompt;
@@ -30,7 +29,7 @@ public class ContextCompactor {
 
     /**
      * 通过 LlmFactory 按需获取 Chat 模型，避免直接注入 ChatLanguageModel Bean
-     * 从而复用统一的模型配置与缓存逻辑。
+     * 从而复用统一的模型configuration与缓存逻辑。
      */
     private final LlmFactory llmFactory;
 
@@ -39,14 +38,7 @@ public class ContextCompactor {
      */
     public boolean needsCompression(List<ChatMessage> messages, int tokenThreshold) {
         int estimatedTokens = estimateTokenCount(messages);
-        boolean needs = estimatedTokens > tokenThreshold;
-
-        if (needs) {
-            log.info("Conversation history needs compression: {} tokens > {} threshold",
-                    estimatedTokens, tokenThreshold);
-        }
-
-        return needs;
+        return estimatedTokens > tokenThreshold;
     }
 
     /**
@@ -64,9 +56,6 @@ public class ContextCompactor {
         List<ChatMessage> oldMessages = messages.subList(0, splitIndex);
         List<ChatMessage> recentMessages = messages.subList(splitIndex, messages.size());
 
-        log.info("Compressing {} old messages, keeping {} recent messages",
-                oldMessages.size(), recentMessages.size());
-
         // Generate summary of old messages
         String summary = summarizeMessages(oldMessages);
 
@@ -79,11 +68,6 @@ public class ContextCompactor {
 
         // Add recent messages
         compressedHistory.addAll(recentMessages);
-
-        int oldTokens = estimateTokenCount(oldMessages);
-        int newTokens = estimateTokenCount(compressedHistory);
-        log.info("Compression complete: {} tokens -> {} tokens ({}% reduction)",
-                oldTokens, newTokens, (100 * (oldTokens - newTokens) / oldTokens));
 
         return compressedHistory;
     }
@@ -153,8 +137,6 @@ public class ContextCompactor {
         } else if (message instanceof SystemMessage sysMsg) {
             return "System: " + sysMsg.text();
         } else if (message instanceof ToolExecutionResultMessage toolMsg) {
-            return "Tool Result: " + toolMsg.text();
-        } else if (message instanceof ToolCallResultMessage toolMsg) {
             return "Tool Result: " + toolMsg.text();
         }
         return "";
