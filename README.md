@@ -56,28 +56,35 @@ cp .env.example .env
 # Fill app.llm.models.* keys in .env
 ```
 
-### Start Backend
+### One-Click Start
 
 ```bash
-./mvnw spring-boot:run
+./start.sh
 ```
 
-Default backend port: `18765`.
+This single command will check prerequisites, install dependencies, start the backend and frontend, and open the Electron app. Press `Ctrl+C` to stop everything.
 
-### Start Frontend (Electron)
+### Manual Start (Alternative)
+
+If you prefer to start services separately:
 
 ```bash
+# Terminal 1: Start Backend
+./mvnw spring-boot:run
+
+# Terminal 2: Start Frontend
 cd frontend
 npm install
 npm run electron:dev
 ```
 
+Default backend port: `18765`.
+
 ## Development Workflow
 
-1. Start backend (`./mvnw spring-boot:run`)
-2. Start frontend (`npm run electron:dev`)
-3. Iterate on backend/frontend code
-4. Validate behavior in Electron app
+1. Run `./start.sh` (or start backend and frontend separately)
+2. Iterate on backend/frontend code
+3. Validate behavior in Electron app
 
 ## Packaging (macOS)
 
