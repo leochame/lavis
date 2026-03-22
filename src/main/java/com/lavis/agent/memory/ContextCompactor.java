@@ -29,7 +29,7 @@ public class ContextCompactor {
 
     /**
      * 通过 LlmFactory 按需获取 Chat 模型，避免直接注入 ChatLanguageModel Bean
-     * 从而复用统一的模型configuration与缓存逻辑。
+     * 从而复用统一的模型配置与缓存逻辑。
      */
     private final LlmFactory llmFactory;
 

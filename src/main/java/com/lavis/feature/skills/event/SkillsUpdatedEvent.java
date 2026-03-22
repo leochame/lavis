@@ -9,8 +9,8 @@ import java.util.List;
 /**
  * Skills 更新事件。
  *
- * when SkillLoader 检测到文件变更时触发此事件，
- * AgentService 监听此事件以动态更新工具columns表。
+ * 当 SkillLoader 检测到文件变更时触发此事件，
+ * AgentService 监听此事件以动态更新工具列表。
  *
  * 这是实现"真正热重载"的关键：
  * - 文件变更 -> SkillLoader 检测 -> 发布事件 -> AgentService 更新工具

@@ -61,7 +61,7 @@ public class AgentService {
     @Value("${agent.retry.delay.ms:2000}")
     private long retryDelayMs;
 
-    /** 使用的模型别名（可通过configuration切换） */
+    /** 使用的模型别名（可通过配置切换） */
     @Value("${agent.model.alias:fast-model}")
     private String modelAlias;
 
@@ -159,7 +159,7 @@ public class AgentService {
      * 截图会显示鼠标位置（红色十字）和上次点击位置（绿色圆环），便于 AI 反思
      */
     public String chatWithScreenshot(String message) {
-        // 传入 0：表示”使用全局配置 maxToolIterations”。
+        // 传入 0：表示"使用全局配置 maxToolIterations"。
         // 如果全局配置 <= 0，则表示本轮工具循环不设置次数上限。
         return chatWithScreenshot(message, 0);
     }
@@ -168,7 +168,7 @@ public class AgentService {
      * 发送带截图的消息 (多模态 + 工具调用)，支持步进模式
      *
      * @param message  用户消息
-     * @param maxSteps 保留参数，用于未来可能的”步进模式”控制。
+     * @param maxSteps 保留参数，用于未来可能的"步进模式"控制。
      *                 当前实现中**不会对工具循环施加硬性步数上限**，
      *                 仅由模型在没有工具调用或显式终止信号时自行结束。
      * @return 执行结果
@@ -177,7 +177,7 @@ public class AgentService {
         // 每次从 LlmFactory 获取模型（支持动态配置更新）
         ChatLanguageModel chatModel = getChatModel();
         if (chatModel == null) {
-            return " Agent not initialized, please check API Key configuration";
+            return "Agent 未初始化，请检查 API Key 配置";
         }
 
         // Context Engineering: 开始新的 Turn
@@ -258,12 +258,13 @@ public class AgentService {
         saveUserMessageToMemory(userMessage, imageId);
 
         // 执行工具调用循环
-        String result = executeToolCallLoop(messages);
-
-        // 记录 Turn end（在 finally 块之前，确保记录最终的消息数）
-        messageListLogger.endTurn(messages.size(), 0, 0);
-
-        return result;
+        try {
+            String result = executeToolCallLoop(messages);
+            return result;
+        } finally {
+            // 记录 Turn end（在 finally 块中，确保即使异常也记录最终的消息数）
+            messageListLogger.endTurn(messages.size(), 0, 0);
+        }
     }
 
     /**
@@ -345,7 +346,7 @@ public class AgentService {
         // 每次从 LlmFactory 获取模型（支持动态配置更新）
         ChatLanguageModel chatModel = getChatModel();
         if (chatModel == null) {
-            throw new IllegalStateException(" Agent not initialized, please check API Key configuration");
+            throw new IllegalStateException("Agent 未初始化，请检查 API Key 配置");
         }
         
         // 调用模型（使用合并后的工具列表），并统计响应耗时
@@ -395,7 +396,7 @@ public class AgentService {
 
                 // 如果工具结果中包含"终止信号"（例如 complete_tool），结束循环
         if (result.shouldTerminate()) {
-            log.info(" Received termination signal from tool call, ending main loop");
+            log.info("收到工具调用的终止信号，结束主循环");
             return new IterationOutcome(true, fullResponse.toString());
         }
 
@@ -416,7 +417,7 @@ public class AgentService {
                 String toolName = request.name();
                 String toolArgs = request.arguments();
 
-                log.info(" Calling tool: {}({})", toolName, toolArgs);
+                log.info("调用工具: {}({})", toolName, toolArgs);
                 executedToolNames.add(toolName);
 
                 // 【关键】通过统一工具执行服务路由（基础工具 + Skill 工具）
@@ -425,8 +426,9 @@ public class AgentService {
 
                 // 检测工具执行失败（仅用于日志记录，让模型通过上下文自己判断）
                 if (result != null && (result.contains("failed") ||
-                    result.contains("error") || result.contains("exception") || result.contains("Error"))) {
-                    log.warn("Tool execution failed: {}", toolName);
+                    result.contains("error") || result.contains("exception") || result.contains("Error") ||
+                    result.contains("失败") || result.contains("错误") || result.contains("异常"))) {
+                    log.warn("工具执行失败: {}", toolName);
                 }
 
                 // 添加工具执行结果
@@ -443,8 +445,8 @@ public class AgentService {
                         // 兼容 langchain4j 0.35.0: OpenAI 适配层只识别原生 ToolExecutionResultMessage。
                         // 因此截图通过单独的 UserMessage 传递，避免自定义消息类型导致序列化失败。
                         UserMessage visualFeedback = UserMessage.from(
-                                TextContent.from(String.format(“屏幕在执行工具 %s 之后的状态截图：”, toolName)),
-                                ImageContent.from(screenshot, “image/jpeg”)
+                                TextContent.from(String.format("屏幕在执行工具 %s 之后的状态截图：", toolName)),
+                                ImageContent.from(screenshot, "image/jpeg")
                         );
                         messages.add(visualFeedback);
                         chatMemory.add(visualFeedback);
@@ -696,7 +698,7 @@ public class AgentService {
             // 如果 text 为 null（只有工具调用），估算工具调用的 token 数
             if (text == null) {
                 if (aiMsg.hasToolExecutionRequests()) {
-                    // 估算每件工具调用的 token 数（工具名 + 参数）
+                    // 估算每个工具调用的 token 数（工具名 + 参数）
                     int toolTokenCount = 0;
                     for (var toolRequest : aiMsg.toolExecutionRequests()) {
                         // 工具名大约 10 tokens，参数大约按长度估算

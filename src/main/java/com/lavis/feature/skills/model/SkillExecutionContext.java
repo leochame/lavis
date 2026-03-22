@@ -6,7 +6,7 @@ import lombok.Data;
 import java.util.Map;
 
 /**
- * Skill 执lines上下文。
+ * Skill 执行上下文。
  *
  * 这是解决"Context Gap"问题的核心数据结构：
  * - 包含 Skill 的完整知识（Markdown 正文）
@@ -32,14 +32,14 @@ public class SkillExecutionContext {
     /** 原始命令模板 */
     private String commandTemplate;
 
-    /** 解析后的命令（参数has been 替换） */
+    /** 解析后的命令（参数已替换） */
     private String resolvedCommand;
 
     /**
      * 生成用于注入到 LLM 上下文的 System Message。
      *
      * 这是"上下文注入"的核心方法：
-     * will  SKILL.md 中的知识转换为 LLM 可理解的指令。
+     * 将 SKILL.md 中的知识转换为 LLM 可理解的指令。
      */
     public String toSystemPromptInjection() {
         StringBuilder sb = new StringBuilder();
@@ -74,7 +74,7 @@ public class SkillExecutionContext {
 
     /**
      * 生成用于注入到 User Message 的上下文（备选方案）。
-     * 某些场景下，will 知识作为 User Message 的一部分may更有效。
+     * 某些场景下，将知识作为 User Message 的一部分可能更有效。
      */
     public String toUserMessageInjection() {
         StringBuilder sb = new StringBuilder();

@@ -15,10 +15,10 @@ import java.util.regex.Pattern;
  * 视觉内容压缩器
  *
  * 实现基于 Turn 的视觉内容压缩策略：
- * - 首sheets图片 (Anchor): 保留完整 Base64，作为环境基准
+ * - 首张图片 (Anchor): 保留完整 Base64，作为环境基准
  * - 中间图片 (Process): 替换为占位符，极致压缩 Token
- * - 末sheets图片 (Result): 保留完整 Base64，作为执lines结果证明
- * - exception帧 (Error): 保留完整 Base64，用于debug
+ * - 末张图片 (Result): 保留完整 Base64，作为执行结果证明
+ * - 异常帧 (Error): 保留完整 Base64，用于debug
  *
  * 压缩比预估：
  * - 768px 宽度截图: ~1,500 tokens
@@ -35,9 +35,9 @@ public class VisualCompactor {
             "data:image/[^;]+;base64,([A-Za-z0-9+/=]+)",
             Pattern.CASE_INSENSITIVE);
 
-    // error关键词，用于识别exception帧
+    // 错误关键词，用于识别异常帧
     private static final List<String> ERROR_KEYWORDS = List.of(
-            "error", "error", "failed", "exception", "failed", "", "warning", "warning"
+            "error", "错误", "失败", "exception", "failed", "❌", "警告", "warning"
     );
 
     private final SessionMessageRepository messageRepository;
@@ -65,7 +65,7 @@ public class VisualCompactor {
         }
 
         if (imageMessages.size() <= 2) {
-            // 只有 1-2 sheets图片，全部保留
+            // 只有 1-2 张图片，全部保留
             log.debug("Turn {} has only {} images, skipping compaction", turnId, imageMessages.size());
             return new CompactionResult(0, 0, imageMessages.size());
         }
@@ -80,7 +80,7 @@ public class VisualCompactor {
         for (int i = 1; i < imageMessages.size() - 1; i++) {
             SessionMessageEntity msg = imageMessages.get(i);
 
-            // 检查是否为exception帧
+            // 检查是否为异常帧
             if (isErrorFrame(msg)) {
                 log.debug("Preserving error frame: {}", msg.getImageId());
                 continue;
@@ -106,10 +106,10 @@ public class VisualCompactor {
     }
 
     /**
-     * 压缩指定会话中所有has been completed的 Turn（排除when前 Turn）
+     * 压缩指定会话中所有已完成的 Turn（排除当前 Turn）
      *
      * @param sessionId 会话 ID
-     * @param currentTurnId when前活跃的 Turn ID（不压缩）
+     * @param currentTurnId 当前活跃的 Turn ID（不压缩）
      * @return 总压缩结果
      */
     @Transactional
@@ -122,7 +122,7 @@ public class VisualCompactor {
         int totalImages = 0;
 
         for (String turnId : turnIds) {
-            // 跳过when前 Turn
+            // 跳过当前 Turn
             if (turnId.equals(currentTurnId)) {
                 continue;
             }
@@ -140,7 +140,7 @@ public class VisualCompactor {
      * 从冷存储恢复图片
      *
      * @param imageId 图片 ID
-     * @return Base64 编码的图片数据，not found返回 null
+     * @return Base64 编码的图片数据，未找到返回 null
      */
     public String restoreImage(String imageId) {
         return coldStorage.retrieve(imageId).orElse(null);
@@ -154,7 +154,7 @@ public class VisualCompactor {
     }
 
     /**
-     * 判断消息是否为exception帧
+     * 判断消息是否为异常帧
      */
     private boolean isErrorFrame(SessionMessageEntity message) {
         if (message == null || message.getContent() == null) {
@@ -187,7 +187,7 @@ public class VisualCompactor {
     }
 
     /**
-     * will 消息内容中的图片替换为占位符
+     * 将消息内容中的图片替换为占位符
      */
     private String replaceImageWithPlaceholder(String content, String imageId) {
         if (content == null) {
@@ -198,7 +198,7 @@ public class VisualCompactor {
         String result = BASE64_IMAGE_PATTERN.matcher(content)
                 .replaceAll(createPlaceholder(imageId));
 
-        // if内容本身就是纯 Base64，直接替换
+        // 如果内容本身就是纯 Base64，直接替换
         if (result.equals(content) && content.length() > 1000 && isValidBase64(content)) {
             return createPlaceholder(imageId);
         }
@@ -207,7 +207,7 @@ public class VisualCompactor {
     }
 
     /**
-     * 简单验证是否为有效的 Base64 characters符串
+     * 简单验证是否为有效的 Base64 字符串
      */
     private boolean isValidBase64(String str) {
         if (str == null || str.isEmpty()) {
@@ -229,7 +229,7 @@ public class VisualCompactor {
         }
 
         public long estimatedTokensSaved() {
-            // 每sheets图片约 1500 tokens，占位符约 10 tokens
+            // 每张图片约 1500 tokens，占位符约 10 tokens
             return (long) compactedCount * (1500 - 10);
         }
     }

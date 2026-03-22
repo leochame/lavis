@@ -35,7 +35,7 @@ public interface SessionMessageRepository extends JpaRepository<SessionMessageEn
     List<SessionMessageEntity> findByTurnIdAndHasImageOrderByTurnPositionAsc(String turnId, boolean hasImage);
 
     /**
-     * 查找指定会话中所有not 压缩的历史 Turn（排除when前 Turn）
+     * 查找指定会话中所有未压缩的历史 Turn（排除当前 Turn）
      */
     List<SessionMessageEntity> findBySessionIdAndTurnIdNotAndIsCompressedFalseAndHasImageTrue(
             String sessionId, String currentTurnId);

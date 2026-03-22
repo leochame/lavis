@@ -1,4 +1,8 @@
 #!/bin/bash
+set -euo pipefail
+
+# Cleanup temp files on exit
+trap 'rm -f /tmp/test.wav /tmp/test_audio.wav' EXIT
 
 echo "========================================="
 echo "STT 诊断工具"
@@ -50,7 +54,7 @@ RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:18765/api/agent/
   --max-time 30 2>&1)
 
 HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-BODY=$(echo "$RESPONSE" | head -n-1)
+BODY=$(echo "$RESPONSE" | sed '$d')
 
 if [ "$HTTP_CODE" = "200" ]; then
     echo "   ✅ STT 请求成功 (HTTP $HTTP_CODE)"
@@ -61,8 +65,6 @@ else
     echo "   错误响应:"
     echo "$BODY"
 fi
-
-rm -f /tmp/test.wav /tmp/test_audio.wav
 echo ""
 
 # 4. 检查日志

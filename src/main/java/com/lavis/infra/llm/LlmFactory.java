@@ -25,7 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * LLM 模型工厂服务
- * * 根据configuration动态创建和缓存 ChatLanguageModel, SttModel, TtsModel 实例
+ * * 根据配置动态创建和缓存 ChatLanguageModel, SttModel, TtsModel 实例
  */
 @Slf4j
 @Service
@@ -100,10 +100,10 @@ public class LlmFactory {
         return switch (config.getProvider()) {
             case OPENAI -> createOpenAiModel(config);
             case GEMINI -> {
-                // ifconfiguration了 baseUrl（中转站），使用 OpenAI 兼容接口
-                // because LangChain4j 的 GoogleAiGeminiChatModel 不支持自定义 baseUrl
+                // 如果配置了 baseUrl（中转站），使用 OpenAI 兼容接口
+                // 因为 LangChain4j 的 GoogleAiGeminiChatModel 不支持自定义 baseUrl
                 if (config.getBaseUrl() != null && !config.getBaseUrl().isBlank()) {
-                    log.info(" Gemini 模型configuration了自定义 baseUrl，使用 OpenAI 兼容接口（中转站）");
+                    log.info(" Gemini 模型配置了自定义 baseUrl，使用 OpenAI 兼容接口（中转站）");
                     yield createOpenAiModel(config);
                 } else {
                     yield createGeminiModel(config);
@@ -153,11 +153,11 @@ public class LlmFactory {
 
         if (config == null) {
             throw new IllegalArgumentException(
-                    String.format("模型configuration '%s' 不存在。可用的模型: %s",
+                    String.format("模型配置 '%s' 不存在。可用的模型: %s",
                             alias, llmProperties.getModels().keySet()));
         }
 
-        // 应用动态 API Key（ifhas been 设置）
+        // 应用动态 API Key（如果已设置）
         ModelConfig effectiveConfig = applyDynamicApiKey(config);
 
         validateConfig(alias, effectiveConfig);
@@ -165,8 +165,8 @@ public class LlmFactory {
     }
 
     /**
-     * 应用动态configuration（API Key 和 Base URL）到configuration
-     * if用户设置了动态configuration，则覆盖configuration文件中的值
+     * 应用动态配置（API Key 和 Base URL）到配置
+     * 如果用户设置了动态配置，则覆盖配置文件中的值
      */
     private ModelConfig applyDynamicApiKey(ModelConfig config) {
         if (dynamicApiKeyService == null) {
@@ -178,7 +178,7 @@ public class LlmFactory {
         String effectiveModelName = dynamicApiKeyService.getEffectiveModelName(
                 config.getModelName(), config.getType());
 
-        // ifconfiguration没有变化，直接返回原configuration
+        // 如果配置没有变化，直接返回原配置
         boolean apiKeyChanged = effectiveApiKey != null && !effectiveApiKey.equals(config.getApiKey());
         boolean baseUrlChanged = (effectiveBaseUrl == null && config.getBaseUrl() != null) ||
                                 (effectiveBaseUrl != null && !effectiveBaseUrl.equals(config.getBaseUrl()));
@@ -189,7 +189,7 @@ public class LlmFactory {
             return config;
         }
 
-        // 创建新的configuration对象，避免修改原始configuration
+        // 创建新的配置对象，避免修改原始配置
         ModelConfig newConfig = new ModelConfig();
         newConfig.setType(config.getType());
         newConfig.setProvider(config.getProvider());
@@ -217,12 +217,12 @@ public class LlmFactory {
     private void validateConfig(String alias, ModelConfig config) {
         if (config.getApiKey() == null || config.getApiKey().isBlank()) {
             throw new IllegalArgumentException(
-                    String.format("模型 '%s' 的 api-key not configuration", alias));
+                    String.format("模型 '%s' 的 api-key 未配置", alias));
         }
 
         if (config.getModelName() == null || config.getModelName().isBlank()) {
             throw new IllegalArgumentException(
-                    String.format("模型 '%s' 的 model-name not configuration", alias));
+                    String.format("模型 '%s' 的 model-name 未配置", alias));
         }
     }
 
@@ -243,8 +243,8 @@ public class LlmFactory {
 
     /**
      * 创建 Gemini 模型实例（使用 Google 官方 API）
-     * 注意：此方法仅在not configuration baseUrl 时使用
-     * ifconfiguration了 baseUrl（中转站），会自动使用 OpenAI 兼容接口
+     * 注意：此方法仅在未配置 baseUrl 时使用
+     * 如果配置了 baseUrl（中转站），会自动使用 OpenAI 兼容接口
      */
     private ChatLanguageModel createGeminiModel(ModelConfig config) {
         var builder = GoogleAiGeminiChatModel.builder()
@@ -261,7 +261,7 @@ public class LlmFactory {
         chatModelCache.clear();
         sttModelCache.clear();
         ttsModelCache.clear();
-        log.info(" 所有模型缓存has been 清空");
+        log.info(" 所有模型缓存已清空");
     }
 
     public boolean isModelAvailable(String alias) {

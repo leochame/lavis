@@ -16,16 +16,16 @@ import java.lang.reflect.Method;
 import java.util.*;
 
 /**
- * 工具执lines服务 - 统一封装工具调用逻辑
+ * 工具执行服务 - 统一封装工具调用逻辑
  * 
  * 职责：
  * 1. 管理工具元数据（toolSpecifications, toolMethods）
- * 2. 通过反射执lines工具方法
+ * 2. 通过反射执行工具方法
  * 3. 参数解析和类型转换
  * 4. 判断工具是否影响屏幕（用于决定是否重新截图）
  * 
  * 设计原则：
- * - 无状态 Singleton，可被多items服务共享
+ * - 无状态 Singleton，可被多个服务共享
  * - AgentTools 是纯粹的"工具箱"，本服务负责"工具调度"
  */
 @Slf4j
@@ -36,11 +36,11 @@ public class ToolExecutionService {
     private final SkillService skillService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    /** 基础工具规格columns表（供 LLM 使用） */
+    /** 基础工具规格列表（供 LLM 使用） */
     @Getter
     private List<ToolSpecification> toolSpecifications;
 
-    /** Skill 工具规格columns表（来自 SkillService，实时更新） */
+    /** Skill 工具规格列表（来自 SkillService，实时更新） */
     private final List<ToolSpecification> skillToolSpecifications = new ArrayList<>();
     
     /** 基础工具名称 -> Method 映射 */
@@ -53,7 +53,7 @@ public class ToolExecutionService {
 
     @PostConstruct
     public void init() {
-        // initialize基础工具规格
+        // 初始化基础工具规格
         this.toolSpecifications = ToolSpecifications.toolSpecificationsFrom(agentTools);
 
         // 建立工具名称到方法的映射
@@ -64,7 +64,7 @@ public class ToolExecutionService {
             }
         }
 
-        // initialize Skill 工具规格
+        // 初始化 Skill 工具规格
         this.skillToolSpecifications.clear();
         this.skillToolSpecifications.addAll(skillService.getToolSpecifications());
 
@@ -94,7 +94,7 @@ public class ToolExecutionService {
     }
 
     /**
-     * 获取合并后的工具规格columns表（基础工具 + Skill 工具）
+     * 获取合并后的工具规格列表（基础工具 + Skill 工具）
      */
     public List<ToolSpecification> getCombinedToolSpecifications() {
         List<ToolSpecification> combined = new ArrayList<>();
@@ -108,7 +108,7 @@ public class ToolExecutionService {
     }
 
     /**
-     * 统一执lines入口：根据名称路由到基础工具或 Skill 工具。
+     * 统一执行入口：根据名称路由到基础工具或 Skill 工具。
      */
     public String executeUnified(String toolName, String argsJson) {
         // 基础工具优先
@@ -128,7 +128,7 @@ public class ToolExecutionService {
     }
 
     /**
-     * 通过反射执lines基础工具方法
+     * 通过反射执行基础工具方法
      */
     private String executeBaseTool(String toolName, String argsJson) {
         try {
@@ -173,18 +173,18 @@ public class ToolExecutionService {
             return result != null ? result.toString() : "Execution completed";
 
         } catch (Exception e) {
-            log.error("工具执linesfailed: {} - {}", toolName, e.getMessage(), e);
+            log.error("工具执行失败: {} - {}", toolName, e.getMessage(), e);
             return "Tool execution error: " + e.getMessage();
         }
     }
 
     /**
-     * 判断工具是否may影响屏幕显示
+     * 判断工具是否可能影响屏幕显示
      *
-     * 用于决定工具执lines后是否need重新截图
+     * 用于决定工具执行后是否需要重新截图
      *
      * @param toolName 工具名称
-     * @return true 表示may影响屏幕，need重新截图
+     * @return true 表示可能影响屏幕，需要重新截图
      */
     public boolean isVisualImpactTool(String toolName) {
         // 基础工具的判断逻辑保持不变
@@ -198,9 +198,9 @@ public class ToolExecutionService {
                 case "openApplication", "quitApplication", "openURL", "openFile" -> true;
                 case "scroll" -> true;
                 case "executeAppleScript", "executeShell", "revealInFinder" -> true;
-                // wait 通常用于etc待屏幕状态变化，need重新截图以观察变化
+                // wait 通常用于等待屏幕状态变化，需要重新截图以观察变化
                 case "wait" -> true;
-                // 这些工具只是获取info，不改变屏幕
+                // 这些工具只是获取信息，不改变屏幕
                 case "moveMouse" -> true;
                 case "getMouseInfo", "captureScreen" -> false;
                 case "getActiveApp", "getActiveWindowTitle" -> false;
@@ -211,17 +211,17 @@ public class ToolExecutionService {
                 case "complete_tool" -> false;
                 // 搜索工具 - 不影响屏幕
                 case "internetSearch", "quickSearch" -> false;
-                // not 知基础工具默认认为有影响
+                // 未知基础工具默认认为有影响
                 default -> true;
             };
         }
 
-        // Skill 工具默认认为有视觉影响（may触发 agent: 命令）
+        // Skill 工具默认认为有视觉影响（可能触发 agent: 命令）
         if (isSkillTool(toolName)) {
             return true;
         }
 
-        // not 知工具默认认为有影响
+        // 未知工具默认认为有影响
         return true;
     }
 
@@ -233,7 +233,7 @@ public class ToolExecutionService {
     }
 
     /**
-     * 判断是否为 Skill 工具（基于when前 Skill ToolSpecifications）
+     * 判断是否为 Skill 工具（基于当前 Skill ToolSpecifications）
      */
     public boolean isSkillTool(String toolName) {
         synchronized (skillToolSpecifications) {

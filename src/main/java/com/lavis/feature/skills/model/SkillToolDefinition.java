@@ -14,8 +14,8 @@ import java.util.Map;
  * 遵循 OpenAI/Anthropic Function Calling 规范。
  *
  * 这是解决"LLM 自主选择技能"问题的核心：
- * - will  SKILL.md 中的元数据转换为 JSON Schema
- * - LLM can 根据 description 进lines语义路由
+ * - 将 SKILL.md 中的元数据转换为 JSON Schema
+ * - LLM can 根据 description 进行语义路由
  * - 参数定义严格类型化
  */
 @Data
@@ -51,7 +51,7 @@ public class SkillToolDefinition {
     }
 
     /**
-     * 单items参数属性定义
+     * 单个参数属性定义
      */
     @Data
     @Builder
@@ -117,7 +117,7 @@ public class SkillToolDefinition {
             desc.append(skill.getDescription());
         }
 
-        // 添加元info帮助 LLM 更好地理解
+        // 添加元信息帮助 LLM 更好地理解
         if (skill.getCategory() != null) {
             desc.append(" [Category: ").append(skill.getCategory()).append("]");
         }
@@ -133,7 +133,7 @@ public class SkillToolDefinition {
             return "string";
         }
 
-        // 尝试解析为数characters
+        // 尝试解析为数字
         try {
             Integer.parseInt(defaultValue);
             return "integer";
@@ -153,7 +153,7 @@ public class SkillToolDefinition {
     }
 
     /**
-     * will  kebab-case 或 PascalCase 转换为 snake_case
+     * 将 kebab-case 或 PascalCase 转换为 snake_case
      * for example: "Java-Coding" -> "java_coding"
      */
     private static String toSnakeCase(String name) {

@@ -140,7 +140,7 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       const isSilence = level < silenceThreshold;
 
       // 每秒输出一次音频能量信息（用于调试）
-      if (samplesCount % 10 === 0) {
+      if (import.meta.env.DEV && samplesCount % 10 === 0) {
         console.log('[VoiceRecorder] Audio level:', {
           current: level.toFixed(4),
           avg: (totalAudioEnergy / samplesCount).toFixed(4),
@@ -274,11 +274,13 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
         // 检查是否全程静音（平均能量 < 阈值）
         // 降低阈值到 0.001，避免误判正常语音为静音
         // 同时增加日志输出，方便调试
-        console.log('[VoiceRecorder] Audio energy check:', {
-          avgEnergy: energyInfo.avgAudioEnergy,
-          samples: energyInfo.samplesCount,
-          threshold: 0.001
-        });
+        if (import.meta.env.DEV) {
+          console.log('[VoiceRecorder] Audio energy check:', {
+            avgEnergy: energyInfo.avgAudioEnergy,
+            samples: energyInfo.samplesCount,
+            threshold: 0.001
+          });
+        }
 
         if (energyInfo.avgAudioEnergy < 0.001 && energyInfo.samplesCount > 10) {
           console.warn('⚠️ Full silence detected, discarding');

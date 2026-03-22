@@ -3,7 +3,7 @@ package com.lavis.entry.config.llm;
 import lombok.Data;
 
 /**
- * 单items LLM 模型的configuration POJO
+ * 单个 LLM 模型的配置 POJO
  * * 支持的 provider:
  * - OPENAI: OpenAI 兼容接口（包括阿里云 DashScope Chat、Azure OpenAI etc）
  * - GEMINI: Google Gemini 原生接口
@@ -17,8 +17,8 @@ public class ModelConfig {
      */
     public enum ModelType {
         CHAT,   // 对话模型
-        STT,    // 语音转文characters
-        TTS     // 文characters转语音
+        STT,    // 语音转文字
+        TTS     // 文字转语音
     }
 
     /**
@@ -62,12 +62,12 @@ public class ModelConfig {
     private Double temperature = 0.4;
 
     /**
-     * 请求超时时间（seconds）
+     * 请求超时时间（秒）
      */
     private Integer timeoutSeconds = 60;
 
     /**
-     * 最大重试times数
+     * 最大重试次数
      */
     private Integer maxRetries = 3;
 

@@ -30,7 +30,7 @@ import java.util.regex.Pattern;
  * 特性：
  * - 自动追加时间戳到查询
  * - 结果摘要提取
- * - error重试
+ * - 错误重试
  */
 @Slf4j
 @Service
@@ -57,17 +57,17 @@ public class WebSearchService {
     }
 
     /**
-     * 执lines搜索
+     * 执行搜索
      *
      * @param query 搜索查询
-     * @return 搜索结果columns表
+     * @return 搜索结果列表
      */
     public SearchResult search(String query) {
         return search(query, true);
     }
 
     /**
-     * 执lines搜索
+     * 执行搜索
      *
      * @param query 搜索查询
      * @param appendTimestamp 是否追加时间戳
@@ -162,7 +162,7 @@ public class WebSearchService {
         // 提取 answer
         String answer = extractJsonString(json, "answer");
 
-        // 提取 results 数组中的items目
+        // 提取 results 数组中的项目
         Pattern resultPattern = Pattern.compile(
                 "\"title\"\\s*:\\s*\"([^\"]+)\".*?\"url\"\\s*:\\s*\"([^\"]+)\".*?\"content\"\\s*:\\s*\"([^\"]+)\"",
                 Pattern.DOTALL);
@@ -210,7 +210,7 @@ public class WebSearchService {
             items.add(new SearchResult.ResultItem(title, url, snippet));
         }
 
-        // if正则没匹配到，尝试更宽松的模式
+        // 如果正则没匹配到，尝试更宽松的模式
         if (items.isEmpty()) {
             Pattern simplePattern = Pattern.compile(
                     "<a[^>]+href=\"(https?://[^\"]+)\"[^>]*>([^<]+)</a>",
@@ -231,7 +231,7 @@ public class WebSearchService {
     }
 
     /**
-     * 增强查询：追加when前日期
+     * 增强查询：追加当前日期
      */
     private String enhanceQueryWithTimestamp(String query) {
         String date = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM"));
@@ -239,7 +239,7 @@ public class WebSearchService {
     }
 
     /**
-     * 从 JSON 中提取characters符串值
+     * 从 JSON 中提取字符串值
      */
     private String extractJsonString(String json, String key) {
         Pattern pattern = Pattern.compile("\"" + key + "\"\\s*:\\s*\"([^\"]+)\"");
@@ -248,7 +248,7 @@ public class WebSearchService {
     }
 
     /**
-     * 转义 JSON characters符串
+     * 转义 JSON 字符串
      */
     private String escapeJson(String str) {
         return str.replace("\\", "\\\\")
@@ -259,7 +259,7 @@ public class WebSearchService {
     }
 
     /**
-     * 反转义 JSON characters符串
+     * 反转义 JSON 字符串
      */
     private String unescapeJson(String str) {
         return str.replace("\\\"", "\"")
@@ -323,7 +323,7 @@ public class WebSearchService {
         }
 
         /**
-         * 单items搜索结果items
+         * 单个搜索结果项
          */
         public record ResultItem(
                 String title,

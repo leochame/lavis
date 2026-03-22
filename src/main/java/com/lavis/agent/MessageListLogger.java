@@ -2,8 +2,6 @@ package com.lavis.agent;
 
 import dev.langchain4j.data.message.*;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -30,7 +28,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Component
 public class MessageListLogger {
 
-    private static final Logger MESSAGE_LOG = LoggerFactory.getLogger("MESSAGE_LIST");
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
     private static final Path LOG_DIR = Paths.get(".lavis", "logs");
     private static final Path MESSAGE_LOG_FILE = LOG_DIR.resolve("message-list.log");
@@ -56,14 +53,15 @@ public class MessageListLogger {
         this.currentTurnId = turnId;
         recordedMessageCount.putIfAbsent(turnId, new AtomicInteger(0));
 
-        // 记录对话start标记
+        // 记录对话开始标记
         StringBuilder sb = new StringBuilder();
         sb.append("\n");
         sb.append("╔").append("═".repeat(78)).append("╗\n");
+        int padding = Math.max(0, 78 - 32 - turnId.length());
         sb.append(String.format("║ NEW TURN: %s | Time: %s%s║\n",
                 turnId,
                 LocalDateTime.now().format(TIME_FORMATTER),
-                " ".repeat(78 - 32 - turnId.length())));
+                " ".repeat(padding)));
         sb.append("╚").append("═".repeat(78)).append("╝\n");
 
         writeToFile(sb.toString());
@@ -77,14 +75,18 @@ public class MessageListLogger {
 
         StringBuilder sb = new StringBuilder();
         sb.append("┌").append("─".repeat(78)).append("┐\n");
+        int padding = Math.max(0, 78 - 50 - String.valueOf(totalMessages).length()
+                - String.valueOf(llmLatencyMs).length()
+                - String.valueOf(toolCallCount).length());
         sb.append(String.format("│ TURN END | Messages: %d | LLM: %dms | Tools: %d%s│\n",
                 totalMessages, llmLatencyMs, toolCallCount,
-                " ".repeat(78 - 50 - String.valueOf(totalMessages).length()
-                        - String.valueOf(llmLatencyMs).length()
-                        - String.valueOf(toolCallCount).length())));
+                " ".repeat(padding)));
         sb.append("└").append("─".repeat(78)).append("┘\n\n");
 
         writeToFile(sb.toString());
+
+        // 清理已结束轮次的记录计数，防止内存泄漏
+        recordedMessageCount.remove(currentTurnId);
     }
 
     /**
@@ -94,17 +96,13 @@ public class MessageListLogger {
      * @param llmLatencyMs  LLM 响应耗时
      * @param toolCallCount 工具调用数量
      */
-    public void logMessageList(List<ChatMessage> messages, int llmLatencyMs, int toolCallCount) {
+    public synchronized void logMessageList(List<ChatMessage> messages, int llmLatencyMs, int toolCallCount) {
         if (currentTurnId == null) {
             // 如果没有显式开始 Turn，自动创建一个
             startNewTurn("turn-" + System.currentTimeMillis());
         }
 
-        AtomicInteger recorded = recordedMessageCount.get(currentTurnId);
-        if (recorded == null) {
-            recorded = new AtomicInteger(0);
-            recordedMessageCount.put(currentTurnId, recorded);
-        }
+        AtomicInteger recorded = recordedMessageCount.computeIfAbsent(currentTurnId, k -> new AtomicInteger(0));
 
         int alreadyRecorded = recorded.get();
         int totalMessages = messages.size();
@@ -113,7 +111,7 @@ public class MessageListLogger {
         if (totalMessages > alreadyRecorded) {
             StringBuilder sb = new StringBuilder();
 
-            // 记录迭代info
+            // 记录迭代信息
             sb.append(String.format("┌─ Iteration | Time: %s | LLM: %dms | Tools: %d ─┐\n",
                     LocalDateTime.now().format(TIME_FORMATTER), llmLatencyMs, toolCallCount));
 
@@ -133,7 +131,7 @@ public class MessageListLogger {
     }
 
     /**
-     * 格式化单records消息
+     * 格式化单条消息
      */
     private String formatMessage(int index, ChatMessage message) {
         StringBuilder sb = new StringBuilder();

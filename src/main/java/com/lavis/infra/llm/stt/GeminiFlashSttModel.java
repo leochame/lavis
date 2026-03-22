@@ -18,10 +18,10 @@ import java.util.concurrent.TimeUnit;
 /**
  * Gemini-flash STT (Speech-to-Text) 实现
  * 
- * 使用 Gemini generateContent API 进lines音频识别
+ * 使用 Gemini generateContent API 进行音频识别
  * 支持通过 inlineData base64 方式上传音频
- * 
- * 根据官方文档，Gemini 支持音频理解，need：
+ *
+ * 根据官方文档，Gemini 支持音频理解，需要：
  * 1. 添加文本提示（prompt）明确要求转录，for example "Transcribe the audio. Output only the exact words spoken, nothing else."
  * 2. 支持多种音频格式：WAV, MP3, AIFF, AAC, OGG, FLAC
  * 
@@ -38,24 +38,24 @@ public class GeminiFlashSttModel implements SttModel {
 
     // Gemini API 端点
     // 官方地址: https://generativelanguage.googleapis.com/v1beta
-    // ifconfiguration文件中没有指定 base-url，则使用官方地址
+    // 如果配置文件中没有指定 base-url，则使用官方地址
     private static final String DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
     private static final String GEMINI_API_PATH = "/models/%s:generateContent";
     private static final MediaType JSON_MEDIA_TYPE = MediaType.parse("application/json; charset=utf-8");
 
     public GeminiFlashSttModel(ModelConfig config) {
         this.config = config;
-        // configuration连接池和超时设置，提高网络稳定性
+        // 配置连接池和超时设置，提高网络稳定性
         // 针对连接重置问题，采用以下策略：
-        // 1. 减少连接池保持时间，避免复用has been 失效的连接
-        // 2. 启用连接failed重试
+        // 1. 减少连接池保持时间，避免复用已失效的连接
+        // 2. 启用连接失败重试
         // 3. 设置合理的超时时间
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(config.getTimeoutSeconds(), TimeUnit.SECONDS)
                 .readTimeout(config.getTimeoutSeconds(), TimeUnit.SECONDS)
                 .writeTimeout(config.getTimeoutSeconds(), TimeUnit.SECONDS)
-                .connectionPool(new ConnectionPool(5, 30, TimeUnit.SECONDS)) // 连接池：最多5items连接，保持30seconds（减少保持时间，避免复用失效连接）
-                .retryOnConnectionFailure(true) // 启用连接failed重试
+                .connectionPool(new ConnectionPool(5, 30, TimeUnit.SECONDS)) // 连接池：最多5个连接，保持30秒（减少保持时间，避免复用失效连接）
+                .retryOnConnectionFailure(true) // 启用连接失败重试
                 .protocols(java.util.Arrays.asList(Protocol.HTTP_2, Protocol.HTTP_1_1)) // 明确支持的协议
                 .build();
     }
@@ -73,7 +73,7 @@ public class GeminiFlashSttModel implements SttModel {
                     audioFile.getOriginalFilename(), fileSize, 
                     String.format("%.2f", fileSize / (1024.0 * 1024.0)), config.getModelName());
 
-            // 1. 确定 API URL（优先使用configuration文件中的 base-url）
+            // 1. 确定 API URL（优先使用配置文件中的 base-url）
             String baseUrl = config.getBaseUrl() != null && !config.getBaseUrl().isBlank()
                     ? config.getBaseUrl() : DEFAULT_BASE_URL;
             
@@ -84,15 +84,15 @@ public class GeminiFlashSttModel implements SttModel {
             
             // 构建完整的 API URL
             // 官方地址格式: https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
-            // 中转站格式（根据errorinfo，should是）: https://api.jieai.shop/v1beta/models/{model}:generateContent
+            // 中转站格式（根据错误信息，应该是）: https://api.jieai.shop/v1beta/models/{model}:generateContent
             // 判断是否为官方地址
             boolean isOfficialUrl = baseUrl.contains("generativelanguage.googleapis.com");
             String apiUrl;
             if (isOfficialUrl) {
-                // 官方地址has been 经包含 /v1beta，直接拼接 /models/...
+                // 官方地址已经包含 /v1beta，直接拼接 /models/...
                 apiUrl = baseUrl + String.format(GEMINI_API_PATH, config.getModelName());
             } else {
-                // 中转站处理：if baseUrl 包含 /v1，need移除它，because中转站期望的是 /v1beta 而不是 /v1/v1beta
+                // 中转站处理：如果 baseUrl 包含 /v1，需要移除它，因为中转站期望的是 /v1beta 而不是 /v1/v1beta
                 // for example：https://api.jieai.shop/v1 -> https://api.jieai.shop/v1beta/models/...
                 if (baseUrl.endsWith("/v1")) {
                     // 移除 /v1，然后添加 /v1beta
@@ -124,7 +124,7 @@ public class GeminiFlashSttModel implements SttModel {
                     mimeType, String.format("%.2f", sizeMB), audioBytes.length, 
                     String.format("%.2f", base64SizeMB), base64Size, encodeDuration);
             
-            // warning：if文件太大，may会触发 Cloudflare 524 超时
+            // 注意：如果文件太大，可能会触发 Cloudflare 524 超时
             if (sizeMB > 10) {
                 log.warn(" Large audio file detected ({} MB). This may cause timeout issues (524 error).", 
                         String.format("%.2f", sizeMB));
@@ -135,11 +135,11 @@ public class GeminiFlashSttModel implements SttModel {
             } else if (sizeMB > 1) {
                 log.info("ℹ️ Audio file size: {} MB - Expected processing time: ~{}s", 
                         String.format("%.2f", sizeMB), 
-                        String.format("%.1f", sizeMB * 2)); // 粗略估算：每MB约2seconds
+                        String.format("%.1f", sizeMB * 2)); // 粗略估算：每MB约2秒
             }
 
             // 3. 构建 Gemini generateContent 请求体
-            // 根据官方文档，need添加文本提示来明确要求转录
+            // 根据官方文档，需要添加文本提示来明确要求转录
             // 格式参考: https://ai.google.dev/gemini-api/docs/audio
             // {
             //   "contents": [{
@@ -226,21 +226,21 @@ public class GeminiFlashSttModel implements SttModel {
                                 log.error(" Error response body: {}", responseBody);
                                 throw new IOException("Gemini STT transcription failed: " + statusCode + " - " + responseBody);
                             } else {
-                                // 5xx 服务器error，can 重试
+                            // 5xx 服务器错误，可以重试
                                 log.warn(" Gemini STT API server error: {} (attempt {}/{}) - URL: {}", 
                                         statusCode, attempt + 1, maxRetries + 1, apiUrl);
                                 log.warn(" Error response body: {}", responseBody);
                                 
-                                // 对于 500 error，尝试解析errorinfo
+                                // 对于 500 错误，尝试解析错误信息
                                 String errorMessage = parseErrorMessage(responseBody, statusCode);
                                 
                                 if (attempt < maxRetries) {
                                     lastException = new IOException("Server error: " + statusCode + " - " + errorMessage);
                                     continue;
                                 } else {
-                                    // 所有重试都failed，抛出友好的error消息
+                                    // 所有重试都失败，抛出友好的错误消息
                                     String friendlyMessage = String.format(
-                                        "语音识别服务暂时不可用（服务器error %d）。errorinfo：%s。请稍后重试。",
+                                        "语音识别服务暂时不可用（服务器错误 %d）。错误信息：%s。请稍后重试。",
                                         statusCode, errorMessage
                                     );
                                     throw new IOException("Gemini STT transcription failed: " + statusCode + " - " + errorMessage);
@@ -259,7 +259,7 @@ public class GeminiFlashSttModel implements SttModel {
                         return transcribedText;
                     }
                 } catch (SocketException | SocketTimeoutException e) {
-                    // 连接error：can 重试
+                    // 连接错误：可以重试
                     lastException = e;
                     if (attempt < maxRetries) {
                         log.warn(" Connection error (attempt {}/{}): {} - {}", 
@@ -276,7 +276,7 @@ public class GeminiFlashSttModel implements SttModel {
                         throw e;
                     }
                 } catch (IOException e) {
-                    // 其他 IO error：检查是否可重试
+                    // 其他 IO 错误：检查是否可重试
                     String errorMsg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
                     String errorClass = e.getClass().getSimpleName();
                     boolean isRetryable = errorMsg.contains("connection") || 
@@ -289,14 +289,14 @@ public class GeminiFlashSttModel implements SttModel {
                         lastException = e;
                         log.warn(" Network error (attempt {}/{}): {} - {}", 
                                 attempt + 1, maxRetries, errorClass, e.getMessage());
-                        // 对于连接重置或握手error，清除连接池
+                        // 对于连接重置或握手错误，清除连接池
                         if (errorMsg.contains("reset") || errorMsg.contains("handshake")) {
                             log.debug(" Clearing connection pool due to {} error", errorClass);
                             httpClient.connectionPool().evictAll();
                         }
                         continue;
                     } else {
-                        // 不可重试或has been 达到最大重试times数
+                        // 不可重试或已达到最大重试次数
                         log.error(" Network error (non-retryable or max retries reached): {} - {}", 
                                 errorClass, e.getMessage());
                         throw e;
@@ -307,7 +307,7 @@ public class GeminiFlashSttModel implements SttModel {
                 }
             }
             
-            // if所有重试都failed了
+            // 如果所有重试都失败了
             if (lastException != null) {
                 throw lastException;
             }
@@ -315,14 +315,14 @@ public class GeminiFlashSttModel implements SttModel {
 
         } catch (IOException e) {
             log.error("Transcription failed after attempts", e);
-            // 提取友好的error消息
+            // 提取友好的错误消息
             String errorMessage = e.getMessage();
             if (errorMessage != null && errorMessage.contains("500")) {
                 errorMessage = "语音识别服务暂时不可用，请稍后重试";
             } else if (errorMessage != null && errorMessage.contains("429")) {
                 errorMessage = "请求过于频繁，请稍后再试";
             } else if (errorMessage != null && errorMessage.contains("401") || errorMessage.contains("403")) {
-                errorMessage = "API 密钥invalid或权限不足";
+                errorMessage = "API 密钥无效或权限不足";
             }
             throw new RuntimeException("Failed to transcribe audio: " + errorMessage, e);
         }
@@ -385,7 +385,7 @@ public class GeminiFlashSttModel implements SttModel {
     }
 
     /**
-     * 解析error响应消息，提取友好的errorinfo
+     * 解析错误响应消息，提取友好的错误信息
      */
     private String parseErrorMessage(String responseBody, int statusCode) {
         try {
@@ -405,7 +405,7 @@ public class GeminiFlashSttModel implements SttModel {
                     JsonNode error = root.get("error");
                     if (error.has("message")) {
                         String message = error.get("message").asText();
-                        // 对于上游error，提供更友好的消息
+                        // 对于上游错误，提供更友好的消息
                         if (message.contains("upstream error") || message.contains("do_request_failed")) {
                             return "上游服务暂时不可用，请稍后重试";
                         }
@@ -416,7 +416,7 @@ public class GeminiFlashSttModel implements SttModel {
         } catch (Exception e) {
             log.debug("Failed to parse error response: {}", e.getMessage());
         }
-        return "服务器error " + statusCode;
+        return "服务器错误 " + statusCode;
     }
 
     /**
@@ -459,9 +459,9 @@ public class GeminiFlashSttModel implements SttModel {
         if (lowerName.endsWith(".ogg")) return "audio/ogg";
         if (lowerName.endsWith(".flac")) return "audio/flac";
         
-        // 额外支持的格式（may也兼容）
-        if (lowerName.endsWith(".webm")) return "audio/webm";  // 浏览器常用，may兼容
-        if (lowerName.endsWith(".m4a")) return "audio/mp4";   // M4A may兼容
+        // 额外支持的格式（可能也兼容）
+        if (lowerName.endsWith(".webm")) return "audio/webm";  // 浏览器常用，可能兼容
+        if (lowerName.endsWith(".m4a")) return "audio/mp4";   // M4A 可能兼容
         if (lowerName.endsWith(".opus")) return "audio/ogg";   // Opus 通常使用 OGG 容器
         
         // 默认返回 wav（官方文档推荐格式）

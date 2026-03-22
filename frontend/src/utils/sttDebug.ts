@@ -6,7 +6,11 @@
  * 2. 在 Console 中输入: window.sttDebug.enable()
  * 3. 尝试录音
  * 4. 查看详细的调试信息
+ *
+ * NOTE: This module is only active in DEV mode.
  */
+
+const MAX_LOG_SIZE = 1000;
 
 class SttDebugger {
   private enabled = false;
@@ -26,6 +30,11 @@ class SttDebugger {
   log(type: string, message: string, data?: any) {
     const time = new Date().toISOString();
     const logEntry = { time, type, message, data };
+
+    // Enforce max log size to prevent memory leaks
+    if (this.logs.length >= MAX_LOG_SIZE) {
+      this.logs = this.logs.slice(this.logs.length - MAX_LOG_SIZE + 1);
+    }
     this.logs.push(logEntry);
 
     if (this.enabled) {
@@ -72,10 +81,11 @@ class SttDebugger {
       formData.append('file', testFile);
       formData.append('use_orchestrator', 'false');
 
-      console.log('[STT Debug] 发送请求到 /api/agent/voice-chat...');
+      const endpoint = `${window.location.origin}/api/agent/voice-chat`;
+      console.log(`[STT Debug] 发送请求到 ${endpoint}...`);
       const startTime = Date.now();
 
-      const response = await fetch('http://localhost:18765/api/agent/voice-chat', {
+      const response = await fetch(endpoint, {
         method: 'POST',
         body: formData,
       });
@@ -110,7 +120,7 @@ class SttDebugger {
     console.log('%c[STT Debug] 检查配置...', 'color: blue; font-weight: bold');
 
     const checks = {
-      backend: 'http://localhost:18765',
+      backend: window.location.origin,
       frontend: window.location.origin,
       userAgent: navigator.userAgent,
       mediaDevices: !!navigator.mediaDevices,
@@ -122,12 +132,16 @@ class SttDebugger {
   }
 }
 
-// 创建全局实例
-const sttDebug = new SttDebugger();
+// 创建全局实例（仅在 DEV 模式下）
+let sttDebug: SttDebugger | undefined;
 
-// 暴露到 window 对象
-if (typeof window !== 'undefined') {
-  (window as any).sttDebug = sttDebug;
+if (import.meta.env.DEV) {
+  sttDebug = new SttDebugger();
+
+  // 暴露到 window 对象
+  if (typeof window !== 'undefined') {
+    (window as any).sttDebug = sttDebug;
+  }
 }
 
 export default sttDebug;
